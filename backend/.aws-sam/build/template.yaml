@@ -1,0 +1,63 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: Fantasy Baseball FastAPI Application
+Globals:
+  Function:
+    Timeout: 30
+    MemorySize: 512
+    Runtime: python3.12
+Resources:
+  FantasyBaseballApi:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: FantasyBaseballApi
+      Handler: lambda_handler.handler
+      Runtime: python3.12
+      Architectures:
+      - x86_64
+      Policies:
+      - AWSLambdaBasicExecutionRole
+      - Statement:
+        - Effect: Allow
+          Action:
+          - rds-data:ExecuteStatement
+          - rds-data:BatchExecuteStatement
+          - rds-data:BeginTransaction
+          - rds-data:CommitTransaction
+          - rds-data:RollbackTransaction
+          Resource: '*'
+        - Effect: Allow
+          Action:
+          - secretsmanager:GetSecretValue
+          - secretsmanager:DescribeSecret
+          Resource: arn:aws:secretsmanager:us-east-1:584812014683:secret:fantasy-db-credentials-*
+        - Effect: Allow
+          Action:
+          - cognito-idp:AdminCreateUser
+          - cognito-idp:AdminSetUserPassword
+          - cognito-idp:AdminConfirmSignUp
+          - cognito-idp:AdminGetUser
+          - cognito-idp:AdminInitiateAuth
+          - cognito-idp:AdminDeleteUser
+          - cognito-idp:ListUsers
+          - cognito-idp:AdminUpdateUserAttributes
+          Resource:
+          - arn:aws:cognito-idp:us-east-1:584812014683:userpool/us-east-1_OooV5u83w
+      Events:
+        ApiGateway:
+          Type: Api
+          Properties:
+            Path: /{proxy+}
+            Method: ANY
+        ApiGatewayRoot:
+          Type: Api
+          Properties:
+            Path: /
+            Method: ANY
+    Metadata:
+      SamResourceId: FantasyBaseballApi
+Outputs:
+  FantasyBaseballApi:
+    Description: API Gateway endpoint URL
+    Value:
+      Fn::Sub: https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/

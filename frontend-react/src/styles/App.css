@@ -1,0 +1,204 @@
+/* src/styles/App.css */
+/* NO Tailwind imports - using CDN only */
+
+/* Dynasty Dugout Brand Colors - CSS Variables */
+:root {
+  --dynasty-gold: #eab308;
+  --dynasty-gold-hover: #facc15;
+  --dynasty-gold-light: rgba(234, 179, 8, 0.1);
+  --dynasty-dark: #111827;
+  --dynasty-gray: #374151;
+  --dynasty-light-gray: #6b7280;
+  --dynasty-white: #ffffff;
+  --dynasty-black: #000000;
+  
+  /* Status colors */
+  --dynasty-success: #10b981;
+  --dynasty-error: #ef4444;
+  --dynasty-warning: #f59e0b;
+  --dynasty-info: #3b82f6;
+}
+
+/* Dynasty Button Styles */
+.btn-dynasty-primary {
+  background-color: var(--dynasty-gold);
+  color: var(--dynasty-black);
+  font-weight: 600;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  transition: all 0.2s ease;
+  border: none;
+  cursor: pointer;
+  display: inline-block;
+  text-decoration: none;
+}
+
+.btn-dynasty-primary:hover {
+  background-color: var(--dynasty-gold-hover);
+  transform: translateY(-1px);
+}
+
+.btn-dynasty-secondary {
+  background-color: transparent;
+  color: var(--dynasty-white);
+  font-weight: 500;
+  padding: 0.75rem 1.5rem;
+  border-radius: 0.5rem;
+  border: 1px solid var(--dynasty-gold);
+  transition: all 0.2s ease;
+  cursor: pointer;
+  display: inline-block;
+  text-decoration: none;
+}
+
+.btn-dynasty-secondary:hover {
+  background-color: var(--dynasty-gold-light);
+  color: var(--dynasty-gold);
+}
+
+/* Dynasty Icon Styles */
+.icon-dynasty-gold {
+  color: var(--dynasty-gold) !important;
+}
+
+.icon-dynasty-white {
+  color: var(--dynasty-white) !important;
+}
+
+/* Dynasty Card Component */
+.dynasty-card {
+  background: rgba(55, 65, 81, 0.5);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(107, 114, 128, 0.3);
+  border-radius: 12px;
+  transition: all 0.3s ease;
+  padding: 1.5rem;
+}
+
+.dynasty-card:hover {
+  border-color: var(--dynasty-gold);
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+}
+
+/* Dynasty Input Styles */
+.dynasty-input {
+  background-color: rgba(55, 65, 81, 0.8);
+  border: 1px solid var(--dynasty-gray);
+  color: var(--dynasty-white);
+  border-radius: 8px;
+  padding: 12px;
+  width: 100%;
+  transition: all 0.2s ease;
+}
+
+.dynasty-input:focus {
+  border-color: var(--dynasty-gold);
+  box-shadow: 0 0 0 3px rgba(234, 179, 8, 0.1);
+  outline: none;
+}
+
+.dynasty-input::placeholder {
+  color: var(--dynasty-light-gray);
+}
+
+/* Custom Animations */
+@keyframes glow {
+  0%, 100% {
+    box-shadow: 0 0 5px var(--dynasty-gold);
+  }
+  50% {
+    box-shadow: 0 0 20px var(--dynasty-gold), 0 0 30px var(--dynasty-gold);
+  }
+}
+
+.dynasty-glow:hover {
+  animation: glow 2s ease-in-out infinite;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+/* Status Indicators */
+.status-available {
+  background-color: var(--dynasty-success);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: inline-block;
+}
+
+.status-unavailable {
+  background-color: var(--dynasty-error);
+  color: white;
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  display: inline-block;
+}
+
+/* Custom scrollbar styles */
+::-webkit-scrollbar {
+  width: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: var(--dynasty-dark);
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--dynasty-gray);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--dynasty-gold);
+}
+
+/* Mobile-specific improvements */
+@media (max-width: 768px) {
+  .btn-dynasty-primary,
+  .btn-dynasty-secondary {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 1rem 1.5rem;
+    font-size: 1rem;
+  }
+
+  .dynasty-input {
+    font-size: 16px; /* Prevents zoom on iOS */
+    padding: 12px;
+    border-radius: 8px;
+  }
+
+  .dynasty-card {
+    margin: 16px;
+    padding: 1rem;
+  }
+}
+
+/* Focus styles for accessibility */
+input:focus,
+button:focus,
+select:focus,
+textarea:focus,
+.btn-dynasty-primary:focus,
+.btn-dynasty-secondary:focus {
+  outline: 2px solid var(--dynasty-gold);
+  outline-offset: 2px;
+}

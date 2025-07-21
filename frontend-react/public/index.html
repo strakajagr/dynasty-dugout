@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <link rel="icon" href="%PUBLIC_URL%/favicon.ico" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#eab308" />
+    <meta name="description" content="Dynasty Dugout - The ultimate fantasy baseball platform for serious managers" />
+    <link rel="apple-touch-icon" href="%PUBLIC_URL%/logo192.png" />
+    <link rel="manifest" href="%PUBLIC_URL%/manifest.json" />
+    
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Dynasty Dugout Custom Styles -->
+    <style>
+      :root {
+        --dynasty-gold: #eab308;
+        --dynasty-gold-hover: #facc15;
+        --dynasty-gold-light: rgba(234, 179, 8, 0.1);
+        --dynasty-dark: #111827;
+        --dynasty-gray: #374151;
+        --dynasty-light-gray: #6b7280;
+        --dynasty-white: #ffffff;
+        --dynasty-black: #000000;
+      }
+
+      .btn-dynasty-primary {
+        background-color: var(--dynasty-gold);
+        color: var(--dynasty-black);
+        font-weight: 600;
+        padding: 0.75rem 1.5rem;
+        border-radius: 0.5rem;
+        transition: all 0.2s ease;
+        border: none;
+        cursor: pointer;
+        display: inline-block;
+        text-decoration: none;
+      }
+
+      .btn-dynasty-primary:hover {
+        background-color: var(--dynasty-gold-hover);
+        transform: translateY(-1px);
+      }
+
+      .btn-dynasty-secondary {
+        background-color: transparent;
+        color: var(--dynasty-white);
+        font-weight: 500;
+        padding: 0.75rem 1.5rem;
+        border-radius: 0.5rem;
+        border: 1px solid var(--dynasty-gold);
+        transition: all 0.2s ease;
+        cursor: pointer;
+        display: inline-block;
+        text-decoration: none;
+      }
+
+      .btn-dynasty-secondary:hover {
+        background-color: var(--dynasty-gold-light);
+        color: var(--dynasty-gold);
+      }
+
+      .icon-dynasty-gold {
+        color: var(--dynasty-gold) !important;
+      }
+
+      .dynasty-card {
+        background: rgba(55, 65, 81, 0.5);
+        backdrop-filter: blur(10px);
+        border: 1px solid rgba(107, 114, 128, 0.3);
+        border-radius: 12px;
+        transition: all 0.3s ease;
+        padding: 1.5rem;
+      }
+
+      .dynasty-card:hover {
+        border-color: var(--dynasty-gold);
+        transform: translateY(-2px);
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+      }
+
+      .dynasty-input {
+        background-color: rgba(55, 65, 81, 0.8);
+        border: 1px solid var(--dynasty-gray);
+        color: var(--dynasty-white);
+        border-radius: 8px;
+        padding: 12px;
+        width: 100%;
+        transition: all 0.2s ease;
+      }
+
+      .dynasty-input:focus {
+        border-color: var(--dynasty-gold);
+        box-shadow: 0 0 0 3px rgba(234, 179, 8, 0.1);
+        outline: none;
+      }
+
+      .dynasty-input::placeholder {
+        color: var(--dynasty-light-gray);
+      }
+
+      @keyframes glow {
+        0%, 100% {
+          box-shadow: 0 0 5px var(--dynasty-gold);
+        }
+        50% {
+          box-shadow: 0 0 20px var(--dynasty-gold), 0 0 30px var(--dynasty-gold);
+        }
+      }
+
+      .dynasty-glow:hover {
+        animation: glow 2s ease-in-out infinite;
+      }
+
+      .status-available {
+        background-color: #10b981;
+        color: white;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        display: inline-block;
+      }
+
+      .status-unavailable {
+        background-color: #ef4444;
+        color: white;
+        padding: 4px 8px;
+        border-radius: 4px;
+        font-size: 0.75rem;
+        font-weight: 600;
+        display: inline-block;
+      }
+
+      /* Custom scrollbar */
+      ::-webkit-scrollbar {
+        width: 8px;
+      }
+
+      ::-webkit-scrollbar-track {
+        background: var(--dynasty-dark);
+      }
+
+      ::-webkit-scrollbar-thumb {
+        background: var(--dynasty-gray);
+        border-radius: 4px;
+      }
+
+      ::-webkit-scrollbar-thumb:hover {
+        background: var(--dynasty-gold);
+      }
+
+      /* Mobile improvements */
+      @media (max-width: 768px) {
+        .btn-dynasty-primary,
+        .btn-dynasty-secondary {
+          min-height: 44px;
+          min-width: 44px;
+          padding: 1rem 1.5rem;
+          font-size: 1rem;
+        }
+
+        .dynasty-input {
+          font-size: 16px;
+          padding: 12px;
+        }
+
+        .dynasty-card {
+          padding: 1rem;
+        }
+      }
+
+      /* Focus styles */
+      input:focus,
+      button:focus,
+      select:focus,
+      textarea:focus,
+      .btn-dynasty-primary:focus,
+      .btn-dynasty-secondary:focus {
+        outline: 2px solid var(--dynasty-gold);
+        outline-offset: 2px;
+      }
+    </style>
+    
+    <title>Dynasty Dugout</title>
+  </head>
+  <body>
+    <noscript>You need to enable JavaScript to run this app.</noscript>
+    <div id="root"></div>
+  </body>
+</html>

@@ -2,11 +2,13 @@
  * API Service - Centralized API calls
  */
 class ApiService {
-    static BASE_URL = 'https://mnn6lw869j.execute-api.us-east-1.amazonaws.com/Prod';
+    static BASE_URL = '';
     
     static async getPlayers() {
         try {
-            const response = await fetch(`${this.BASE_URL}/api/players`);
+            const response = await fetch(`${this.BASE_URL}/api/players`, {
+                credentials: 'include'
+            });
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }
@@ -19,7 +21,9 @@ class ApiService {
     
     static async getPlayer(id) {
         try {
-            const response = await fetch(`${this.BASE_URL}/api/players/${id}`);
+            const response = await fetch(`${this.BASE_URL}/api/players/${id}`, {
+                credentials: 'include'
+            });
             if (!response.ok) {
                 throw new Error(`HTTP error! status: ${response.status}`);
             }

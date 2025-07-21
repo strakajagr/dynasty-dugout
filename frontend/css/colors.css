@@ -1,0 +1,200 @@
+/* Diamond Dynasty Color Service
+ * Centralized color management for consistent theming across all pages
+ * Based on Fantasy Baseball Central golden yellow theme
+ */
+
+:root {
+  /* Primary Brand Colors */
+  --primary-yellow: #F1C40F;        /* Main golden yellow from your app */
+  --primary-yellow-dark: #D4AC0D;   /* Darker yellow for hover states */
+  --primary-yellow-light: #F7DC6F;  /* Lighter yellow for backgrounds */
+  --primary-yellow-pale: #FEF9E7;   /* Very light yellow for subtle backgrounds */
+
+  /* Secondary Gray Colors (where your blue currently is) */
+  --secondary-gray: #6C757D;        /* Main gray color */
+  --secondary-gray-dark: #495057;   /* Darker gray for text */
+  --secondary-gray-light: #ADB5BD;  /* Lighter gray for borders */
+  --secondary-gray-pale: #E9ECEF;   /* Very light gray for backgrounds */
+
+  /* Neutral Colors */
+  --white: #FFFFFF;
+  --black: #000000;
+  --dark-gray: #343A40;             /* Dark text */
+  --medium-gray: #6C757D;           /* Medium text */
+  --light-gray: #F8F9FA;            /* Light backgrounds */
+  --border-gray: #DEE2E6;           /* Borders and dividers */
+
+  /* Semantic Colors */
+  --success-green: #28A745;         /* Success states */
+  --success-green-light: #D4EDDA;   /* Success backgrounds */
+  --error-red: #DC3545;             /* Error states */
+  --error-red-light: #F8D7DA;       /* Error backgrounds */
+  --warning-orange: #FFC107;        /* Warning states */
+  --warning-orange-light: #FFF3CD;  /* Warning backgrounds */
+  --info-blue: #17A2B8;             /* Info states */
+  --info-blue-light: #D1ECF1;       /* Info backgrounds */
+
+  /* Text Colors */
+  --text-primary: #343A40;          /* Main text color */
+  --text-secondary: #6C757D;        /* Secondary text */
+  --text-muted: #ADB5BD;            /* Muted text */
+  --text-on-yellow: #343A40;        /* Text on yellow backgrounds */
+  --text-on-gray: #FFFFFF;          /* Text on gray backgrounds */
+
+  /* Interactive States */
+  --hover-yellow: #D4AC0D;          /* Yellow hover state */
+  --hover-gray: #495057;            /* Gray hover state */
+  --active-yellow: #B7950B;         /* Yellow active state */
+  --active-gray: #373A3C;           /* Gray active state */
+  --focus-ring: rgba(241, 196, 15, 0.25); /* Focus ring color */
+
+  /* Layout Colors */
+  --header-bg: var(--primary-yellow);
+  --sidebar-bg: var(--primary-yellow);
+  --main-bg: var(--light-gray);
+  --card-bg: var(--white);
+  --footer-bg: var(--secondary-gray-dark);
+
+  /* Shadow Colors */
+  --shadow-light: rgba(0, 0, 0, 0.1);
+  --shadow-medium: rgba(0, 0, 0, 0.15);
+  --shadow-heavy: rgba(0, 0, 0, 0.25);
+}
+
+/* Utility Classes for Quick Color Application */
+.bg-primary { background-color: var(--primary-yellow) !important; }
+.bg-secondary { background-color: var(--secondary-gray) !important; }
+.bg-light { background-color: var(--light-gray) !important; }
+.bg-white { background-color: var(--white) !important; }
+
+.text-primary { color: var(--text-primary) !important; }
+.text-secondary { color: var(--text-secondary) !important; }
+.text-muted { color: var(--text-muted) !important; }
+.text-on-yellow { color: var(--text-on-yellow) !important; }
+.text-on-gray { color: var(--text-on-gray) !important; }
+
+.border-primary { border-color: var(--primary-yellow) !important; }
+.border-secondary { border-color: var(--secondary-gray-light) !important; }
+.border-light { border-color: var(--border-gray) !important; }
+
+/* Button Color Variants */
+.btn-primary {
+  background-color: var(--primary-yellow);
+  border-color: var(--primary-yellow);
+  color: var(--text-on-yellow);
+}
+
+.btn-primary:hover {
+  background-color: var(--hover-yellow);
+  border-color: var(--hover-yellow);
+  color: var(--text-on-yellow);
+}
+
+.btn-secondary {
+  background-color: var(--secondary-gray);
+  border-color: var(--secondary-gray);
+  color: var(--text-on-gray);
+}
+
+.btn-secondary:hover {
+  background-color: var(--hover-gray);
+  border-color: var(--hover-gray);
+  color: var(--text-on-gray);
+}
+
+.btn-outline-primary {
+  background-color: transparent;
+  border-color: var(--primary-yellow);
+  color: var(--primary-yellow);
+}
+
+.btn-outline-primary:hover {
+  background-color: var(--primary-yellow);
+  border-color: var(--primary-yellow);
+  color: var(--text-on-yellow);
+}
+
+.btn-outline-secondary {
+  background-color: transparent;
+  border-color: var(--secondary-gray);
+  color: var(--secondary-gray);
+}
+
+.btn-outline-secondary:hover {
+  background-color: var(--secondary-gray);
+  border-color: var(--secondary-gray);
+  color: var(--text-on-gray);
+}
+
+/* Focus States */
+.form-control:focus,
+.form-select:focus,
+.btn:focus {
+  box-shadow: 0 0 0 0.2rem var(--focus-ring);
+}
+
+/* Alert Colors */
+.alert-success {
+  background-color: var(--success-green-light);
+  border-color: var(--success-green);
+  color: #155724;
+}
+
+.alert-danger {
+  background-color: var(--error-red-light);
+  border-color: var(--error-red);
+  color: #721C24;
+}
+
+.alert-warning {
+  background-color: var(--warning-orange-light);
+  border-color: var(--warning-orange);
+  color: #856404;
+}
+
+.alert-info {
+  background-color: var(--info-blue-light);
+  border-color: var(--info-blue);
+  color: #0C5460;
+}
+
+/* Theme Mixins (for use in SCSS if you upgrade later) */
+/*
+@mixin yellow-theme {
+  background-color: var(--primary-yellow);
+  color: var(--text-on-yellow);
+  
+  &:hover {
+    background-color: var(--hover-yellow);
+  }
+}
+
+@mixin gray-theme {
+  background-color: var(--secondary-gray);
+  color: var(--text-on-gray);
+  
+  &:hover {
+    background-color: var(--hover-gray);
+  }
+}
+*/
+
+/* Dark Mode Support (for future implementation) */
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* Override colors for dark mode when implemented */
+    --main-bg: #1a1a1a;
+    --card-bg: #2d2d2d;
+    --text-primary: #ffffff;
+    --text-secondary: #cccccc;
+    --border-gray: #404040;
+  }
+}
+
+/* High Contrast Mode Support */
+@media (prefers-contrast: high) {
+  :root {
+    --primary-yellow: #E6B800;  /* Slightly darker for better contrast */
+    --secondary-gray: #404040;   /* Darker gray for high contrast */
+  }
+}
