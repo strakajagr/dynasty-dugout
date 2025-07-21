@@ -8,7 +8,6 @@ import boto3
 import json
 import jwt
 from fastapi import FastAPI, HTTPException, Depends, Request, Response, Query
-## from fastapi.middleware.cors import CORSMiddleware
 from typing import Optional, Dict, Any, List
 import requests
 import logging
@@ -25,23 +24,6 @@ app = FastAPI(
     description="Complete fantasy baseball platform with real MLB data"
 )
 
-# CORS middleware - Updated for cookie support
-# CORS middleware - UPDATED for CloudFront domain
-## app.add_middleware(
-##    CORSMiddleware,
-##    allow_origins=[
-##        "https://d20wx6xzxkf84y.cloudfront.net",  # Your actual CloudFront URL
-##        "https://fantasy-baseball-frontend-strakajagr.s3-website-us-east-1.amazonaws.com",
-##        "http://localhost:3000",
-##        "http://127.0.0.1:3000",
-##        "http://localhost:8080",
-##        "http://127.0.0.1:8080"
-##    ],
-##    allow_credentials=True,  # CRITICAL: Required for cookies
-##    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-##    allow_headers=["*"],
-##    expose_headers=["*"]
-##   )
 # ==================== CONFIGURATION ====================
 
 # Cognito Configuration
@@ -175,35 +157,66 @@ def execute_sql(sql: str, parameters=None):
         logger.error(f"Parameters: {parameters}")
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
 
-def format_player_data(records, metadata):
-    """Convert RDS Data API response to clean player objects"""
-    if not records or not metadata:
+def format_player_data(records, response):
+    """Convert RDS Data API response to clean player objects - FINAL FIX"""
+    print(f"DEBUG format_player_data: records length = {len(records) if records else 'None'}")
+    print(f"DEBUG format_player_data: response keys = {list(response.keys()) if response else 'None'}")
+    
+    if not records or not response:
+        print("DEBUG: Returning empty - no records or response")
         return []
     
-    columns = [col['name'] for col in metadata['columnMetadata']]
+    # FIXED: columnMetadata is at ROOT level, not in resultMetadata!
+    columns = []
+    
+    # Try multiple locations for column metadata
+    if 'columnMetadata' in response:
+        columns = [col['name'] for col in response['columnMetadata']]
+        print(f"DEBUG: Found columns at root level: {columns}")
+    elif 'resultMetadata' in response and 'columnMetadata' in response['resultMetadata']:
+        columns = [col['name'] for col in response['resultMetadata']['columnMetadata']]
+        print(f"DEBUG: Found columns in resultMetadata: {columns}")
+    else:
+        print(f"DEBUG: No columnMetadata found. Available keys: {list(response.keys())}")
+        return []
+    
+    if not columns:
+        print("DEBUG: No columns extracted, returning empty array")
+        return []
+    
     players = []
     
-    for record in records:
+    for i, record in enumerate(records):
+        if i == 0:  # Only log first record
+            print(f"DEBUG: First record = {record}")
+        
         player = {}
-        for i, column in enumerate(columns):
-            if i < len(record):
-                value = record[i]
-                if 'stringValue' in value:
-                    player[column] = value['stringValue']
-                elif 'longValue' in value:
-                    player[column] = value['longValue']
-                elif 'doubleValue' in value:
-                    player[column] = value['doubleValue']
-                elif 'booleanValue' in value:
-                    player[column] = value['booleanValue']
-                elif 'isNull' in value and value['isNull']:
-                    player[column] = None
+        for j, column in enumerate(columns):
+            if j < len(record):
+                value = record[j]
+                if isinstance(value, dict):
+                    if 'stringValue' in value:
+                        player[column] = value['stringValue']
+                    elif 'longValue' in value:
+                        player[column] = value['longValue']
+                    elif 'doubleValue' in value:
+                        player[column] = value['doubleValue']
+                    elif 'booleanValue' in value:
+                        player[column] = value['booleanValue']
+                    elif 'isNull' in value and value['isNull']:
+                        player[column] = None
+                    else:
+                        player[column] = str(value)
                 else:
-                    player[column] = str(value)
+                    player[column] = value
             else:
                 player[column] = None
         players.append(player)
+        
+        if i == 0:  # Only log first player
+            print(f"DEBUG: First formatted player = {player}")
     
+    print(f"DEBUG: Returning {len(players)} players")
     return players
 
 # ==================== AUTHENTICATION ENDPOINTS ====================
@@ -557,7 +570,7 @@ async def auth_status(request: Request):
 
 @app.get("/api/players")
 async def get_players(
-    limit: int = Query(100, le=500),
+    limit: int = Query(1000, le=2000),  # Increased limit, removed 100 cap
     offset: int = Query(0, ge=0),
     position: Optional[str] = None,
     team: Optional[str] = None,
@@ -631,13 +644,13 @@ async def get_players(
         
         # Execute query
         response = execute_sql(base_sql, parameters)
-        print(f"DEBUG: Raw database response: {response}")
+        print(f"DEBUG: Raw database response keys: {list(response.keys()) if response else 'None'}")
         print(f"DEBUG: Number of records: {len(response.get('records', []))}")
         
-        # Format results - FIXED: Pass full response instead of resultMetadata
+        # FIXED: Pass the entire response object
         players = format_player_data(
             response.get('records', []), 
-            response
+            response  # CHANGED: Pass full response instead of response.get('resultMetadata', {})
         )
         
         print(f"DEBUG: Formatted players count: {len(players)}")
@@ -691,6 +704,8 @@ async def get_players(
         logger.error(f"Full traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to fetch players: {str(e)}")
 
+# Replace the get_player_details function in your fantasy_api.py with this fixed version:
+
 @app.get("/api/players/{player_id}")
 async def get_player_details(
     player_id: int,
@@ -716,7 +731,7 @@ async def get_player_details(
         if not response.get('records'):
             raise HTTPException(status_code=404, detail="Player not found")
         
-        # FIXED: Pass full response instead of resultMetadata
+        # FIXED: Pass the entire response object
         players = format_player_data(response['records'], response)
         player = players[0] if players else None
         
@@ -728,16 +743,18 @@ async def get_player_details(
         # Get player stats if requested
         if include_stats:
             try:
+                # FIXED: Use only columns that actually exist in your database
                 stats_sql = """
                 SELECT 
-                    week_number, games_played, at_bats, hits, runs, rbis, home_runs,
-                    stolen_bases, walks, strikeouts, batting_avg, on_base_pct, slugging_pct,
-                    innings_pitched, wins, losses, saves, earned_runs, strikeouts_pitched,
-                    era, whip, fantasy_points
+                    week_number, season_year, games_played, at_bats, hits, runs, rbis, home_runs,
+                    doubles, triples, stolen_bases, walks, strikeouts, hit_by_pitch,
+                    innings_pitched, wins, losses, saves, holds, blown_saves, earned_runs,
+                    hits_allowed, walks_allowed, strikeouts_pitched, era, whip,
+                    avg, obp, slg, ops, fantasy_points
                 FROM player_stats 
                 WHERE player_id = :player_id AND season_year = :season_year
                 ORDER BY week_number DESC
-                LIMIT 20
+                LIMIT 52
                 """
                 
                 stats_params = [
@@ -745,20 +762,27 @@ async def get_player_details(
                     {'name': 'season_year', 'value': {'longValue': season_year}}
                 ]
                 
+                logger.info(f"Fetching stats for player {player_id}, season {season_year}")
                 stats_response = execute_sql(stats_sql, stats_params)
                 
-                # FIXED: Pass full response instead of resultMetadata
+                logger.info(f"Stats query returned {len(stats_response.get('records', []))} records")
+                
+                # FIXED: Pass the entire response object
                 stats = format_player_data(
                     stats_response.get('records', []), 
                     stats_response
                 )
                 
+                logger.info(f"Formatted {len(stats)} stat records for player {player_id}")
+                
                 result["stats"] = stats
                 result["season_year"] = season_year
                 
             except Exception as stats_error:
-                logger.warning(f"Could not fetch stats for player {player_id}: {stats_error}")
+                logger.error(f"Could not fetch stats for player {player_id}: {stats_error}")
+                logger.error(f"Stats error traceback: {traceback.format_exc()}")
                 result["stats"] = []
+                result["stats_error"] = str(stats_error)
         
         return result
         
@@ -766,6 +790,7 @@ async def get_player_details(
         raise
     except Exception as e:
         logger.error(f"Get player details error: {str(e)}")
+        logger.error(f"Full traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail="Failed to fetch player details")
 
 @app.get("/api/players/positions")
@@ -781,7 +806,8 @@ async def get_available_positions(current_user: dict = Depends(get_current_user)
         """
         
         response = execute_sql(sql)
-        positions = format_player_data(response.get('records', []), response)
+        # FIXED: Pass the entire response object
+        positions = format_player_data(response.get('records', []), response)  # CHANGED
         
         return {"positions": positions}
         
@@ -802,7 +828,8 @@ async def get_available_teams(current_user: dict = Depends(get_current_user)):
         """
         
         response = execute_sql(sql)
-        teams = format_player_data(response.get('records', []), response)
+        # FIXED: Pass the entire response object
+        teams = format_player_data(response.get('records', []), response)  # CHANGED
         
         return {"teams": teams}
         
@@ -820,9 +847,10 @@ async def debug_database():
         sql = "SELECT current_database(), current_user, version()"
         response = execute_sql(sql)
         
+        # FIXED: Pass the entire response object
         connection_info = format_player_data(
             response.get('records', []), 
-            response
+            response  # CHANGED
         )
         
         # Test player table
@@ -842,9 +870,10 @@ async def debug_database():
         """
         structure_response = execute_sql(structure_sql)
         
+        # FIXED: Pass the entire response object
         table_structure = format_player_data(
             structure_response.get('records', []), 
-            structure_response
+            structure_response  # CHANGED
         )
         
         return {
@@ -877,7 +906,8 @@ async def debug_sample_players():
         """
         
         response = execute_sql(sql)
-        players = format_player_data(response.get('records', []), response)
+        # FIXED: Pass the entire response object
+        players = format_player_data(response.get('records', []), response)  # CHANGED
         
         return {
             "success": True,

@@ -103,6 +103,23 @@ export const playersAPI = {
   getPlayer: async (playerId) => {
     const response = await api.get(`/players/${playerId}`);
     return response.data;
+  },
+
+  // NEW: Get detailed player information with stats
+  getPlayerDetails: async (playerId, includeStats = true, seasonYear = 2025) => {
+    const params = new URLSearchParams();
+    
+    if (includeStats) {
+      params.append('include_stats', 'true');
+    }
+    
+    params.append('season_year', seasonYear.toString());
+    
+    const queryString = params.toString();
+    const endpoint = `/players/${playerId}${queryString ? `?${queryString}` : ''}`;
+    
+    const response = await api.get(endpoint);
+    return response.data;
   }
 };
 

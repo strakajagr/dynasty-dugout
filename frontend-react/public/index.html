@@ -12,92 +12,202 @@
     <!-- Tailwind CSS via CDN -->
     <script src="https://cdn.tailwindcss.com"></script>
     
-    <!-- Dynasty Dugout Custom Styles -->
+    <!-- Dynasty Dugout Custom Styles - Matches colorService.js -->
     <style>
+      /* Dynasty Dugout Theme - Matches colorService.js */
       :root {
         --dynasty-gold: #eab308;
         --dynasty-gold-hover: #facc15;
         --dynasty-gold-light: rgba(234, 179, 8, 0.1);
         --dynasty-dark: #111827;
         --dynasty-gray: #374151;
+        --dynasty-gray-secondary: #1f2937;
         --dynasty-light-gray: #6b7280;
         --dynasty-white: #ffffff;
         --dynasty-black: #000000;
       }
 
-      .btn-dynasty-primary {
-        background-color: var(--dynasty-gold);
-        color: var(--dynasty-black);
-        font-weight: 600;
-        padding: 0.75rem 1.5rem;
-        border-radius: 0.5rem;
-        transition: all 0.2s ease;
-        border: none;
-        cursor: pointer;
-        display: inline-block;
-        text-decoration: none;
+      /* Background classes from colorService */
+      .bg-dynasty-gold {
+        background-color: var(--dynasty-gold) !important;
       }
 
-      .btn-dynasty-primary:hover {
-        background-color: var(--dynasty-gold-hover);
-        transform: translateY(-1px);
+      .hover\:bg-dynasty-gold-hover:hover {
+        background-color: var(--dynasty-gold-hover) !important;
       }
 
-      .btn-dynasty-secondary {
-        background-color: transparent;
-        color: var(--dynasty-white);
-        font-weight: 500;
-        padding: 0.75rem 1.5rem;
-        border-radius: 0.5rem;
-        border: 1px solid var(--dynasty-gold);
-        transition: all 0.2s ease;
-        cursor: pointer;
-        display: inline-block;
-        text-decoration: none;
+      .bg-dynasty-gold-light {
+        background-color: var(--dynasty-gold-light) !important;
       }
 
-      .btn-dynasty-secondary:hover {
-        background-color: var(--dynasty-gold-light);
-        color: var(--dynasty-gold);
+      .bg-dynasty-dark {
+        background-color: var(--dynasty-dark) !important;
       }
 
+      .bg-dynasty-gradient {
+        background: linear-gradient(135deg, var(--dynasty-dark) 0%, var(--dynasty-gray-secondary) 50%, var(--dynasty-dark) 100%) !important;
+      }
+
+      /* Text classes from colorService */
+      .text-dynasty-gold {
+        color: var(--dynasty-gold) !important;
+      }
+
+      .hover\:text-dynasty-gold-hover:hover {
+        color: var(--dynasty-gold-hover) !important;
+      }
+
+      .text-dynasty-gray {
+        color: var(--dynasty-gray) !important;
+      }
+
+      .text-dynasty-light-gray {
+        color: var(--dynasty-light-gray) !important;
+      }
+
+      /* Border classes from colorService */
+      .border-dynasty-gold {
+        border-color: var(--dynasty-gold) !important;
+      }
+
+      .border-dynasty-gray {
+        border-color: var(--dynasty-gray) !important;
+      }
+
+      .border-dynasty-gold\/20 {
+        border-color: rgba(234, 179, 8, 0.2) !important;
+      }
+
+      .hover\:border-dynasty-gold\/50:hover {
+        border-color: rgba(234, 179, 8, 0.5) !important;
+      }
+
+      /* Icon classes from colorService */
       .icon-dynasty-gold {
         color: var(--dynasty-gold) !important;
       }
 
-      .dynasty-card {
-        background: rgba(55, 65, 81, 0.5);
-        backdrop-filter: blur(10px);
-        border: 1px solid rgba(107, 114, 128, 0.3);
-        border-radius: 12px;
-        transition: all 0.3s ease;
-        padding: 1.5rem;
+      .icon-dynasty-white {
+        color: var(--dynasty-white) !important;
       }
 
-      .dynasty-card:hover {
-        border-color: var(--dynasty-gold);
-        transform: translateY(-2px);
-        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+      /* Button classes from colorService */
+      .btn-dynasty-primary {
+        background-color: var(--dynasty-gold) !important;
+        color: var(--dynasty-black) !important;
+        font-weight: 600 !important;
+        padding: 0.75rem 1.5rem !important;
+        border-radius: 0.5rem !important;
+        border: none !important;
+        cursor: pointer !important;
+        transition: all 0.2s !important;
+        display: inline-block !important;
+        text-decoration: none !important;
       }
 
+      .btn-dynasty-primary:hover {
+        background-color: var(--dynasty-gold-hover) !important;
+        transform: translateY(-1px) !important;
+      }
+
+      .btn-dynasty-secondary {
+        background-color: transparent !important;
+        color: var(--dynasty-white) !important;
+        font-weight: 500 !important;
+        padding: 0.75rem 1.5rem !important;
+        border-radius: 0.5rem !important;
+        border: 1px solid var(--dynasty-gold) !important;
+        cursor: pointer !important;
+        transition: all 0.2s !important;
+        display: inline-block !important;
+        text-decoration: none !important;
+      }
+
+      .btn-dynasty-secondary:hover {
+        background-color: var(--dynasty-gold-light) !important;
+        color: var(--dynasty-gold) !important;
+      }
+
+      /* Input classes from colorService */
       .dynasty-input {
-        background-color: rgba(55, 65, 81, 0.8);
-        border: 1px solid var(--dynasty-gray);
-        color: var(--dynasty-white);
-        border-radius: 8px;
-        padding: 12px;
-        width: 100%;
-        transition: all 0.2s ease;
+        background-color: var(--dynasty-gray-secondary) !important;
+        border: 1px solid var(--dynasty-gray) !important;
+        color: var(--dynasty-white) !important;
+        border-radius: 8px !important;
+        padding: 12px !important;
+        transition: all 0.2s ease !important;
       }
 
       .dynasty-input:focus {
-        border-color: var(--dynasty-gold);
-        box-shadow: 0 0 0 3px rgba(234, 179, 8, 0.1);
-        outline: none;
+        border-color: var(--dynasty-gold) !important;
+        box-shadow: 0 0 0 3px var(--dynasty-gold-light) !important;
+        outline: none !important;
       }
 
-      .dynasty-input::placeholder {
-        color: var(--dynasty-light-gray);
+      /* Card classes from colorService */
+      .dynasty-card {
+        background-color: var(--dynasty-gray-secondary) !important;
+        border: 1px solid var(--dynasty-gray) !important;
+        border-radius: 0.75rem !important;
+        padding: 1.5rem !important;
+        transition: all 0.3s ease !important;
+      }
+
+      .dynasty-card:hover {
+        border-color: var(--dynasty-gold) !important;
+        transform: translateY(-2px) !important;
+        box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3) !important;
+      }
+
+      /* Status classes from colorService */
+      .status-available {
+        background-color: #10b981 !important;
+        color: white !important;
+        padding: 4px 8px !important;
+        border-radius: 4px !important;
+        font-size: 0.75rem !important;
+        font-weight: 600 !important;
+        display: inline-block !important;
+      }
+
+      .status-unavailable {
+        background-color: #ef4444 !important;
+        color: white !important;
+        padding: 4px 8px !important;
+        border-radius: 4px !important;
+        font-size: 0.75rem !important;
+        font-weight: 600 !important;
+        display: inline-block !important;
+      }
+
+      /* Spacing utility classes */
+      .dynasty-padding-sm {
+        padding: 0.5rem 1rem !important;
+      }
+
+      .dynasty-padding-md {
+        padding: 0.75rem 1.5rem !important;
+      }
+
+      .dynasty-padding-lg {
+        padding: 1rem 2rem !important;
+      }
+
+      .dynasty-margin-sm {
+        margin: 0.5rem !important;
+      }
+
+      .dynasty-margin-md {
+        margin: 1rem !important;
+      }
+
+      .dynasty-margin-lg {
+        margin: 1.5rem !important;
+      }
+
+      /* Glow effect from colorService */
+      .dynasty-glow:hover {
+        animation: glow 2s ease-in-out infinite;
       }
 
       @keyframes glow {
@@ -109,28 +219,222 @@
         }
       }
 
-      .dynasty-glow:hover {
-        animation: glow 2s ease-in-out infinite;
+      /* Common theme combinations from colorService */
+      .min-h-screen.bg-dynasty-gradient {
+        min-height: 100vh;
+        background: linear-gradient(135deg, var(--dynasty-dark) 0%, var(--dynasty-gray-secondary) 50%, var(--dynasty-dark) 100%);
       }
 
-      .status-available {
-        background-color: #10b981;
-        color: white;
-        padding: 4px 8px;
-        border-radius: 4px;
-        font-size: 0.75rem;
-        font-weight: 600;
-        display: inline-block;
+      /* Focus ring utility */
+      .focus\:outline-none:focus {
+        outline: none !important;
       }
 
-      .status-unavailable {
-        background-color: #ef4444;
-        color: white;
-        padding: 4px 8px;
-        border-radius: 4px;
-        font-size: 0.75rem;
+      .focus\:ring-2:focus {
+        box-shadow: 0 0 0 2px var(--dynasty-gold) !important;
+      }
+
+      /* Table classes */
+      .dynasty-table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      .dynasty-table th {
+        background-color: var(--dynasty-gray);
+        color: var(--dynasty-light-gray);
         font-weight: 600;
-        display: inline-block;
+        font-size: 0.875rem;
+        padding: 0.75rem 1rem;
+        text-align: left;
+        border-bottom: 1px solid var(--dynasty-gray);
+      }
+
+      .dynasty-table td {
+        padding: 0.75rem 1rem;
+        border-bottom: 1px solid rgba(55, 65, 81, 0.5);
+      }
+
+      .dynasty-table tr:hover td {
+        background-color: var(--dynasty-gray);
+      }
+
+      /* Override any remaining Tailwind colors */
+      * {
+        --tw-ring-color: var(--dynasty-gold) !important;
+      }
+
+      /* Force Tailwind overrides */
+      body {
+        background-color: var(--dynasty-dark) !important;
+      }
+
+      /* COMPATIBILITY: Support old class names for existing components */
+      .dynasty-bg-primary {
+        background-color: var(--dynasty-dark) !important;
+      }
+
+      .dynasty-bg-secondary {
+        background-color: var(--dynasty-gray-secondary) !important;
+      }
+
+      .dynasty-text-primary {
+        color: var(--dynasty-gold) !important;
+      }
+
+      .dynasty-text-secondary {
+        color: var(--dynasty-light-gray) !important;
+      }
+
+      .dynasty-text-muted {
+        color: var(--dynasty-light-gray) !important;
+      }
+
+      .dynasty-button {
+        background-color: var(--dynasty-gold) !important;
+        color: var(--dynasty-black) !important;
+        font-weight: 600 !important;
+        padding: 0.75rem 1.5rem !important;
+        border-radius: 0.5rem !important;
+        border: none !important;
+        cursor: pointer !important;
+        transition: all 0.2s !important;
+        display: inline-block !important;
+        text-decoration: none !important;
+      }
+
+      .dynasty-button:hover {
+        background-color: var(--dynasty-gold-hover) !important;
+        transform: translateY(-1px) !important;
+      }
+
+      .dynasty-button-secondary {
+        background-color: var(--dynasty-gray) !important;
+        border: 1px solid var(--dynasty-gold) !important;
+        color: var(--dynasty-gold) !important;
+        font-weight: 500 !important;
+        padding: 0.75rem 1.5rem !important;
+        border-radius: 0.5rem !important;
+        cursor: pointer !important;
+        transition: all 0.2s !important;
+        display: inline-block !important;
+        text-decoration: none !important;
+      }
+
+      .dynasty-button-secondary:hover {
+        background-color: var(--dynasty-gold-light) !important;
+        color: var(--dynasty-gold-hover) !important;
+      }
+
+      .dynasty-button-small {
+        background-color: var(--dynasty-gold) !important;
+        color: var(--dynasty-black) !important;
+        font-weight: 500 !important;
+        font-size: 0.875rem !important;
+        padding: 0.5rem 1rem !important;
+        border-radius: 0.375rem !important;
+        border: none !important;
+        cursor: pointer !important;
+        transition: all 0.2s !important;
+        display: inline-block !important;
+        text-decoration: none !important;
+      }
+
+      .dynasty-card-gradient {
+        background: linear-gradient(135deg, rgba(234, 179, 8, 0.2) 0%, rgba(217, 119, 6, 0.2) 100%) !important;
+        border: 1px solid rgba(234, 179, 8, 0.3) !important;
+        border-radius: 0.75rem !important;
+        padding: 1.5rem !important;
+      }
+
+      .dynasty-border-bottom {
+        border-bottom: 1px solid var(--dynasty-gray) !important;
+      }
+
+      .dynasty-border-right {
+        border-right: 1px solid var(--dynasty-gray) !important;
+      }
+
+      .dynasty-nav-active {
+        background-color: rgba(234, 179, 8, 0.2) !important;
+        color: var(--dynasty-gold) !important;
+        border: 1px solid rgba(234, 179, 8, 0.3) !important;
+        border-radius: 0.5rem !important;
+      }
+
+      .dynasty-nav-item {
+        color: var(--dynasty-light-gray) !important;
+        transition: all 0.2s !important;
+        border-radius: 0.5rem !important;
+      }
+
+      .dynasty-nav-item:hover {
+        color: var(--dynasty-white) !important;
+        background-color: var(--dynasty-gray) !important;
+      }
+
+      .dynasty-table-header {
+        border-bottom: 1px solid var(--dynasty-gray) !important;
+        background-color: var(--dynasty-gray) !important;
+      }
+
+      .dynasty-table-header th {
+        color: var(--dynasty-light-gray) !important;
+        font-weight: 600 !important;
+        font-size: 0.875rem !important;
+      }
+
+      .dynasty-table-row {
+        border-bottom: 1px solid rgba(55, 65, 81, 0.5) !important;
+        transition: all 0.2s !important;
+        background-color: var(--dynasty-gray-secondary) !important;
+      }
+
+      .dynasty-table-row:hover {
+        background-color: var(--dynasty-gray) !important;
+      }
+
+      .dynasty-position-badge {
+        background-color: rgba(234, 179, 8, 0.2) !important;
+        color: var(--dynasty-gold) !important;
+        font-weight: 500 !important;
+        font-size: 0.75rem !important;
+        padding: 0.25rem 0.5rem !important;
+        border-radius: 0.25rem !important;
+        border: 1px solid rgba(234, 179, 8, 0.3) !important;
+        display: inline-block !important;
+      }
+
+      .dynasty-status-available {
+        background-color: rgba(34, 197, 94, 0.2) !important;
+        color: #22c55e !important;
+        font-weight: 500 !important;
+        font-size: 0.75rem !important;
+        padding: 0.25rem 0.5rem !important;
+        border-radius: 0.25rem !important;
+        border: 1px solid rgba(34, 197, 94, 0.3) !important;
+        display: inline-block !important;
+      }
+
+      /* Mobile responsive */
+      @media (max-width: 768px) {
+        .btn-dynasty-primary,
+        .btn-dynasty-secondary,
+        .dynasty-button,
+        .dynasty-button-secondary {
+          min-height: 44px;
+          padding: 1rem 1.5rem;
+          font-size: 1rem;
+        }
+
+        .dynasty-input {
+          font-size: 16px;
+          padding: 12px;
+        }
+
+        .dynasty-card {
+          padding: 1rem;
+        }
       }
 
       /* Custom scrollbar */
@@ -149,37 +453,6 @@
 
       ::-webkit-scrollbar-thumb:hover {
         background: var(--dynasty-gold);
-      }
-
-      /* Mobile improvements */
-      @media (max-width: 768px) {
-        .btn-dynasty-primary,
-        .btn-dynasty-secondary {
-          min-height: 44px;
-          min-width: 44px;
-          padding: 1rem 1.5rem;
-          font-size: 1rem;
-        }
-
-        .dynasty-input {
-          font-size: 16px;
-          padding: 12px;
-        }
-
-        .dynasty-card {
-          padding: 1rem;
-        }
-      }
-
-      /* Focus styles */
-      input:focus,
-      button:focus,
-      select:focus,
-      textarea:focus,
-      .btn-dynasty-primary:focus,
-      .btn-dynasty-secondary:focus {
-        outline: 2px solid var(--dynasty-gold);
-        outline-offset: 2px;
       }
     </style>
     
