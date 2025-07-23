@@ -42,33 +42,35 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-const signIn = async (email, password) => {
-  console.log('🔍 SignIn function called with:', { email, password: '***' });
-  
-  try {
-    console.log('📡 About to call authAPI.signIn...');
-    const response = await authAPI.signIn(email, password);
-    console.log('✅ API response received:', response);
+  const signIn = async (email, password) => {
+    console.log('🔍 SignIn function called with:', { email, password: '***' });
     
-    if (response.success && response.user) {
-      setUser(response.user);
-      setIsAuthenticated(true);
-      console.log('🎉 Authentication successful!');
-      return { success: true };
-    } else {
-      console.log('❌ Response indicates not authenticated:', response);
-      return { success: false, error: 'Authentication failed' };
+    try {
+      console.log('📡 About to call authAPI.signIn...');
+      const response = await authAPI.signIn(email, password);
+      console.log('✅ API response received:', response);
+      
+      if (response.success && response.user) {
+        setUser(response.user);
+        setIsAuthenticated(true);
+        console.log('🎉 Authentication successful!');
+        
+        // Add explicit redirect to dashboard
+        window.location.href = '/dashboard';
+        
+        return { success: true };
+      } else {
+        console.log('❌ Response indicates not authenticated:', response);
+        return { success: false, error: 'Authentication failed' };
+      }
+    } catch (error) {
+      console.error('💥 Sign in error caught:', error);
+      return {
+        success: false,
+        error: error.response?.data?.detail || 'Sign in failed'
+      };
     }
-  } catch (error) {
-    console.error('💥 Sign in error caught:', error);
-    console.error('💥 Error response:', error.response);
-    console.error('💥 Error message:', error.message);
-    return {
-      success: false,
-      error: error.response?.data?.detail || 'Sign in failed'
-    };
-  }
-};
+  };
 
   const signUp = async (email, password, firstName, lastName, favoriteTeam) => {
     try {

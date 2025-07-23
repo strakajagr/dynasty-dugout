@@ -1,6 +1,6 @@
 AWSTemplateFormatVersion: '2010-09-09'
 Transform: AWS::Serverless-2016-10-31
-Description: Fantasy Baseball FastAPI Application
+Description: Dynasty Dugout FastAPI Application with Smart Daily MLB Updates
 
 Globals:
   Function:
@@ -9,6 +9,7 @@ Globals:
     Runtime: python3.12
 
 Resources:
+  # Main Dynasty Dugout API function
   FantasyBaseballApi:
     Type: AWS::Serverless::Function
     Properties:
@@ -32,8 +33,10 @@ Resources:
             Action:
               - secretsmanager:GetSecretValue
               - secretsmanager:DescribeSecret
-            Resource: 'arn:aws:secretsmanager:us-east-1:584812014683:secret:fantasy-db-credentials-*'
-          # ADD COGNITO PERMISSIONS
+            Resource: 
+              - 'arn:aws:secretsmanager:us-east-1:584812014683:secret:fantasy-db-credentials-*'
+              - 'arn:aws:secretsmanager:us-east-1:584812014683:secret:rds!cluster-a4ca625a-7cb4-484a-8707-80f27e403c70-*'
+          # Cognito permissions for Dynasty Dugout authentication
           - Effect: Allow
             Action:
               - cognito-idp:AdminCreateUser
@@ -44,9 +47,27 @@ Resources:
               - cognito-idp:AdminDeleteUser
               - cognito-idp:ListUsers
               - cognito-idp:AdminUpdateUserAttributes
+              - cognito-idp:AdminResetUserPassword
+              - cognito-idp:SignUp
+              - cognito-idp:ConfirmSignUp
+              - cognito-idp:ResendConfirmationCode
+              - cognito-idp:ForgotPassword
+              - cognito-idp:ConfirmForgotPassword
+              - cognito-idp:ChangePassword
+              - cognito-idp:DescribeUserPool
             Resource: 
               - 'arn:aws:cognito-idp:us-east-1:584812014683:userpool/us-east-1_OooV5u83w'
-
+          # S3 permissions for profile picture management
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+              - s3:GetBucketLocation
+              - s3:HeadBucket
+            Resource: 
+              - 'arn:aws:s3:::dynasty-dugout-profile-pictures'
+              - 'arn:aws:s3:::dynasty-dugout-profile-pictures/*'
       Events:
         ApiGateway:
           Type: Api
@@ -59,7 +80,129 @@ Resources:
             Path: /
             Method: ANY
 
+  # NEW: Smart Daily MLB Stats Update Function
+  DynastyDugoutDailyUpdater:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: daily_update_lambda.lambda_handler
+      Runtime: python3.12
+      Timeout: 900  # 15 minutes for smart incremental processing
+      MemorySize: 1024
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          DATABASE_ARN: arn:aws:rds:us-east-1:584812014683:cluster:fantasy-baseball
+          SECRET_ARN: arn:aws:secretsmanager:us-east-1:584812014683:secret:fantasy-db-credentials-MoEtfC
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Statement:
+            - Effect: Allow
+              Action:
+                - rds-data:ExecuteStatement
+                - rds-data:BatchExecuteStatement
+                - rds-data:BeginTransaction
+                - rds-data:CommitTransaction
+                - rds-data:RollbackTransaction
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+                - secretsmanager:DescribeSecret
+              Resource: 
+                - 'arn:aws:secretsmanager:us-east-1:584812014683:secret:fantasy-db-credentials-*'
+                - 'arn:aws:secretsmanager:us-east-1:584812014683:secret:rds!cluster-a4ca625a-7cb4-484a-8707-80f27e403c70-*'
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: "*"
+      Events:
+        # Schedule to run daily at 6 AM EST (11 AM UTC)
+        DailyMLBUpdateSchedule:
+          Type: Schedule
+          Properties:
+            Schedule: cron(0 11 * * ? *)  # 11 AM UTC = 6 AM EST
+            Description: "Smart daily MLB stats update at 6 AM EST - incremental approach"
+            Enabled: true
+
+  # NEW: Manual Stats Update Trigger (for testing and emergency updates)
+  DynastyDugoutManualUpdater:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: src/
+      Handler: daily_update_lambda.lambda_handler
+      Runtime: python3.12
+      Timeout: 900
+      MemorySize: 1024
+      Architectures:
+        - x86_64
+      Environment:
+        Variables:
+          DATABASE_ARN: arn:aws:rds:us-east-1:584812014683:cluster:fantasy-baseball
+          SECRET_ARN: arn:aws:secretsmanager:us-east-1:584812014683:secret:fantasy-db-credentials-MoEtfC
+          UPDATE_TYPE: manual
+      Policies:
+        - AWSLambdaBasicExecutionRole
+        - Statement:
+            - Effect: Allow
+              Action:
+                - rds-data:ExecuteStatement
+                - rds-data:BatchExecuteStatement
+                - rds-data:BeginTransaction
+                - rds-data:CommitTransaction
+                - rds-data:RollbackTransaction
+              Resource: '*'
+            - Effect: Allow
+              Action:
+                - secretsmanager:GetSecretValue
+                - secretsmanager:DescribeSecret
+              Resource: 
+                - 'arn:aws:secretsmanager:us-east-1:584812014683:secret:fantasy-db-credentials-*'
+                - 'arn:aws:secretsmanager:us-east-1:584812014683:secret:rds!cluster-a4ca625a-7cb4-484a-8707-80f27e403c70-*'
+            - Effect: Allow
+              Action:
+                - logs:CreateLogGroup
+                - logs:CreateLogStream
+                - logs:PutLogEvents
+              Resource: "*"
+      Events:
+        ManualUpdateTrigger:
+          Type: Api
+          Properties:
+            Path: /api/admin/update-stats
+            Method: POST
+
 Outputs:
-  FantasyBaseballApi:
-    Description: "API Gateway endpoint URL"
+  # Main Dynasty Dugout API
+  DynastyDugoutApiUrl:
+    Description: "Dynasty Dugout API Gateway endpoint URL"
     Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
+    Export:
+      Name: !Sub "${AWS::StackName}-ApiUrl"
+
+  # Daily updater information
+  DailyUpdaterArn:
+    Description: "ARN of the Dynasty Dugout Daily MLB Updater Lambda function"
+    Value: !GetAtt DynastyDugoutDailyUpdater.Arn
+    Export:
+      Name: !Sub "${AWS::StackName}-DailyUpdaterArn"
+
+  # Manual update endpoint
+  ManualUpdateUrl:
+    Description: "Manual stats update endpoint for testing"
+    Value: !Sub "https://${ServerlessRestApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/api/admin/update-stats"
+    Export:
+      Name: !Sub "${AWS::StackName}-ManualUpdateUrl"
+
+  # Update schedule information
+  UpdateScheduleInfo:
+    Description: "Dynasty Dugout smart daily update schedule"
+    Value: "Runs daily at 6:00 AM EST (11:00 AM UTC) - Smart incremental approach."
+
+  # Architecture summary
+  ArchitectureInfo:
+    Description: "Dynasty Dugout architecture summary"
+    Value: "Modular API: FastAPI + Routers | Daily Updates: Dedicated Lambda | Database: Aurora PostgreSQL Serverless | Account Management: S3 + Cognito"

@@ -5,8 +5,10 @@
 :root {
   --dynasty-gold: #eab308;
   --dynasty-gold-hover: #facc15;
+  --dynasty-gold-dark: #ca8a04;
   --dynasty-gold-light: rgba(234, 179, 8, 0.1);
   --dynasty-dark: #111827;
+  --dynasty-dark-lighter: #1f2937;
   --dynasty-gray: #374151;
   --dynasty-light-gray: #6b7280;
   --dynasty-white: #ffffff;
@@ -14,9 +16,106 @@
   
   /* Status colors */
   --dynasty-success: #10b981;
+  --dynasty-success-dark: #064e3b;
   --dynasty-error: #ef4444;
+  --dynasty-error-dark: #7f1d1d;
   --dynasty-warning: #f59e0b;
   --dynasty-info: #3b82f6;
+}
+
+/* GLOBAL ANTI-TAILWIND OVERRIDES */
+/* Remove all blue focus states and force Dynasty colors */
+*:focus,
+*:active,
+button:focus,
+input:focus,
+select:focus,
+textarea:focus,
+input[type="text"]:focus,
+input[type="email"]:focus,
+input[type="password"]:focus,
+input[type="date"]:focus {
+  outline: none !important;
+  border-color: var(--dynasty-gold) !important;
+  box-shadow: 0 0 0 2px var(--dynasty-gold-light) !important;
+}
+
+/* Override browser default input styling */
+input[type="text"],
+input[type="email"], 
+input[type="password"],
+input[type="date"],
+input[type="number"],
+select,
+textarea {
+  background-color: var(--dynasty-gray) !important;
+  color: var(--dynasty-white) !important;
+  border: 2px solid var(--dynasty-gray) !important;
+}
+
+/* Override any blue colors with Dynasty grays - more aggressive */
+*[class*="blue"],
+.text-blue-500,
+.text-blue-600,
+.text-blue-700,
+.text-blue-800,
+.text-blue-900,
+.text-blue-400,
+.text-blue-300 {
+  color: var(--dynasty-light-gray) !important;
+}
+
+*[class*="bg-blue"],
+.bg-blue-500,
+.bg-blue-600,
+.bg-blue-700,
+.bg-blue-800,
+.bg-blue-900,
+.bg-blue-400,
+.bg-blue-300 {
+  background-color: var(--dynasty-gray) !important;
+}
+
+*[class*="border-blue"],
+.border-blue-500,
+.border-blue-600,
+.border-blue-700,
+.border-blue-800,
+.border-blue-900,
+.border-blue-400,
+.border-blue-300 {
+  border-color: var(--dynasty-gray) !important;
+}
+
+/* Nuclear option - override any blue color values */
+*[style*="color: rgb(59, 130, 246)"],
+*[style*="color: #3b82f6"],
+*[style*="background-color: rgb(59, 130, 246)"],
+*[style*="background-color: #3b82f6"],
+*[style*="border-color: rgb(59, 130, 246)"],
+*[style*="border-color: #3b82f6"] {
+  color: var(--dynasty-light-gray) !important;
+  background-color: var(--dynasty-gray) !important;
+  border-color: var(--dynasty-gray) !important;
+}
+
+/* Force Dynasty tab styles over any framework interference */
+.dynasty-tab-custom:focus,
+.dynasty-tab-custom:active,
+.dynasty-tab-custom:hover {
+  outline: none !important;
+}
+
+.dynasty-tab-active {
+  background-color: var(--dynasty-gold) !important;
+  color: var(--dynasty-black) !important;
+  border-color: var(--dynasty-gold) !important;
+}
+
+.dynasty-tab-inactive {
+  background-color: var(--dynasty-dark-lighter) !important;
+  color: var(--dynasty-gold) !important;
+  border-color: var(--dynasty-gold) !important;
 }
 
 /* Dynasty Button Styles */
@@ -93,9 +192,9 @@
 }
 
 .dynasty-input:focus {
-  border-color: var(--dynasty-gold);
-  box-shadow: 0 0 0 3px rgba(234, 179, 8, 0.1);
-  outline: none;
+  border-color: var(--dynasty-gold) !important;
+  box-shadow: 0 0 0 3px var(--dynasty-gold-light) !important;
+  outline: none !important;
 }
 
 .dynasty-input::placeholder {
@@ -192,13 +291,386 @@
   }
 }
 
-/* Focus styles for accessibility */
+/* Focus styles for accessibility - Dynasty colors only */
 input:focus,
 button:focus,
 select:focus,
 textarea:focus,
 .btn-dynasty-primary:focus,
 .btn-dynasty-secondary:focus {
-  outline: 2px solid var(--dynasty-gold);
+  outline: 2px solid var(--dynasty-gold) !important;
   outline-offset: 2px;
+  border-color: var(--dynasty-gold) !important;
+}
+
+/* ================================================================
+   MY ACCOUNT PAGE STYLES - ADD AFTER THE FOCUS STYLES SECTION
+   ================================================================ */
+
+/* Page Layout */
+.dynasty-page-container {
+  min-height: 100vh;
+  background: linear-gradient(135deg, var(--dynasty-dark) 0%, #1f2937 100%);
+  padding: 2rem 1rem;
+}
+
+.dynasty-content-container {
+  max-width: 800px;
+  margin: 0 auto;
+}
+
+/* Header Section */
+.dynasty-header-section {
+  text-align: center;
+  margin-bottom: 2rem;
+}
+
+.dynasty-page-title {
+  font-size: 2.5rem;
+  font-weight: 700;
+  margin: 0 0 0.5rem 0;
+  background: linear-gradient(135deg, var(--dynasty-gold), var(--dynasty-gold-hover));
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.dynasty-subtitle {
+  font-size: 1.1rem;
+  color: var(--dynasty-light-gray);
+  margin: 0;
+}
+
+/* Message Display */
+.dynasty-message-box {
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1.5rem;
+  font-weight: 500;
+}
+
+.dynasty-success-message {
+  background-color: var(--dynasty-success-dark);
+  color: var(--dynasty-success);
+  border: 1px solid var(--dynasty-success);
+}
+
+.dynasty-error-message {
+  background-color: var(--dynasty-error-dark);
+  color: var(--dynasty-error);
+  border: 1px solid var(--dynasty-error);
+}
+
+.dynasty-info-message {
+  background-color: var(--dynasty-dark-lighter);
+  color: var(--dynasty-light-gray);
+  border: 1px solid var(--dynasty-gold);
+}
+
+/* ENHANCED TAB NAVIGATION - ANTI-TAILWIND */
+.dynasty-tab-container {
+  display: flex;
+  margin-bottom: 2rem;
+  border-bottom: 2px solid var(--dynasty-gray);
+}
+
+.dynasty-tab,
+.dynasty-tab-custom {
+  background-color: var(--dynasty-dark-lighter) !important;
+  color: var(--dynasty-gold) !important;
+  border: 2px solid var(--dynasty-gold) !important;
+  border-bottom: none !important;
+  padding: 1rem 2rem !important;
+  font-size: 1rem !important;
+  font-weight: 600 !important;
+  border-radius: 0.75rem 0.75rem 0 0 !important;
+  cursor: pointer !important;
+  transition: all 0.3s ease !important;
+  margin-right: 4px !important;
+  position: relative !important;
+  z-index: 1 !important;
+  outline: none !important;
+}
+
+.dynasty-tab:hover,
+.dynasty-tab-custom:hover {
+  background-color: var(--dynasty-gray) !important;
+  transform: translateY(-2px) !important;
+  box-shadow: 0 4px 12px rgba(234, 179, 8, 0.2) !important;
+}
+
+.dynasty-active-tab,
+.dynasty-tab-active,
+.dynasty-tab-custom.dynasty-tab-active {
+  background-color: var(--dynasty-gold) !important;
+  color: var(--dynasty-black) !important;
+  border-color: var(--dynasty-gold) !important;
+  font-weight: 700 !important;
+  z-index: 2 !important;
+  box-shadow: 0 4px 12px rgba(234, 179, 8, 0.3) !important;
+}
+
+/* Force text color in spans inside tabs */
+.dynasty-tab span,
+.dynasty-tab-custom span {
+  color: inherit !important;
+}
+
+/* Card Container */
+.dynasty-card-container {
+  background: rgba(55, 65, 81, 0.5);
+  backdrop-filter: blur(10px);
+  border: 1px solid rgba(107, 114, 128, 0.3);
+  border-radius: 12px;
+  padding: 2rem;
+  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+}
+
+/* Form Styles */
+.dynasty-form {
+  width: 100%;
+}
+
+.dynasty-form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.dynasty-form-group {
+  margin-bottom: 1.5rem;
+}
+
+.dynasty-label {
+  display: block;
+  font-weight: 600;
+  color: var(--dynasty-white);
+  margin-bottom: 0.5rem;
+  font-size: 0.9rem;
+}
+
+.dynasty-input {
+  width: 100%;
+  padding: 0.75rem;
+  background-color: rgba(55, 65, 81, 0.8);
+  border: 2px solid var(--dynasty-gray);
+  color: var(--dynasty-white);
+  border-radius: 8px;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+}
+
+.dynasty-input:focus {
+  outline: none !important;
+  border-color: var(--dynasty-gold) !important;
+  box-shadow: 0 0 0 3px var(--dynasty-gold-light) !important;
+}
+
+.dynasty-helper-text {
+  font-size: 0.8rem;
+  color: var(--dynasty-light-gray);
+  margin-top: 0.25rem;
+}
+
+/* Profile Picture Section */
+.dynasty-profile-picture-section {
+  margin-bottom: 2rem;
+  padding: 1.5rem;
+  background-color: rgba(17, 24, 39, 0.5);
+  border-radius: 8px;
+  border: 1px solid var(--dynasty-gray);
+}
+
+.dynasty-profile-picture-container {
+  display: flex;
+  align-items: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.dynasty-profile-picture-preview {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 3px solid var(--dynasty-gold);
+  background-color: var(--dynasty-gray);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.dynasty-profile-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.dynasty-profile-placeholder {
+  color: var(--dynasty-light-gray);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.dynasty-profile-picture-upload {
+  flex: 1;
+  min-width: 200px;
+}
+
+.dynasty-file-input {
+  display: none;
+}
+
+.dynasty-file-upload-button {
+  display: inline-block;
+  padding: 0.75rem 1.5rem;
+  background-color: var(--dynasty-gold);
+  color: var(--dynasty-black);
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  text-decoration: none;
+}
+
+.dynasty-file-upload-button:hover {
+  background-color: var(--dynasty-gold-hover);
+  transform: translateY(-1px);
+}
+
+.dynasty-file-helper-text {
+  font-size: 0.8rem;
+  color: var(--dynasty-light-gray);
+  margin-top: 0.5rem;
+  margin-bottom: 0;
+}
+
+/* Section Headers */
+.dynasty-section-header {
+  margin-bottom: 1.5rem;
+  padding-bottom: 1rem;
+  border-bottom: 1px solid var(--dynasty-gray);
+}
+
+.dynasty-section-header h3 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.3rem;
+  color: var(--dynasty-white);
+}
+
+.dynasty-section-description {
+  color: var(--dynasty-light-gray);
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+/* Buttons */
+.dynasty-button-container {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 2rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--dynasty-gray);
+}
+
+.dynasty-primary-button {
+  background-color: var(--dynasty-gold);
+  color: var(--dynasty-black);
+  border: none;
+  padding: 0.75rem 2rem;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.dynasty-primary-button:hover:not(:disabled) {
+  background-color: var(--dynasty-gold-hover);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(234, 179, 8, 0.3);
+}
+
+.dynasty-primary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.7;
+  background-color: var(--dynasty-gray);
+}
+
+/* Rate Limit Status Display */
+.rate-limit-status {
+  font-size: 0.8rem;
+  color: var(--dynasty-light-gray);
+  margin-top: 0.5rem;
+}
+
+/* Upload Progress Bar */
+.upload-progress {
+  margin-top: 0.5rem;
+}
+
+.upload-progress-bar {
+  width: 100%;
+  height: 4px;
+  background-color: var(--dynasty-gray);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.upload-progress-fill {
+  height: 100%;
+  background-color: var(--dynasty-gold);
+  transition: width 0.3s ease;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+  .dynasty-page-container {
+    padding: 1rem 0.5rem;
+  }
+  
+  .dynasty-content-container {
+    max-width: 100%;
+    padding: 0 0.5rem;
+  }
+  
+  .dynasty-page-title {
+    font-size: 2rem;
+  }
+  
+  .dynasty-card-container {
+    padding: 1.5rem;
+  }
+  
+  .dynasty-form-row {
+    grid-template-columns: 1fr;
+  }
+  
+  .dynasty-profile-picture-container {
+    flex-direction: column;
+    text-align: center;
+  }
+  
+  .dynasty-tab-container {
+    flex-direction: column;
+  }
+  
+  .dynasty-tab,
+  .dynasty-tab-custom {
+    margin-right: 0 !important;
+    margin-bottom: 0.5rem !important;
+    border-bottom: 2px solid var(--dynasty-gold) !important;
+    border-left: 3px solid transparent !important;
+  }
+  
+  .dynasty-active-tab,
+  .dynasty-tab-active {
+    border-left-color: var(--dynasty-gold) !important;
+  }
+
+  .dynasty-button-container {
+    justify-content: center;
+  }
 }

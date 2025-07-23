@@ -1,37 +1,49 @@
 // src/pages/Dashboard.js
 import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom'; // ADDED: For routing to player profiles
+import { useNavigate } from 'react-router-dom';
 import { 
   Crown, User, Users, Trophy, Calendar, MessageSquare, 
   Settings, BarChart3, FileText, Star, Target, TrendingUp,
-  Search, ChevronRight, LogOut
+  Search, ChevronRight, LogOut, Plus, Globe, UserPlus,
+  DollarSign, Clock
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { playersAPI } from '../services/apiService';
+import { playersAPI, leaguesAPI } from '../services/apiService';
+import { dynastyColors, dynastyUtils, dynastyComponents } from '../services/colorService';
 
 const Dashboard = () => {
   const { user, signOut } = useAuth();
-  const navigate = useNavigate(); // ADDED: Hook for navigation
+  const navigate = useNavigate();
   const [activeSection, setActiveSection] = useState('dashboard');
   const [players, setPlayers] = useState([]);
+  const [leagues, setLeagues] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [leaguesLoading, setLeaguesLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
   const [positionFilter, setPositionFilter] = useState('all');
 
-  // Navigation structure matching your league site
+  // Navigation structure
   const navigationSections = [
     {
       title: 'MY ACCOUNT',
       items: [
         { id: 'dashboard', label: 'My Dashboard', icon: BarChart3 },
         { id: 'account', label: 'My Account', icon: User },
-        { id: 'team-home', label: 'Team Home', icon: Users },
-        { id: 'mobile-home', label: 'Mobile Friendly Team Home', icon: Users }
+        { id: 'my-leagues', label: 'My Leagues', icon: Crown }
       ]
     },
     {
-      title: 'LEAGUE PAGES',
+      title: 'LEAGUE MANAGEMENT',
       items: [
+        { id: 'create-league', label: 'Create New League', icon: Plus },
+        { id: 'join-league', label: 'Join League', icon: UserPlus },
+        { id: 'public-leagues', label: 'Browse Public Leagues', icon: Globe }
+      ]
+    },
+    {
+      title: 'CURRENT LEAGUE',
+      items: [
+        { id: 'team-home', label: 'Team Home', icon: Users },
         { id: 'league-home', label: 'League Home', icon: Crown },
         { id: 'standings', label: 'League Standings', icon: Trophy },
         { id: 'team-stats', label: 'Team Stats', icon: BarChart3 },
@@ -66,62 +78,48 @@ const Dashboard = () => {
   ];
 
   useEffect(() => {
-    console.log('Dashboard useEffect running...');
-    console.log('User from AuthContext:', user);
     loadPlayers();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]); // Only depend on user, not loadPlayers to avoid infinite loops
+    loadLeagues();
+  }, [user]);
 
   const loadPlayers = async () => {
     try {
       setLoading(true);
-      console.log('=== STARTING LOAD PLAYERS ===');
-      console.log('User authenticated?', !!user);
-      console.log('User details:', user);
-      
-      // Check if cookies are being sent
-      console.log('Document cookies:', document.cookie);
-      
       const response = await playersAPI.getPlayers();
-      console.log('=== API RESPONSE SUCCESS ===');
-      console.log('Full response:', response);
-      console.log('Response.players:', response.players);
-      console.log('Response.data:', response.data);
-      console.log('Type of response:', typeof response);
       
-      // Try multiple possible data structures
       let playersData = [];
       if (response.players) {
         playersData = response.players;
-        console.log('Using response.players');
       } else if (response.data) {
         playersData = response.data;
-        console.log('Using response.data');
       } else if (Array.isArray(response)) {
         playersData = response;
-        console.log('Response is array, using directly');
-      } else {
-        console.log('Unknown response structure, using empty array');
       }
-      
-      console.log('Final playersData:', playersData);
-      console.log('Players count:', playersData.length);
       
       setPlayers(playersData);
     } catch (error) {
-      console.error('=== API ERROR ===');
-      console.error('Error object:', error);
-      console.error('Error message:', error.message);
-      console.error('Error response:', error.response);
-      console.error('Error response data:', error.response?.data);
-      console.error('Error response status:', error.response?.status);
-      console.error('Error response headers:', error.response?.headers);
-      
-      // Set empty array on error
+      console.error('Players API error:', error);
       setPlayers([]);
     } finally {
-      console.log('=== LOAD PLAYERS FINISHED ===');
       setLoading(false);
+    }
+  };
+
+  const loadLeagues = async () => {
+    try {
+      setLeaguesLoading(true);
+      const response = await leaguesAPI.getMyLeagues();
+      
+      if (response.success && response.leagues) {
+        setLeagues(response.leagues);
+      } else {
+        setLeagues([]);
+      }
+    } catch (error) {
+      console.error('Leagues API error:', error);
+      setLeagues([]);
+    } finally {
+      setLeaguesLoading(false);
     }
   };
 
@@ -129,129 +127,403 @@ const Dashboard = () => {
     await signOut();
   };
 
-  // ADDED: Function to handle player name clicks
   const handlePlayerClick = (player) => {
-    console.log('Navigating to player profile:', player.player_id, player.first_name, player.last_name);
     navigate(`/player/${player.player_id}`);
   };
 
+  const handleNavigation = (itemId) => {
+    if (itemId === 'account') {
+      navigate('/my-account');
+    } else if (itemId === 'create-league') {
+      navigate('/create-league');
+    } else {
+      setActiveSection(itemId);
+    }
+  };
+
+  const getScoringSystemLabel = (system) => {
+    const systemLabels = {
+      'rotisserie_ytd': 'Rotisserie (YTD)',
+      'rotisserie_weekly_accumulate': 'Rotisserie (Weekly)',
+      'total_points': 'Points-Based',
+      'h2h_category_wins': 'Head-to-Head Categories',
+      'h2h_one_win_loss': 'Head-to-Head',
+    };
+    return systemLabels[system] || system.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  };
+
+  const getLeagueStatusColor = (status) => {
+    const statusColors = {
+      'setup': dynastyColors.warning,
+      'active': dynastyColors.success,
+      'completed': dynastyColors.gray,
+      'draft': dynastyColors.info
+    };
+    return statusColors[status] || dynastyColors.gray;
+  };
+
+  const formatDate = (dateString) => {
+    if (!dateString) return 'Not set';
+    try {
+      return new Date(dateString).toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: 'numeric'
+      });
+    } catch {
+      return 'Invalid date';
+    }
+  };
+
   const filteredPlayers = players.filter(player => {
-    // Build full name from first_name and last_name
     const fullName = `${player.first_name || ''} ${player.last_name || ''}`.trim();
     
-    // Check if search matches name or mlb_id
     const matchesSearch = searchTerm === '' || 
                          fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
                          player.mlb_id?.toString().includes(searchTerm);
     
-    // Check position filter  
     const matchesPosition = positionFilter === 'all' || player.position === positionFilter;
     
     return matchesSearch && matchesPosition;
   });
 
-  // Debug: Log the first player to see actual structure
-  if (players.length > 0 && !window.playerDebugLogged) {
-    console.log('=== PLAYER STRUCTURE DEBUG ===');
-    console.log('First player object:', players[0]);
-    console.log('All player properties:', Object.keys(players[0]));
-    console.log('Total players:', players.length);
-    console.log('Filtered players:', filteredPlayers.length);
-    window.playerDebugLogged = true;
-  }
-
   const positions = ['all', ...new Set(players.map(p => p.position).filter(Boolean))];
+
+  const renderMyLeagues = () => {
+    if (leaguesLoading) {
+      return (
+        <div className="flex justify-center items-center py-12">
+          <div className="flex items-center space-x-3">
+            <div 
+              className="w-6 h-6 border-2 border-t-transparent animate-spin rounded-full"
+              style={{ borderColor: dynastyColors.gold, borderTopColor: 'transparent' }}
+            />
+            <span className="text-white">Loading your leagues...</span>
+          </div>
+        </div>
+      );
+    }
+
+    if (leagues.length === 0) {
+      return (
+        <div 
+          className="dynasty-card text-center py-12"
+          style={{ background: dynastyUtils.getGradient('card') }}
+        >
+          <Crown className="w-16 h-16 mx-auto mb-4 opacity-50" style={{ color: dynastyColors.gold }} />
+          <h3 className="text-xl font-semibold text-white mb-2">No Leagues Yet</h3>
+          <p className="dynasty-text-secondary mb-6">
+            Create your first fantasy baseball league to get started with Dynasty Dugout
+          </p>
+          <div className="flex justify-center gap-4">
+            <button
+              onClick={() => navigate('/create-league')}
+              className="dynasty-button flex items-center space-x-2"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Create League</span>
+            </button>
+            <button
+              onClick={() => setActiveSection('public-leagues')}
+              className="dynasty-button-secondary flex items-center space-x-2"
+            >
+              <Globe className="w-4 h-4" />
+              <span>Browse Public Leagues</span>
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
+        {leagues.map((league) => (
+          <div
+            key={league.league_id}
+            className="dynasty-card hover:border-dynasty-gold/50 transition-all duration-300 cursor-pointer group"
+            onClick={() => navigate(`/leagues/${league.league_id}`)}
+            style={{ background: dynastyUtils.getGradient('card') }}
+          >
+            {/* League Header */}
+            <div className="flex items-start justify-between mb-4">
+              <div className="flex-1">
+                <h3 className="text-lg font-bold text-white group-hover:text-dynasty-gold transition-colors">
+                  {league.league_name}
+                </h3>
+                <div className="flex items-center space-x-2 mt-1">
+                  <span
+                    className="px-2 py-1 rounded text-xs font-semibold"
+                    style={{
+                      backgroundColor: getLeagueStatusColor(league.status || 'setup'),
+                      color: dynastyColors.white
+                    }}
+                  >
+                    {(league.status || 'setup').toUpperCase()}
+                  </span>
+                  <span
+                    className="px-2 py-1 rounded text-xs font-medium"
+                    style={{
+                      backgroundColor: dynastyColors.darkLighter,
+                      color: dynastyColors.gold
+                    }}
+                  >
+                    {league.role?.toUpperCase() || 'MEMBER'}
+                  </span>
+                </div>
+              </div>
+              <ChevronRight 
+                className="w-5 h-5 opacity-50 group-hover:opacity-100 group-hover:translate-x-1 transition-all"
+                style={{ color: dynastyColors.gold }}
+              />
+            </div>
+
+            {/* League Details */}
+            <div className="space-y-3">
+              <div className="flex items-center space-x-2">
+                <Trophy className="w-4 h-4" style={{ color: dynastyColors.gold }} />
+                <span className="text-sm dynasty-text-secondary">
+                  {getScoringSystemLabel(league.scoring_system)}
+                </span>
+              </div>
+
+              <div className="flex items-center space-x-2">
+                <Users className="w-4 h-4" style={{ color: dynastyColors.gold }} />
+                <span className="text-sm dynasty-text-secondary">
+                  {league.max_teams || 12} teams max
+                </span>
+              </div>
+
+              {league.salary_cap && (
+                <div className="flex items-center space-x-2">
+                  <DollarSign className="w-4 h-4" style={{ color: dynastyColors.gold }} />
+                  <span className="text-sm dynasty-text-secondary">
+                    ${league.salary_cap} salary cap
+                  </span>
+                </div>
+              )}
+
+              <div className="flex items-center space-x-2">
+                <Calendar className="w-4 h-4" style={{ color: dynastyColors.gold }} />
+                <span className="text-sm dynasty-text-secondary">
+                  Created {formatDate(league.created_at)}
+                </span>
+              </div>
+            </div>
+
+            {/* League Actions */}
+            <div className="flex items-center justify-between mt-4 pt-4 border-t" style={{ borderColor: dynastyColors.gray }}>
+              <div className="flex items-center space-x-1">
+                <Settings className="w-4 h-4" style={{ color: dynastyColors.lightGray }} />
+                <span className="text-xs dynasty-text-secondary">
+                  {league.player_pool?.replace(/_/g, ' ') || 'All MLB'}
+                </span>
+              </div>
+              
+              {league.role === 'commissioner' && (
+                <Star className="w-4 h-4" style={{ color: dynastyColors.gold }} title="Commissioner" />
+              )}
+            </div>
+          </div>
+        ))}
+      </div>
+    );
+  };
 
   const renderContent = () => {
     switch (activeSection) {
       case 'dashboard':
         return (
           <div className="space-y-6">
-            <div className="dynasty-card-gradient">
+            {/* Welcome Section */}
+            <div 
+              className="dynasty-card p-6"
+              style={{ background: dynastyUtils.getGradient('card') }}
+            >
               <h2 className="text-2xl font-bold text-white mb-2">
                 Welcome back, {user?.given_name || user?.firstName}!
               </h2>
               <p className="dynasty-text-secondary">
-                Your dynasty awaits. Browse {players.length} available MLB players and manage your empire.
+                Your dynasty awaits. Manage your leagues and build your empire.
               </p>
             </div>
 
+            {/* Stats Overview */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className="dynasty-card">
+              <div 
+                className="dynasty-card p-6"
+                style={{ background: dynastyUtils.getGradient('card') }}
+              >
                 <div className="flex items-center space-x-3">
-                  <Star className="w-8 h-8 dynasty-text-primary" />
+                  <Crown className="w-8 h-8" style={{ color: dynastyColors.gold }} />
                   <div>
-                    <div className="text-2xl font-bold text-white">{players.length}</div>
-                    <div className="dynasty-text-secondary">Available Players</div>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="dynasty-card">
-                <div className="flex items-center space-x-3">
-                  <Trophy className="w-8 h-8 dynasty-text-primary" />
-                  <div>
-                    <div className="text-2xl font-bold text-white">0</div>
-                    <div className="dynasty-text-secondary">Teams Created</div>
-                  </div>
-                </div>
-              </div>
-              
-              <div className="dynasty-card">
-                <div className="flex items-center space-x-3">
-                  <Crown className="w-8 h-8 dynasty-text-primary" />
-                  <div>
-                    <div className="text-2xl font-bold text-white">0</div>
+                    <div className="text-2xl font-bold text-white">{leagues.length}</div>
                     <div className="dynasty-text-secondary">Leagues Joined</div>
                   </div>
                 </div>
               </div>
-            </div>
+              
+              <div 
+                className="dynasty-card p-6"
+                style={{ background: dynastyUtils.getGradient('card') }}
+              >
+                <div className="flex items-center space-x-3">
+                  <Trophy className="w-8 h-8" style={{ color: dynastyColors.gold }} />
+                  <div>
+                    <div className="text-2xl font-bold text-white">0</div>
+                    <div className="dynasty-text-secondary">Championships</div>
+                  </div>
+                </div>
+              </div>
 
-            <div className="dynasty-card">
-              <h3 className="text-xl font-bold text-white mb-4">Quick Actions</h3>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <button 
-                  onClick={() => setActiveSection('available-players')}
-                  className="dynasty-button-secondary flex items-center justify-center space-x-2 p-4"
-                >
-                  <Star className="w-5 h-5" />
-                  <span>Browse Players</span>
-                </button>
-                <button 
-                  onClick={() => setActiveSection('team-home')}
-                  className="dynasty-button-secondary flex items-center justify-center space-x-2 p-4"
-                >
-                  <Users className="w-5 h-5" />
-                  <span>My Team</span>
-                </button>
-                <button 
-                  onClick={() => setActiveSection('standings')}
-                  className="dynasty-button-secondary flex items-center justify-center space-x-2 p-4"
-                >
-                  <Trophy className="w-5 h-5" />
-                  <span>Standings</span>
-                </button>
-                <button 
-                  onClick={() => setActiveSection('messages')}
-                  className="dynasty-button-secondary flex items-center justify-center space-x-2 p-4"
-                >
-                  <MessageSquare className="w-5 h-5" />
-                  <span>Messages</span>
-                </button>
+              <div 
+                className="dynasty-card p-6"
+                style={{ background: dynastyUtils.getGradient('card') }}
+              >
+                <div className="flex items-center space-x-3">
+                  <Users className="w-8 h-8" style={{ color: dynastyColors.gold }} />
+                  <div>
+                    <div className="text-2xl font-bold text-white">0</div>
+                    <div className="dynasty-text-secondary">Active Teams</div>
+                  </div>
+                </div>
               </div>
             </div>
+
+            {/* My Leagues Section */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center space-x-3">
+                  <Crown className="w-8 h-8" style={{ color: dynastyColors.gold }} />
+                  <div>
+                    <h3 className="text-2xl font-bold text-white">My Leagues</h3>
+                    <p className="dynasty-text-secondary">
+                      {leagues.length === 0 ? 'No leagues yet' : `${leagues.length} league${leagues.length === 1 ? '' : 's'}`}
+                    </p>
+                  </div>
+                </div>
+                
+                <button
+                  onClick={() => navigate('/create-league')}
+                  className="dynasty-button flex items-center space-x-2"
+                >
+                  <Plus className="w-4 h-4" />
+                  <span>Create League</span>
+                </button>
+              </div>
+
+              {renderMyLeagues()}
+            </div>
+
+            {/* Quick Actions */}
+            {leagues.length > 0 && (
+              <div 
+                className="dynasty-card p-6"
+                style={{ background: dynastyUtils.getGradient('card') }}
+              >
+                <h3 className="text-lg font-semibold text-white mb-4">Quick Actions</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <button
+                    onClick={() => navigate('/create-league')}
+                    className="dynasty-button-secondary flex items-center justify-center space-x-2 py-3"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Create New League</span>
+                  </button>
+                  
+                  <button
+                    onClick={() => setActiveSection('available-players')}
+                    className="dynasty-button-secondary flex items-center justify-center space-x-2 py-3"
+                  >
+                    <Users className="w-4 h-4" />
+                    <span>Browse Players</span>
+                  </button>
+                  
+                  <button
+                    className="dynasty-button-secondary flex items-center justify-center space-x-2 py-3"
+                    disabled
+                  >
+                    <Clock className="w-4 h-4" />
+                    <span>Recent Activity</span>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        );
+
+      case 'my-leagues':
+        return (
+          <div className="space-y-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-3">
+                <Crown className="w-8 h-8" style={{ color: dynastyColors.gold }} />
+                <div>
+                  <h2 className="text-2xl font-bold text-white">My Leagues</h2>
+                  <p className="dynasty-text-secondary">
+                    {leagues.length === 0 ? 'No leagues yet' : `${leagues.length} league${leagues.length === 1 ? '' : 's'}`}
+                  </p>
+                </div>
+              </div>
+              
+              <button
+                onClick={() => navigate('/create-league')}
+                className="dynasty-button flex items-center space-x-2"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Create League</span>
+              </button>
+            </div>
+
+            {renderMyLeagues()}
+
+            {/* Quick Actions for My Leagues */}
+            {leagues.length > 0 && (
+              <div 
+                className="dynasty-card p-6"
+                style={{ background: dynastyUtils.getGradient('card') }}
+              >
+                <h3 className="text-lg font-semibold text-white mb-4">Quick Actions</h3>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <button
+                    onClick={() => navigate('/create-league')}
+                    className="dynasty-button-secondary flex items-center justify-center space-x-2 py-3"
+                  >
+                    <Plus className="w-4 h-4" />
+                    <span>Create New League</span>
+                  </button>
+                  
+                  <button
+                    className="dynasty-button-secondary flex items-center justify-center space-x-2 py-3"
+                    disabled
+                  >
+                    <Users className="w-4 h-4" />
+                    <span>Join League</span>
+                  </button>
+                  
+                  <button
+                    className="dynasty-button-secondary flex items-center justify-center space-x-2 py-3"
+                    disabled
+                  >
+                    <Clock className="w-4 h-4" />
+                    <span>Recent Activity</span>
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         );
 
       case 'available-players':
         return (
           <div className="space-y-6">
-            <div className="dynasty-card">
+            <div 
+              className="dynasty-card p-6"
+              style={{ background: dynastyUtils.getGradient('card') }}
+            >
               <div className="flex items-center justify-between mb-4">
                 <h2 className="text-2xl font-bold text-white">Available Players</h2>
                 <div className="text-sm dynasty-text-secondary">
-                  Free agents and waiver wire players ready to join your team
+                  Free agents and waiver wire players
                 </div>
               </div>
 
@@ -280,30 +552,18 @@ const Dashboard = () => {
                       </option>
                     ))}
                   </select>
-                  {/* Debug button - temporary */}
-                  <button 
-                    onClick={() => {
-                      console.log('=== COMPLETE PLAYER DATA STRUCTURE ===');
-                      console.log('First player (complete):', JSON.stringify(players[0], null, 2));
-                      console.log('All properties of first player:', Object.keys(players[0] || {}));
-                      console.log('Sample of 3 players:', players.slice(0, 3));
-                    }}
-                    className="dynasty-button-secondary text-xs px-3"
-                  >
-                    Debug Data
-                  </button>
                 </div>
               </div>
 
               <div className="overflow-x-auto">
                 <table className="w-full">
                   <thead>
-                    <tr className="dynasty-table-header">
-                      <th className="text-left py-3 px-4">PLAYER</th>
-                      <th className="text-left py-3 px-4">TEAM</th>
-                      <th className="text-left py-3 px-4">POSITION</th>
-                      <th className="text-left py-3 px-4">STATUS</th>
-                      <th className="text-left py-3 px-4">ACTION</th>
+                    <tr className="border-b" style={{ borderColor: dynastyColors.gray }}>
+                      <th className="text-left py-3 px-4 font-semibold text-white">PLAYER</th>
+                      <th className="text-left py-3 px-4 font-semibold text-white">TEAM</th>
+                      <th className="text-left py-3 px-4 font-semibold text-white">POSITION</th>
+                      <th className="text-left py-3 px-4 font-semibold text-white">STATUS</th>
+                      <th className="text-left py-3 px-4 font-semibold text-white">ACTION</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -317,50 +577,48 @@ const Dashboard = () => {
                       <tr>
                         <td colSpan="5" className="text-center py-8 dynasty-text-secondary">
                           No players found matching your criteria
-                          <div className="text-xs mt-2">
-                            Debug: Total players loaded: {players.length}
-                          </div>
-                          <div className="text-xs mt-1">
-                            Debug: Filtered players: {filteredPlayers.length}
-                          </div>
-                          <div className="text-xs mt-1">
-                            Debug: Search term: "{searchTerm}", Position filter: "{positionFilter}"
-                          </div>
                         </td>
                       </tr>
                     ) : (
-                      filteredPlayers.map((player, index) => (
-                        <tr key={player.mlb_id || player.player_id || index} className="dynasty-table-row">
+                      filteredPlayers.slice(0, 50).map((player, index) => (
+                        <tr key={player.mlb_id || player.player_id || index} className="border-b hover:bg-black/20 transition-colors" style={{ borderColor: dynastyColors.gray }}>
                           <td className="py-3 px-4">
-                            <div className="text-white font-medium">
-                              {/* UPDATED: Make player name clickable */}
-                              <button
-                                onClick={() => handlePlayerClick(player)}
-                                className="dynasty-text-primary hover:dynasty-text-accent transition-colors duration-200 font-medium text-left hover:underline cursor-pointer"
-                                title={`View ${player.first_name} ${player.last_name}'s profile`}
-                              >
-                                {`${player.first_name || ''} ${player.last_name || ''}`.trim() || `Player #${player.mlb_id || index + 1}`}
-                              </button>
-                            </div>
+                            <button
+                              onClick={() => handlePlayerClick(player)}
+                              className="text-white hover:text-dynasty-gold transition-colors font-medium text-left hover:underline"
+                            >
+                              {`${player.first_name || ''} ${player.last_name || ''}`.trim() || `Player #${player.mlb_id || index + 1}`}
+                            </button>
                           </td>
-                          <td className="py-3 px-4 dynasty-text-muted">
+                          <td className="py-3 px-4 dynasty-text-secondary">
                             {player.mlb_team || player.team || player.team_name || 'Free Agent'}
                           </td>
                           <td className="py-3 px-4">
-                            <span className="dynasty-position-badge">
+                            <span 
+                              className="px-2 py-1 rounded text-xs font-semibold"
+                              style={{ 
+                                backgroundColor: dynastyColors.darkLighter,
+                                color: dynastyColors.gold 
+                              }}
+                            >
                               {player.position || 'N/A'}
                             </span>
                           </td>
                           <td className="py-3 px-4">
-                            <span className={`dynasty-badge-${player.is_active ? 'success' : 'warning'}`}>
+                            <span 
+                              className="px-2 py-1 rounded text-xs font-semibold"
+                              style={{
+                                backgroundColor: player.is_active ? dynastyColors.success : dynastyColors.warning,
+                                color: dynastyColors.white
+                              }}
+                            >
                               {player.is_active ? 'Available' : 'Inactive'}
                             </span>
                           </td>
                           <td className="py-3 px-4">
                             <button 
-                              className="dynasty-button-accent"
+                              className="dynasty-button-secondary text-sm px-3 py-1"
                               onClick={() => console.log('Add to team:', player)}
-                              title={`Add ${player.first_name} ${player.last_name} to your team`}
                             >
                               Add to Team
                             </button>
@@ -371,55 +629,23 @@ const Dashboard = () => {
                   </tbody>
                 </table>
               </div>
-
-              {/* ADDED: Helpful instructions */}
-              {!loading && filteredPlayers.length > 0 && (
-                <div className="mt-4 p-3 dynasty-bg-secondary rounded-lg">
-                  <p className="dynasty-text-secondary text-sm">
-                    💡 <strong>Tip:</strong> Click on any player's name to view their detailed profile with statistics and performance history.
-                  </p>
-                </div>
-              )}
-            </div>
-          </div>
-        );
-
-      case 'team-home':
-        return (
-          <div className="dynasty-card">
-            <h2 className="text-2xl font-bold text-white mb-4">My Team</h2>
-            <div className="text-center py-12 dynasty-text-secondary">
-              <Users className="w-16 h-16 mx-auto mb-4 dynasty-text-muted" />
-              <h3 className="text-xl font-semibold mb-2">No Team Created Yet</h3>
-              <p className="mb-4">Create your dynasty team to start building your roster.</p>
-              <button className="dynasty-button">Create Team</button>
-            </div>
-          </div>
-        );
-
-      case 'standings':
-        return (
-          <div className="dynasty-card">
-            <h2 className="text-2xl font-bold text-white mb-4">League Standings</h2>
-            <div className="text-center py-12 dynasty-text-secondary">
-              <Trophy className="w-16 h-16 mx-auto mb-4 dynasty-text-muted" />
-              <h3 className="text-xl font-semibold mb-2">No Active Leagues</h3>
-              <p className="mb-4">Join or create a league to see standings.</p>
-              <button className="dynasty-button">Find Leagues</button>
             </div>
           </div>
         );
 
       default:
         return (
-          <div className="dynasty-card">
+          <div 
+            className="dynasty-card p-6 text-center"
+            style={{ background: dynastyUtils.getGradient('card') }}
+          >
             <h2 className="text-2xl font-bold text-white mb-4">
               {navigationSections.find(section => 
                 section.items.find(item => item.id === activeSection)
-              )?.items.find(item => item.id === activeSection)?.label}
+              )?.items.find(item => item.id === activeSection)?.label || 'Feature'}
             </h2>
-            <div className="text-center py-12 dynasty-text-secondary">
-              <FileText className="w-16 h-16 mx-auto mb-4 dynasty-text-muted" />
+            <div className="py-12 dynasty-text-secondary">
+              <FileText className="w-16 h-16 mx-auto mb-4" style={{ color: dynastyColors.lightGray }} />
               <h3 className="text-xl font-semibold mb-2">Coming Soon</h3>
               <p>This feature is under development and will be available soon.</p>
             </div>
@@ -429,16 +655,22 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="min-h-screen dynasty-bg-primary">
+    <div className="min-h-screen" style={{ background: dynastyUtils.getGradient('page') }}>
       {/* Header */}
-      <header className="dynasty-bg-secondary dynasty-border-bottom px-6 py-4">
+      <header 
+        className="px-6 py-4 border-b"
+        style={{ 
+          background: dynastyUtils.getGradient('card'),
+          borderColor: dynastyColors.gold + '20'
+        }}
+      >
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <Crown className="w-8 h-8 dynasty-text-primary" />
+            <Crown className="w-8 h-8" style={{ color: dynastyColors.gold }} />
             <h1 className="text-2xl font-bold text-white">Dynasty Dugout</h1>
           </div>
           <div className="flex items-center space-x-4">
-            <span className="dynasty-text-muted">
+            <span className="dynasty-text-secondary">
               Welcome, {user?.given_name || user?.firstName}
             </span>
             <button
@@ -454,11 +686,20 @@ const Dashboard = () => {
 
       <div className="flex">
         {/* Left Sidebar */}
-        <aside className="w-64 dynasty-bg-secondary dynasty-border-right min-h-screen">
+        <aside 
+          className="w-64 min-h-screen border-r"
+          style={{ 
+            background: dynastyUtils.getGradient('card'),
+            borderColor: dynastyColors.gold + '20'
+          }}
+        >
           <div className="p-4">
             {navigationSections.map((section, sectionIndex) => (
               <div key={sectionIndex} className="mb-6">
-                <h3 className="text-xs font-semibold dynasty-text-primary uppercase tracking-wider mb-2">
+                <h3 
+                  className="text-xs font-semibold uppercase tracking-wider mb-2"
+                  style={{ color: dynastyColors.gold }}
+                >
                   {section.title}
                 </h3>
                 <nav className="space-y-1">
@@ -468,12 +709,18 @@ const Dashboard = () => {
                     return (
                       <button
                         key={item.id}
-                        onClick={() => setActiveSection(item.id)}
+                        onClick={() => handleNavigation(item.id)}
                         className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm transition-colors ${
                           isActive
-                            ? 'dynasty-nav-active'
-                            : 'dynasty-nav-item'
+                            ? 'text-black font-semibold'
+                            : 'text-white hover:text-white'
                         }`}
+                        style={{
+                          backgroundColor: isActive ? dynastyColors.gold : 'transparent',
+                          '&:hover': {
+                            backgroundColor: isActive ? dynastyColors.gold : dynastyColors.darkLighter
+                          }
+                        }}
                       >
                         <Icon className="w-4 h-4" />
                         <span className="flex-1 text-left">{item.label}</span>

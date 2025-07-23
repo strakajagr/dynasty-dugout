@@ -1,72 +1,84 @@
 // src/App.js
 import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
-import LandingPage from './pages/LandingPage';
+import { AuthProvider } from './contexts/AuthContext';
+import ProtectedRoute from './components/ProtectedRoute';
+import Landing from './pages/LandingPage';
 import Dashboard from './pages/Dashboard';
+import CreateLeague from './pages/CreateLeague';
+import LeagueWelcome from './pages/LeagueWelcome';
+import LeagueDashboard from './pages/LeagueDashboard';
+import MyAccount from './pages/MyAccount';
 import PlayerProfile from './pages/PlayerProfile';
-import LoadingSpinner from './components/LoadingSpinner';
-import './styles/App.css';
+import './index.css';
 
-// Protected Route component that requires authentication
-function ProtectedRoute({ children }) {
-  const { isAuthenticated, loading } = useAuth();
-
-  if (loading) {
-    return <LoadingSpinner />;
-  }
-
-  return isAuthenticated ? children : <Navigate to="/" replace />;
-}
-
-// Main app content with routing
-function AppContent() {
-  const { isAuthenticated, loading } = useAuth();
-
-  if (loading) {
-    return <LoadingSpinner />;
-  }
-
-  return (
-    <Routes>
-      {/* Landing page - accessible to everyone */}
-      <Route 
-        path="/" 
-        element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <LandingPage />} 
-      />
-      
-      {/* Protected routes - require authentication */}
-      <Route 
-        path="/dashboard" 
-        element={
-          <ProtectedRoute>
-            <Dashboard />
-          </ProtectedRoute>
-        } 
-      />
-      
-      <Route 
-        path="/player/:playerId" 
-        element={
-          <ProtectedRoute>
-            <PlayerProfile />
-          </ProtectedRoute>
-        } 
-      />
-      
-      {/* Redirect any unknown routes */}
-      <Route path="*" element={<Navigate to="/" replace />} />
-    </Routes>
-  );
-}
-
-// Root App component
 function App() {
   return (
     <AuthProvider>
       <Router>
         <div className="App">
-          <AppContent />
+          <Routes>
+            {/* Public Routes */}
+            <Route path="/" element={<Landing />} />
+            
+            {/* Protected Routes */}
+            <Route 
+              path="/dashboard" 
+              element={
+                <ProtectedRoute>
+                  <Dashboard />
+                </ProtectedRoute>
+              } 
+            />
+            
+            <Route 
+              path="/my-account" 
+              element={
+                <ProtectedRoute>
+                  <MyAccount />
+                </ProtectedRoute>
+              } 
+            />
+            
+            <Route 
+              path="/create-league" 
+              element={
+                <ProtectedRoute>
+                  <CreateLeague />
+                </ProtectedRoute>
+              } 
+            />
+            
+            <Route 
+              path="/leagues/:leagueId/welcome" 
+              element={
+                <ProtectedRoute>
+                  <LeagueWelcome />
+                </ProtectedRoute>
+              } 
+            />
+            
+            <Route 
+              path="/leagues/:leagueId" 
+              element={
+                <ProtectedRoute>
+                  <LeagueDashboard />
+                </ProtectedRoute>
+              } 
+            />
+            
+            <Route 
+              path="/player/:playerId" 
+              element={
+                <ProtectedRoute>
+                  <PlayerProfile />
+                </ProtectedRoute>
+              } 
+            />
+            
+            {/* Redirect unknown routes to dashboard if authenticated, otherwise to landing */}
+            <Route path="*" element={<Navigate to="/dashboard" replace />} />
+          </Routes>
         </div>
       </Router>
     </AuthProvider>

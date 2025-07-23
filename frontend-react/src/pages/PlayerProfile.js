@@ -1,13 +1,15 @@
-// src/pages/PlayerProfile.js
+// src/pages/PlayerProfile.js - ENHANCED VERSION WITH FULL ANALYTICS DISPLAY
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { 
-  ArrowLeft, User, Calendar, MapPin, Activity, TrendingUp,
-  BarChart3, Target, Award, Clock, Users, Star
+  ArrowLeft, User, Calendar, MapPin, Activity, TrendingUp, TrendingDown,
+  BarChart3, Target, Award, Clock, Users, Star, Flame, Snowflake,
+  Zap, Eye, Gamepad2, Home, Plane
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { playersAPI } from '../services/apiService';
-import { dynastyUtils, dynastyComponents, dynastyTheme } from '../services/colorService';
+import { dynastyUtils, dynastyComponents, dynastyTheme, dynastyClasses } from '../services/colorService';
+import { DynastyTable, createCareerStatsColumns, calculateCareerTotals, createGameLogsColumns } from '../services/tableService';
 
 const PlayerProfile = () => {
   const { playerId } = useParams();
@@ -16,30 +18,79 @@ const PlayerProfile = () => {
   
   const [player, setPlayer] = useState(null);
   const [stats, setStats] = useState([]);
+  const [careerStats, setCareerStats] = useState([]);
+  const [recentPerformance, setRecentPerformance] = useState(null);
+  const [gameLogs, setGameLogs] = useState([]);
+  const [hotColdAnalysis, setHotColdAnalysis] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [activeTab, setActiveTab] = useState('recent');
 
   useEffect(() => {
     if (playerId) {
-      loadPlayerData();
+      loadAllPlayerData();
     }
   }, [playerId]);
 
-  const loadPlayerData = async () => {
+  const loadAllPlayerData = async () => {
     try {
       setLoading(true);
-      console.log('Loading player data for ID:', playerId);
+      console.log('Loading comprehensive player data for ID:', playerId);
       
-      const response = await playersAPI.getPlayerDetails(playerId, true);
-      console.log('Player data response:', response);
+      // Load basic player data first
+      const playerResponse = await playersAPI.getPlayerDetails(playerId, true);
+      console.log('Player details response:', playerResponse);
       
-      setPlayer(response.player);
-      setStats(response.stats || []);
+      setPlayer(playerResponse.player);
+      setStats(playerResponse.stats || []);
+      
+      // Load enhanced data in parallel using direct API calls
+      const axios = (await import('axios')).default;
+      const enhancedAPI = axios.create({
+        baseURL: '/api',
+        withCredentials: true,
+        headers: { 'Content-Type': 'application/json' }
+      });
+      
+      const [careerResponse, recentResponse, gameLogsResponse, hotColdResponse] = await Promise.allSettled([
+        enhancedAPI.get(`/players/${playerId}/career`),
+        enhancedAPI.get(`/players/${playerId}/recent-performance`),
+        enhancedAPI.get(`/players/${playerId}/game-logs`),
+        enhancedAPI.get(`/players/${playerId}/hot-cold-analysis`)
+      ]);
+      
+      // Set career stats
+      if (careerResponse.status === 'fulfilled' && careerResponse.value) {
+        setCareerStats(careerResponse.value.data.career_stats || []);
+        console.log('Career stats loaded:', careerResponse.value.data.career_stats?.length || 0, 'seasons');
+      }
+      
+      // Set recent performance
+      if (recentResponse.status === 'fulfilled' && recentResponse.value) {
+        setRecentPerformance(recentResponse.value.data);
+        console.log('Recent performance loaded:', recentResponse.value.data.total_games, 'games');
+      }
+      
+      // Set game logs
+      if (gameLogsResponse.status === 'fulfilled' && gameLogsResponse.value) {
+        setGameLogs(gameLogsResponse.value.data.game_logs || []);
+        console.log('Game logs loaded:', gameLogsResponse.value.data.game_logs?.length || 0, 'games');
+      }
+      
+      // Set hot/cold analysis
+      if (hotColdResponse.status === 'fulfilled' && hotColdResponse.value) {
+        setHotColdAnalysis(hotColdResponse.value.data.analysis);
+        console.log('Hot/cold analysis loaded:', hotColdResponse.value.data.analysis?.status);
+      }
+      
       setError(null);
     } catch (error) {
-      console.error('Error loading player data:', error);
-      setError('Failed to load player data');
+      console.error('Error loading comprehensive player data:', error);
+      if (error.response?.status === 401) {
+        setError('Please log in to view player data');
+      } else {
+        setError('Failed to load player data');
+      }
     } finally {
       setLoading(false);
     }
@@ -73,166 +124,101 @@ const PlayerProfile = () => {
     });
   };
 
-  // ENHANCED: Check if player is a pitcher
   const isPitcher = () => {
     const position = player?.position?.toUpperCase();
     return position === 'P' || position === 'SP' || position === 'RP' || position === 'CL';
   };
 
-  // ENHANCED: Calculate recent performance (last 4 weeks) - handles pitchers vs hitters
-  const getRecentStats = () => {
-    if (!stats.length) return null;
+  const getHotColdIcon = () => {
+    if (!hotColdAnalysis) return <Activity className={`w-5 h-5 ${dynastyUtils.getIconClasses('gray')}`} />;
     
-    console.log('All stats for recent calculation:', stats);
-    
-    // Sort by week and take last 4 weeks
-    const sortedStats = [...stats].sort((a, b) => (b.week_number || 0) - (a.week_number || 0));
-    const recentStats = sortedStats.slice(0, 4);
-    
-    console.log('Recent stats (last 4 weeks):', recentStats);
-    
-    if (recentStats.length === 0) return null;
-    
-    if (isPitcher()) {
-      // Pitcher stats aggregation
-      const totalGames = recentStats.reduce((sum, stat) => sum + (stat.games_played || 0), 0);
-      const totalInnings = recentStats.reduce((sum, stat) => sum + (stat.innings_pitched || 0), 0);
-      const totalEarnedRuns = recentStats.reduce((sum, stat) => sum + (stat.earned_runs || 0), 0);
-      const totalWins = recentStats.reduce((sum, stat) => sum + (stat.wins || 0), 0);
-      const totalLosses = recentStats.reduce((sum, stat) => sum + (stat.losses || 0), 0);
-      const totalStrikeouts = recentStats.reduce((sum, stat) => sum + (stat.strikeouts_pitched || stat.strikeouts || 0), 0);
-      const totalHitsAllowed = recentStats.reduce((sum, stat) => sum + (stat.hits_allowed || 0), 0);
-      const totalWalksAllowed = recentStats.reduce((sum, stat) => sum + (stat.walks_allowed || 0), 0);
-      const totalSaves = recentStats.reduce((sum, stat) => sum + (stat.saves || 0), 0);
-      
-      const era = totalInnings > 0 ? ((totalEarnedRuns * 9) / totalInnings).toFixed(2) : '0.00';
-      const whip = totalInnings > 0 ? ((totalHitsAllowed + totalWalksAllowed) / totalInnings).toFixed(2) : '0.00';
-      
-      return {
-        G: totalGames,
-        IP: totalInnings.toFixed(1),
-        ERA: era,
-        W: totalWins,
-        L: totalLosses,
-        SV: totalSaves,
-        SO: totalStrikeouts,
-        WHIP: whip,
-        isPitcher: true
-      };
-    } else {
-      // Hitter stats aggregation
-      const totalGames = recentStats.reduce((sum, stat) => sum + (stat.games_played || 0), 0);
-      const totalAtBats = recentStats.reduce((sum, stat) => sum + (stat.at_bats || 0), 0);
-      const totalHits = recentStats.reduce((sum, stat) => sum + (stat.hits || 0), 0);
-      const totalRuns = recentStats.reduce((sum, stat) => sum + (stat.runs || 0), 0);
-      const totalRbis = recentStats.reduce((sum, stat) => sum + (stat.rbis || stat.rbi || 0), 0);
-      const totalHomeruns = recentStats.reduce((sum, stat) => sum + (stat.home_runs || 0), 0);
-      const totalStolenBases = recentStats.reduce((sum, stat) => sum + (stat.stolen_bases || 0), 0);
-      const totalWalks = recentStats.reduce((sum, stat) => sum + (stat.walks || 0), 0);
-      const totalStrikeouts = recentStats.reduce((sum, stat) => sum + (stat.strikeouts || 0), 0);
-      
-      const avg = totalAtBats > 0 ? (totalHits / totalAtBats).toFixed(3) : '.000';
-      const obp = (totalAtBats + totalWalks) > 0 ? ((totalHits + totalWalks) / (totalAtBats + totalWalks)).toFixed(3) : '.000';
-      
-      return {
-        G: totalGames,
-        AB: totalAtBats,
-        H: totalHits,
-        AVG: avg,
-        OBP: obp,
-        R: totalRuns,
-        RBI: totalRbis,
-        HR: totalHomeruns,
-        SB: totalStolenBases,
-        BB: totalWalks,
-        K: totalStrikeouts,
-        isPitcher: false
-      };
+    switch (hotColdAnalysis.status) {
+      case 'hot':
+        return <Flame className="w-5 h-5 text-red-500" />;
+      case 'cold':
+        return <Snowflake className="w-5 h-5 text-blue-400" />;
+      default:
+        return <Activity className={`w-5 h-5 ${dynastyUtils.getIconClasses('gray')}`} />;
     }
   };
 
-  // ENHANCED: Calculate season totals - handles pitchers vs hitters
+  const getHotColdColor = () => {
+    if (!hotColdAnalysis) return dynastyClasses.text.gray;
+    
+    switch (hotColdAnalysis.status) {
+      case 'hot':
+        return 'text-red-500';
+      case 'cold':
+        return 'text-blue-400';
+      default:
+        return dynastyClasses.text.gray;
+    }
+  };
+
   const getSeasonStats = () => {
     if (!stats.length) return null;
     
-    console.log('All stats for season calculation:', stats);
-    
-    // Aggregate all weeks for current season
     const currentSeason = Math.max(...stats.map(s => s.season_year));
     const seasonStats = stats.filter(s => s.season_year === currentSeason);
     
     if (seasonStats.length === 0) return null;
     
     if (isPitcher()) {
-      // Pitcher season totals
-      const totalGames = seasonStats.reduce((sum, stat) => sum + (stat.games_played || 0), 0);
-      const totalInnings = seasonStats.reduce((sum, stat) => sum + (stat.innings_pitched || 0), 0);
-      const totalEarnedRuns = seasonStats.reduce((sum, stat) => sum + (stat.earned_runs || 0), 0);
-      const totalWins = seasonStats.reduce((sum, stat) => sum + (stat.wins || 0), 0);
-      const totalLosses = seasonStats.reduce((sum, stat) => sum + (stat.losses || 0), 0);
-      const totalSaves = seasonStats.reduce((sum, stat) => sum + (stat.saves || 0), 0);
-      const totalStrikeouts = seasonStats.reduce((sum, stat) => sum + (stat.strikeouts_pitched || stat.strikeouts || 0), 0);
-      const totalHitsAllowed = seasonStats.reduce((sum, stat) => sum + (stat.hits_allowed || 0), 0);
-      const totalWalksAllowed = seasonStats.reduce((sum, stat) => sum + (stat.walks_allowed || 0), 0);
+      const totals = seasonStats.reduce((acc, week) => ({
+        games_played: (acc.games_played || 0) + (week.games_played || 0),
+        innings_pitched: (acc.innings_pitched || 0) + (week.innings_pitched || 0),
+        wins: (acc.wins || 0) + (week.wins || 0),
+        losses: (acc.losses || 0) + (week.losses || 0),
+        saves: (acc.saves || 0) + (week.saves || 0),
+        strikeouts_pitched: (acc.strikeouts_pitched || 0) + (week.strikeouts_pitched || week.strikeouts || 0),
+        earned_runs: (acc.earned_runs || 0) + (week.earned_runs || 0),
+        hits_allowed: (acc.hits_allowed || 0) + (week.hits_allowed || 0),
+        walks_allowed: (acc.walks_allowed || 0) + (week.walks_allowed || 0),
+      }), {});
       
-      const era = totalInnings > 0 ? ((totalEarnedRuns * 9) / totalInnings).toFixed(2) : '0.00';
-      const whip = totalInnings > 0 ? ((totalHitsAllowed + totalWalksAllowed) / totalInnings).toFixed(2) : '0.00';
+      const era = totals.innings_pitched > 0 ? ((totals.earned_runs * 9) / totals.innings_pitched).toFixed(2) : '0.00';
+      const whip = totals.innings_pitched > 0 ? ((totals.hits_allowed + totals.walks_allowed) / totals.innings_pitched).toFixed(2) : '0.00';
       
       return {
-        G: totalGames,
-        IP: totalInnings.toFixed(1),
+        ...totals,
         ERA: era,
         WHIP: whip,
-        W: totalWins,
-        L: totalLosses,
-        SV: totalSaves,
-        SO: totalStrikeouts,
-        season: currentSeason,
+        IP: totals.innings_pitched.toFixed(1),
+        SO: totals.strikeouts_pitched,
         isPitcher: true
       };
     } else {
-      // Hitter season totals
-      const totalGames = seasonStats.reduce((sum, stat) => sum + (stat.games_played || 0), 0);
-      const totalAtBats = seasonStats.reduce((sum, stat) => sum + (stat.at_bats || 0), 0);
-      const totalHits = seasonStats.reduce((sum, stat) => sum + (stat.hits || 0), 0);
-      const totalRuns = seasonStats.reduce((sum, stat) => sum + (stat.runs || 0), 0);
-      const totalRbis = seasonStats.reduce((sum, stat) => sum + (stat.rbis || stat.rbi || 0), 0);
-      const totalHomeruns = seasonStats.reduce((sum, stat) => sum + (stat.home_runs || 0), 0);
-      const totalDoubles = seasonStats.reduce((sum, stat) => sum + (stat.doubles || 0), 0);
-      const totalTriples = seasonStats.reduce((sum, stat) => sum + (stat.triples || 0), 0);
-      const totalStolenBases = seasonStats.reduce((sum, stat) => sum + (stat.stolen_bases || 0), 0);
-      const totalWalks = seasonStats.reduce((sum, stat) => sum + (stat.walks || 0), 0);
-      const totalStrikeouts = seasonStats.reduce((sum, stat) => sum + (stat.strikeouts || 0), 0);
+      const totals = seasonStats.reduce((acc, week) => ({
+        games_played: (acc.games_played || 0) + (week.games_played || 0),
+        at_bats: (acc.at_bats || 0) + (week.at_bats || 0),
+        hits: (acc.hits || 0) + (week.hits || 0),
+        runs: (acc.runs || 0) + (week.runs || 0),
+        rbis: (acc.rbis || 0) + (week.rbis || 0),
+        home_runs: (acc.home_runs || 0) + (week.home_runs || 0),
+        doubles: (acc.doubles || 0) + (week.doubles || 0),
+        triples: (acc.triples || 0) + (week.triples || 0),
+        stolen_bases: (acc.stolen_bases || 0) + (week.stolen_bases || 0),
+        walks: (acc.walks || 0) + (week.walks || 0),
+        strikeouts: (acc.strikeouts || 0) + (week.strikeouts || 0),
+      }), {});
       
-      const avg = totalAtBats > 0 ? (totalHits / totalAtBats).toFixed(3) : '.000';
-      const obp = (totalAtBats + totalWalks) > 0 ? ((totalHits + totalWalks) / (totalAtBats + totalWalks)).toFixed(3) : '.000';
-      const totalBases = totalHits + totalDoubles + (totalTriples * 2) + (totalHomeruns * 3);
-      const slg = totalAtBats > 0 ? (totalBases / totalAtBats).toFixed(3) : '.000';
+      const avg = totals.at_bats > 0 ? (totals.hits / totals.at_bats).toFixed(3) : '.000';
+      const obp = (totals.at_bats + totals.walks) > 0 ? ((totals.hits + totals.walks) / (totals.at_bats + totals.walks)).toFixed(3) : '.000';
+      const totalBases = totals.hits + totals.doubles + (totals.triples * 2) + (totals.home_runs * 3);
+      const slg = totals.at_bats > 0 ? (totalBases / totals.at_bats).toFixed(3) : '.000';
       const ops = (parseFloat(obp) + parseFloat(slg)).toFixed(3);
       
       return {
-        G: totalGames,
-        AB: totalAtBats,
-        H: totalHits,
+        ...totals,
         AVG: avg,
         OBP: obp,
         SLG: slg,
         OPS: ops,
-        R: totalRuns,
-        RBI: totalRbis,
-        HR: totalHomeruns,
-        '2B': totalDoubles,
-        '3B': totalTriples,
-        SB: totalStolenBases,
-        BB: totalWalks,
-        SO: totalStrikeouts,
-        season: currentSeason,
         isPitcher: false
       };
     }
   };
 
-  const recentStats = getRecentStats();
   const seasonStats = getSeasonStats();
 
   if (loading) {
@@ -241,7 +227,7 @@ const PlayerProfile = () => {
         <div className="flex items-center justify-center min-h-screen">
           <div className="text-center">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-dynasty-gold mx-auto mb-4"></div>
-            <p className={dynastyTheme.classes.text.white}>Loading player profile...</p>
+            <p className={dynastyTheme.classes.text.white}>Loading comprehensive player data...</p>
           </div>
         </div>
       </div>
@@ -269,7 +255,7 @@ const PlayerProfile = () => {
 
   return (
     <div className={dynastyTheme.common.pageBackground}>
-      {/* Header */}
+      {/* Header with Hot/Cold Status */}
       <header className={dynastyTheme.common.headerBackground}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
@@ -284,9 +270,22 @@ const PlayerProfile = () => {
               <div className="flex items-center ml-4">
                 <User className={`w-8 h-8 mr-3 ${dynastyUtils.getIconClasses('primary')}`} />
                 <div>
-                  <h1 className={`text-2xl font-bold ${dynastyTheme.classes.text.white}`}>
-                    {player.first_name} {player.last_name}
-                  </h1>
+                  <div className="flex items-center">
+                    <h1 className={`text-2xl font-bold ${dynastyTheme.classes.text.white} mr-3`}>
+                      {player.first_name} {player.last_name}
+                    </h1>
+                    {hotColdAnalysis && (
+                      <div className={`flex items-center px-3 py-1 rounded-full ${dynastyUtils.getCardClasses('default')} ${getHotColdColor()}`}>
+                        {getHotColdIcon()}
+                        <span className="ml-1 text-sm font-medium capitalize">
+                          {hotColdAnalysis.status}
+                        </span>
+                        <span className="ml-1 text-xs opacity-75">
+                          ({hotColdAnalysis.confidence}%)
+                        </span>
+                      </div>
+                    )}
+                  </div>
                   <p className={dynastyTheme.classes.text.lightGray}>
                     {player.position} • {player.mlb_team || 'Free Agent'}
                   </p>
@@ -303,7 +302,7 @@ const PlayerProfile = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Player Info Card */}
         <div className={`${dynastyUtils.getCardClasses('default')} mb-8`}>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
             {/* Basic Info */}
             <div className="space-y-3">
               <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary}`}>Player Information</h3>
@@ -329,12 +328,6 @@ const PlayerProfile = () => {
                     {player.position}
                   </span>
                 </div>
-                <div className="flex items-center">
-                  <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>Jersey #:</span>
-                  <span className={`${dynastyTheme.classes.text.white} ml-1 font-medium`}>
-                    {player.jersey_number || 'N/A'}
-                  </span>
-                </div>
               </div>
             </div>
 
@@ -357,15 +350,9 @@ const PlayerProfile = () => {
                 </div>
                 <div className="flex items-center">
                   <Calendar className={`w-4 h-4 mr-2 ${dynastyUtils.getIconClasses('primary')}`} />
-                  <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>DOB:</span>
+                  <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>Age:</span>
                   <span className={`${dynastyTheme.classes.text.white} ml-1 font-medium`}>
-                    {formatDate(player.birthdate)} ({calculateAge(player.birthdate)})
-                  </span>
-                </div>
-                <div className="flex items-center">
-                  <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>B/T:</span>
-                  <span className={`${dynastyTheme.classes.text.white} ml-1 font-medium`}>
-                    {player.bats || 'N/A'}/{player.throws || 'N/A'}
+                    {calculateAge(player.birthdate)}
                   </span>
                 </div>
               </div>
@@ -388,22 +375,15 @@ const PlayerProfile = () => {
                     {player.injury_status || 'Healthy'}
                   </span>
                 </div>
-                <div className="flex items-center">
-                  <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>Salary:</span>
-                  <span className={`${dynastyTheme.classes.text.white} ml-1 font-medium`}>
-                    {player.salary ? `$${player.salary.toLocaleString()}` : 'N/A'}
-                  </span>
-                </div>
               </div>
             </div>
 
-            {/* Quick Stats - ENHANCED to show appropriate stats for pitchers vs hitters */}
+            {/* 2025 Season Stats */}
             <div className="space-y-3">
               <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary}`}>2025 Season</h3>
               {seasonStats ? (
                 <div className="space-y-2">
                   {seasonStats.isPitcher ? (
-                    // Pitcher quick stats
                     <>
                       <div className="flex justify-between">
                         <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>ERA:</span>
@@ -415,7 +395,7 @@ const PlayerProfile = () => {
                       </div>
                       <div className="flex justify-between">
                         <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>W:</span>
-                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>{seasonStats.W}</span>
+                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>{seasonStats.wins}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>SO:</span>
@@ -423,7 +403,6 @@ const PlayerProfile = () => {
                       </div>
                     </>
                   ) : (
-                    // Hitter quick stats
                     <>
                       <div className="flex justify-between">
                         <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>AVG:</span>
@@ -431,15 +410,15 @@ const PlayerProfile = () => {
                       </div>
                       <div className="flex justify-between">
                         <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>HR:</span>
-                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>{seasonStats.HR}</span>
+                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>{seasonStats.home_runs}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>RBI:</span>
-                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>{seasonStats.RBI}</span>
+                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>{seasonStats.rbis}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>SB:</span>
-                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>{seasonStats.SB}</span>
+                        <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>OPS:</span>
+                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>{seasonStats.OPS}</span>
                       </div>
                     </>
                   )}
@@ -448,10 +427,64 @@ const PlayerProfile = () => {
                 <p className={`${dynastyTheme.classes.text.lightGray} text-sm`}>No stats available</p>
               )}
             </div>
+
+            {/* Recent Performance Summary */}
+            <div className="space-y-3">
+              <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary} flex items-center`}>
+                <Zap className="w-4 h-4 mr-2" />
+                Recent Form
+              </h3>
+              {recentPerformance && recentPerformance.aggregated_stats && recentPerformance.aggregated_stats.games > 0 ? (
+                <div className="space-y-2">
+                  <div className="flex justify-between">
+                    <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>Games:</span>
+                    <span className={`${dynastyTheme.classes.text.white} font-mono`}>
+                      {recentPerformance.aggregated_stats.games}
+                    </span>
+                  </div>
+                  {recentPerformance.aggregated_stats.type === 'hitting' ? (
+                    <>
+                      <div className="flex justify-between">
+                        <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>AVG:</span>
+                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>
+                          {recentPerformance.aggregated_stats.avg.toFixed(3)}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>HR:</span>
+                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>
+                          {recentPerformance.aggregated_stats.home_runs}
+                        </span>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="flex justify-between">
+                        <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>ERA:</span>
+                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>
+                          {recentPerformance.aggregated_stats.era}
+                        </span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>WHIP:</span>
+                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>
+                          {recentPerformance.aggregated_stats.whip}
+                        </span>
+                      </div>
+                    </>
+                  )}
+                  <div className={`text-xs ${dynastyClasses.text.gray} mt-2`}>
+                    Last {recentPerformance.period_days} days
+                  </div>
+                </div>
+              ) : (
+                <p className={`${dynastyTheme.classes.text.lightGray} text-sm`}>No recent games</p>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Stats Tabs */}
+        {/* Enhanced Stats Tabs */}
         <div className={dynastyUtils.getCardClasses('default')}>
           {/* Tab Navigation */}
           <div className={`border-b ${dynastyTheme.classes.borders.gray} mb-6`}>
@@ -459,8 +492,9 @@ const PlayerProfile = () => {
               {[
                 { id: 'recent', label: 'Recent Performance', icon: TrendingUp },
                 { id: 'season', label: 'Season Stats', icon: BarChart3 },
-                { id: 'weekly', label: 'Weekly Logs', icon: Clock },
-                { id: 'career', label: 'Career', icon: Award }
+                { id: 'games', label: 'Game Logs', icon: Gamepad2 },
+                { id: 'career', label: 'Career', icon: Award },
+                { id: 'analysis', label: 'Advanced Analysis', icon: Eye }
               ].map(({ id, label, icon: Icon }) => (
                 <button
                   key={id}
@@ -482,43 +516,62 @@ const PlayerProfile = () => {
           <div className="space-y-6">
             {activeTab === 'recent' && (
               <div>
-                <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary} mb-4`}>Recent Performance (Last 4 Weeks)</h3>
-                {recentStats ? (
-                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
-                    {recentStats.isPitcher ? (
-                      // Pitcher recent stats display
-                      [
-                        { label: 'G', value: recentStats.G },
-                        { label: 'IP', value: recentStats.IP },
-                        { label: 'ERA', value: recentStats.ERA },
-                        { label: 'WHIP', value: recentStats.WHIP },
-                        { label: 'W', value: recentStats.W },
-                        { label: 'L', value: recentStats.L },
-                        { label: 'SV', value: recentStats.SV },
-                        { label: 'SO', value: recentStats.SO }
-                      ].map(({ label, value }) => (
-                        <div key={label} className="text-center">
-                          <div className={`${dynastyTheme.classes.text.primary} text-2xl font-bold`}>{value}</div>
-                          <div className={`${dynastyTheme.classes.text.lightGray} text-sm`}>{label}</div>
-                        </div>
-                      ))
-                    ) : (
-                      // Hitter recent stats display
-                      [
-                        { label: 'G', value: recentStats.G },
-                        { label: 'AVG', value: recentStats.AVG },
-                        { label: 'HR', value: recentStats.HR },
-                        { label: 'RBI', value: recentStats.RBI },
-                        { label: 'R', value: recentStats.R },
-                        { label: 'SB', value: recentStats.SB },
-                        { label: 'BB', value: recentStats.BB },
-                        { label: 'K', value: recentStats.K }
-                      ].map(({ label, value }) => (
-                        <div key={label} className="text-center">
-                          <div className={`${dynastyTheme.classes.text.primary} text-2xl font-bold`}>{value}</div>
-                          <div className={`${dynastyTheme.classes.text.lightGray} text-sm`}>{label}</div>
-                        </div>
-                      ))
+                <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary} mb-4 flex items-center`}>
+                  <TrendingUp className="w-5 h-5 mr-2" />
+                  Recent Performance Analysis (Last 4 Weeks)
+                </h3>
+                
+                {recentPerformance && recentPerformance.aggregated_stats && recentPerformance.aggregated_stats.games > 0 ? (
+                  <div className="space-y-6">
+                    {/* Performance Summary */}
+                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
+                      {recentPerformance.aggregated_stats.type === 'hitting' ? (
+                        [
+                          { label: 'G', value: recentPerformance.aggregated_stats.games },
+                          { label: 'AVG', value: recentPerformance.aggregated_stats.avg.toFixed(3) },
+                          { label: 'HR', value: recentPerformance.aggregated_stats.home_runs },
+                          { label: 'RBI', value: recentPerformance.aggregated_stats.rbis },
+                          { label: 'R', value: recentPerformance.aggregated_stats.runs },
+                          { label: 'SB', value: recentPerformance.aggregated_stats.stolen_bases },
+                          { label: 'BB', value: recentPerformance.aggregated_stats.walks },
+                          { label: 'K', value: recentPerformance.aggregated_stats.strikeouts }
+                        ].map(({ label, value }) => (
+                          <div key={label} className="text-center">
+                            <div className={`${dynastyTheme.classes.text.primary} text-2xl font-bold`}>{value}</div>
+                            <div className={`${dynastyTheme.classes.text.lightGray} text-sm`}>{label}</div>
+                          </div>
+                        ))
+                      ) : (
+                        [
+                          { label: 'G', value: recentPerformance.aggregated_stats.games },
+                          { label: 'IP', value: recentPerformance.aggregated_stats.innings_pitched },
+                          { label: 'ERA', value: recentPerformance.aggregated_stats.era },
+                          { label: 'WHIP', value: recentPerformance.aggregated_stats.whip },
+                          { label: 'W', value: recentPerformance.aggregated_stats.wins },
+                          { label: 'L', value: recentPerformance.aggregated_stats.losses },
+                          { label: 'SV', value: recentPerformance.aggregated_stats.saves },
+                          { label: 'SO', value: recentPerformance.aggregated_stats.strikeouts }
+                        ].map(({ label, value }) => (
+                          <div key={label} className="text-center">
+                            <div className={`${dynastyTheme.classes.text.primary} text-2xl font-bold`}>{value}</div>
+                            <div className={`${dynastyTheme.classes.text.lightGray} text-sm`}>{label}</div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+
+                    {/* Recent Games Table */}
+                    {recentPerformance.recent_games && recentPerformance.recent_games.length > 0 && (
+                      <div className="mt-6">
+                        <DynastyTable
+                          title={`Last ${recentPerformance.recent_games.length} Games (all 2025 games)`}
+                          data={recentPerformance.recent_games}
+                          columns={createGameLogsColumns()}
+                          initialSort={{ key: 'game_date', direction: 'desc' }}
+                          maxHeight="400px"
+                          stickyHeader={true}
+                        />
+                      </div>
                     )}
                   </div>
                 ) : (
@@ -527,147 +580,23 @@ const PlayerProfile = () => {
               </div>
             )}
 
-            {activeTab === 'season' && (
+            {activeTab === 'games' && (
               <div>
-                <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary} mb-4`}>2025 Season Statistics</h3>
-                {seasonStats ? (
-                  <div className={dynastyComponents.tables.wrapper}>
-                    <table className="min-w-full">
-                      <thead>
-                        <tr className={`border-b ${dynastyTheme.classes.borders.gray}`}>
-                          {seasonStats.isPitcher ? (
-                            // Pitcher season headers
-                            ['G', 'IP', 'ERA', 'WHIP', 'W', 'L', 'SV', 'SO'].map(header => (
-                              <th key={header} className={`text-left py-3 px-4 ${dynastyTheme.classes.text.primary} font-medium`}>
-                                {header}
-                              </th>
-                            ))
-                          ) : (
-                            // Hitter season headers
-                            ['G', 'AB', 'R', 'H', 'HR', 'RBI', 'SB', 'BB', 'K', 'AVG', 'OBP', 'SLG', 'OPS'].map(header => (
-                              <th key={header} className={`text-left py-3 px-4 ${dynastyTheme.classes.text.primary} font-medium`}>
-                                {header}
-                              </th>
-                            ))
-                          )}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr className="border-b border-gray-800">
-                          {seasonStats.isPitcher ? (
-                            // Pitcher season data
-                            <>
-                              <td className={`py-3 px-4 ${dynastyTheme.classes.text.white}`}>{seasonStats.G}</td>
-                              <td className={`py-3 px-4 ${dynastyTheme.classes.text.white}`}>{seasonStats.IP}</td>
-                              <td className={`py-3 px-4 ${dynastyTheme.classes.text.white} font-mono`}>{seasonStats.ERA}</td>
-                              <td className={`py-3 px-4 ${dynastyTheme.classes.text.white} font-mono`}>{seasonStats.WHIP}</td>
-                              <td className={`py-3 px-4 ${dynastyTheme.classes.text.white}`}>{seasonStats.W}</td>
-                              <td className={`py-3 px-4 ${dynastyTheme.classes.text.white}`}>{seasonStats.L}</td>
-                              <td className={`py-3 px-4 ${dynastyTheme.classes.text.white}`}>{seasonStats.SV}</td>
-                              <td className={`py-3 px-4 ${dynastyTheme.classes.text.white}`}>{seasonStats.SO}</td>
-                            </>
-                          ) : (
-                            // Hitter season data
-                            <>
-                              <td className={`py-3 px-4 ${dynastyTheme.classes.text.white}`}>{seasonStats.G}</td>
-                              <td className={`py-3 px-4 ${dynastyTheme.classes.text.white}`}>{seasonStats.AB}</td>
-                              <td className={`py-3 px-4 ${dynastyTheme.classes.text.white}`}>{seasonStats.R}</td>
-                              <td className={`py-3 px-4 ${dynastyTheme.classes.text.white}`}>{seasonStats.H}</td>
-                              <td className={`py-3 px-4 ${dynastyTheme.classes.text.white}`}>{seasonStats.HR}</td>
-                              <td className={`py-3 px-4 ${dynastyTheme.classes.text.white}`}>{seasonStats.RBI}</td>
-                              <td className={`py-3 px-4 ${dynastyTheme.classes.text.white}`}>{seasonStats.SB}</td>
-                              <td className={`py-3 px-4 ${dynastyTheme.classes.text.white}`}>{seasonStats.BB}</td>
-                              <td className={`py-3 px-4 ${dynastyTheme.classes.text.white}`}>{seasonStats.SO}</td>
-                              <td className={`py-3 px-4 ${dynastyTheme.classes.text.white} font-mono`}>{seasonStats.AVG}</td>
-                              <td className={`py-3 px-4 ${dynastyTheme.classes.text.white} font-mono`}>{seasonStats.OBP}</td>
-                              <td className={`py-3 px-4 ${dynastyTheme.classes.text.white} font-mono`}>{seasonStats.SLG}</td>
-                              <td className={`py-3 px-4 ${dynastyTheme.classes.text.white} font-mono`}>{seasonStats.OPS}</td>
-                            </>
-                          )}
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
+                <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary} mb-4 flex items-center`}>
+                  <Gamepad2 className="w-5 h-5 mr-2" />
+                  Game Logs
+                </h3>
+                {gameLogs.length > 0 ? (
+                  <DynastyTable
+                    title={`Last ${gameLogs.length} Games`}
+                    data={gameLogs}
+                    columns={createGameLogsColumns()}
+                    initialSort={{ key: 'game_date', direction: 'desc' }}
+                    maxHeight="500px"
+                    stickyHeader={true}
+                  />
                 ) : (
-                  <p className={dynastyTheme.classes.text.lightGray}>No season statistics available</p>
-                )}
-              </div>
-            )}
-
-            {activeTab === 'weekly' && (
-              <div>
-                <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary} mb-4`}>Weekly Performance Logs</h3>
-                {stats.length > 0 ? (
-                  <div className={dynastyComponents.tables.wrapper}>
-                    <table className="min-w-full">
-                      <thead>
-                        <tr className={`border-b ${dynastyTheme.classes.borders.gray}`}>
-                          {isPitcher() ? (
-                            // Pitcher weekly headers
-                            ['Week', 'Year', 'G', 'IP', 'ERA', 'W', 'L', 'SV', 'SO', 'WHIP'].map(header => (
-                              <th key={header} className={`text-left py-3 px-4 ${dynastyTheme.classes.text.primary} font-medium`}>
-                                {header}
-                              </th>
-                            ))
-                          ) : (
-                            // Hitter weekly headers
-                            ['Week', 'Year', 'G', 'AB', 'R', 'H', 'HR', 'RBI', 'SB', 'BB', 'K'].map(header => (
-                              <th key={header} className={`text-left py-3 px-4 ${dynastyTheme.classes.text.primary} font-medium`}>
-                                {header}
-                              </th>
-                            ))
-                          )}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {stats
-                          .sort((a, b) => b.season_year - a.season_year || b.week_number - a.week_number)
-                          .slice(0, 20)
-                          .map((stat, index) => (
-                          <tr key={index} className="border-b border-gray-800">
-                            <td className={`py-3 px-4 ${dynastyTheme.classes.text.white}`}>{stat.week_number}</td>
-                            <td className={`py-3 px-4 ${dynastyTheme.classes.text.white}`}>{stat.season_year}</td>
-                            <td className={`py-3 px-4 ${dynastyTheme.classes.text.white}`}>{stat.games_played || 0}</td>
-                            {isPitcher() ? (
-                              // Pitcher weekly data
-                              <>
-                                <td className={`py-3 px-4 ${dynastyTheme.classes.text.white}`}>{(stat.innings_pitched || 0).toFixed(1)}</td>
-                                <td className={`py-3 px-4 ${dynastyTheme.classes.text.white} font-mono`}>
-                                  {stat.innings_pitched > 0 ? ((stat.earned_runs || 0) * 9 / stat.innings_pitched).toFixed(2) : '0.00'}
-                                </td>
-                                <td className={`py-3 px-4 ${dynastyTheme.classes.text.white}`}>{stat.wins || 0}</td>
-                                <td className={`py-3 px-4 ${dynastyTheme.classes.text.white}`}>{stat.losses || 0}</td>
-                                <td className={`py-3 px-4 ${dynastyTheme.classes.text.white}`}>{stat.saves || 0}</td>
-                                <td className={`py-3 px-4 ${dynastyTheme.classes.text.white}`}>{stat.strikeouts_pitched || stat.strikeouts || 0}</td>
-                                <td className={`py-3 px-4 ${dynastyTheme.classes.text.white} font-mono`}>
-                                  {stat.innings_pitched > 0 ? (((stat.hits_allowed || 0) + (stat.walks_allowed || 0)) / stat.innings_pitched).toFixed(2) : '0.00'}
-                                </td>
-                              </>
-                            ) : (
-                              // Hitter weekly data
-                              <>
-                                <td className={`py-3 px-4 ${dynastyTheme.classes.text.white}`}>{stat.at_bats || 0}</td>
-                                <td className={`py-3 px-4 ${dynastyTheme.classes.text.white}`}>{stat.runs || 0}</td>
-                                <td className={`py-3 px-4 ${dynastyTheme.classes.text.white}`}>{stat.hits || 0}</td>
-                                <td className={`py-3 px-4 ${dynastyTheme.classes.text.white}`}>{stat.home_runs || 0}</td>
-                                <td className={`py-3 px-4 ${dynastyTheme.classes.text.white}`}>{stat.rbis || stat.rbi || 0}</td>
-                                <td className={`py-3 px-4 ${dynastyTheme.classes.text.white}`}>{stat.stolen_bases || 0}</td>
-                                <td className={`py-3 px-4 ${dynastyTheme.classes.text.white}`}>{stat.walks || 0}</td>
-                                <td className={`py-3 px-4 ${dynastyTheme.classes.text.white}`}>{stat.strikeouts || 0}</td>
-                              </>
-                            )}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                ) : (
-                  <div className="text-center py-8">
-                    <p className={`${dynastyTheme.classes.text.lightGray} mb-4`}>No weekly performance data available</p>
-                    <p className={`${dynastyTheme.classes.text.gray} text-sm`}>
-                      Statistical data will be populated when available from the database.
-                    </p>
-                  </div>
+                  <p className={dynastyTheme.classes.text.lightGray}>No game logs available</p>
                 )}
               </div>
             )}
@@ -675,12 +604,138 @@ const PlayerProfile = () => {
             {activeTab === 'career' && (
               <div>
                 <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary} mb-4`}>Career Statistics</h3>
-                <div className="space-y-4">
-                  <p className={dynastyTheme.classes.text.lightGray}>Career stats aggregation coming soon...</p>
-                  <p className={`${dynastyTheme.classes.text.gray} text-sm`}>
-                    This will show year-by-year career totals similar to the OnRoto interface you showed.
-                  </p>
-                </div>
+                {careerStats.length > 0 ? (
+                  <DynastyTable
+                    title="Career Stats"
+                    data={careerStats}
+                    columns={createCareerStatsColumns(isPitcher())}
+                    initialSort={{ key: 'season_year', direction: 'desc' }}
+                    maxHeight="500px"
+                    showTotals={true}
+                    totalsRow={calculateCareerTotals(careerStats, isPitcher())}
+                    stickyHeader={true}
+                  />
+                ) : (
+                  <p className={dynastyTheme.classes.text.lightGray}>No career statistics available</p>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'analysis' && (
+              <div>
+                <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary} mb-4`}>Advanced Analysis</h3>
+                {hotColdAnalysis ? (
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                      {/* Hot/Cold Status */}
+                      <div className={`p-6 rounded-lg ${dynastyUtils.getCardClasses('default')}`}>
+                        <div className="flex items-center mb-4">
+                          {getHotColdIcon()}
+                          <h4 className={`text-lg font-semibold ml-2 ${getHotColdColor()}`}>
+                            Player is {hotColdAnalysis.status.toUpperCase()}
+                          </h4>
+                        </div>
+                        <p className={`${dynastyTheme.classes.text.lightGray} mb-2`}>
+                          Confidence: {hotColdAnalysis.confidence}%
+                        </p>
+                        <p className={`${dynastyTheme.classes.text.white} text-sm`}>
+                          Based on {hotColdAnalysis.games_analyzed} recent games
+                        </p>
+                      </div>
+
+                      {/* Performance Comparison */}
+                      <div className={`p-6 ${dynastyUtils.getCardClasses('default')} rounded-lg`}>
+                        <h4 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary} mb-4`}>
+                          Recent vs Season
+                        </h4>
+                        <div className="space-y-3">
+                          {hotColdAnalysis.type === 'hitting' ? (
+                            <>
+                              <div className="flex justify-between">
+                                <span className={dynastyTheme.classes.text.lightGray}>Recent AVG:</span>
+                                <span className={dynastyTheme.classes.text.white}>{hotColdAnalysis.recent_avg}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className={dynastyTheme.classes.text.lightGray}>Season AVG:</span>
+                                <span className={dynastyTheme.classes.text.white}>{hotColdAnalysis.season_avg}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className={dynastyTheme.classes.text.lightGray}>Difference:</span>
+                                <span className={`${hotColdAnalysis.avg_change > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                  {hotColdAnalysis.avg_change > 0 ? '+' : ''}{hotColdAnalysis.avg_change}
+                                </span>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="flex justify-between">
+                                <span className={dynastyTheme.classes.text.lightGray}>Recent ERA:</span>
+                                <span className={dynastyTheme.classes.text.white}>{hotColdAnalysis.recent_era}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className={dynastyTheme.classes.text.lightGray}>Season ERA:</span>
+                                <span className={dynastyTheme.classes.text.white}>{hotColdAnalysis.season_era}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className={dynastyTheme.classes.text.lightGray}>Difference:</span>
+                                <span className={`${hotColdAnalysis.era_change > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                                  {hotColdAnalysis.era_change > 0 ? '+' : ''}{hotColdAnalysis.era_change}
+                                </span>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <p className={dynastyTheme.classes.text.lightGray}>Loading advanced analysis...</p>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'season' && (
+              <div>
+                <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary} mb-4`}>2025 Season Statistics</h3>
+                {seasonStats ? (
+                  <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
+                    {seasonStats.isPitcher ? (
+                      [
+                        { label: 'Games', value: seasonStats.games_played },
+                        { label: 'Innings', value: seasonStats.IP },
+                        { label: 'ERA', value: seasonStats.ERA },
+                        { label: 'WHIP', value: seasonStats.WHIP },
+                        { label: 'Wins', value: seasonStats.wins },
+                        { label: 'Losses', value: seasonStats.losses },
+                        { label: 'Saves', value: seasonStats.saves },
+                        { label: 'Strikeouts', value: seasonStats.SO }
+                      ].map(({ label, value }) => (
+                        <div key={label} className="text-center">
+                          <div className={`${dynastyTheme.classes.text.primary} text-3xl font-bold mb-2`}>{value}</div>
+                          <div className={`${dynastyTheme.classes.text.lightGray} text-sm`}>{label}</div>
+                        </div>
+                      ))
+                    ) : (
+                      [
+                        { label: 'Games', value: seasonStats.games_played },
+                        { label: 'AVG', value: seasonStats.AVG },
+                        { label: 'Home Runs', value: seasonStats.home_runs },
+                        { label: 'RBIs', value: seasonStats.rbis },
+                        { label: 'Runs', value: seasonStats.runs },
+                        { label: 'Stolen Bases', value: seasonStats.stolen_bases },
+                        { label: 'OBP', value: seasonStats.OBP },
+                        { label: 'OPS', value: seasonStats.OPS }
+                      ].map(({ label, value }) => (
+                        <div key={label} className="text-center">
+                          <div className={`${dynastyTheme.classes.text.primary} text-3xl font-bold mb-2`}>{value}</div>
+                          <div className={`${dynastyTheme.classes.text.lightGray} text-sm`}>{label}</div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                ) : (
+                  <p className={dynastyTheme.classes.text.lightGray}>No season statistics available</p>
+                )}
               </div>
             )}
           </div>

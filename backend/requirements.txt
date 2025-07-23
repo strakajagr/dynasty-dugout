@@ -5,3 +5,7 @@ boto3==1.28.57
 PyJWT==2.8.0
 cryptography==41.0.7
 requests==2.31.0
+# Image processing for profile pictures
+Pillow==10.0.1
+# File handling for uploads  
+python-multipart==0.0.6
