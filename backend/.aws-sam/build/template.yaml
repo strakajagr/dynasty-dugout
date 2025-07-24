@@ -13,6 +13,7 @@ Resources:
       CodeUri: FantasyBaseballApi
       Handler: lambda_handler.handler
       Runtime: python3.12
+      Timeout: 180
       Architectures:
       - x86_64
       Policies:
@@ -53,6 +54,19 @@ Resources:
           - cognito-idp:DescribeUserPool
           Resource:
           - arn:aws:cognito-idp:us-east-1:584812014683:userpool/us-east-1_OooV5u83w
+        - Effect: Allow
+          Action:
+          - ses:SendEmail
+          - ses:SendRawEmail
+          - ses:ListVerifiedEmailAddresses
+          - ses:GetSendQuota
+          - ses:GetSendStatistics
+          - ses:VerifyEmailIdentity
+          - ses:ListIdentities
+          - ses:GetIdentityVerificationAttributes
+          - ses:GetIdentityDkimAttributes
+          - ses:GetIdentityNotificationAttributes
+          Resource: '*'
         - Effect: Allow
           Action:
           - s3:GetObject
@@ -200,4 +214,5 @@ Outputs:
   ArchitectureInfo:
     Description: Dynasty Dugout architecture summary
     Value: 'Modular API: FastAPI + Routers | Daily Updates: Dedicated Lambda | Database:
-      Aurora PostgreSQL Serverless | Account Management: S3 + Cognito'
+      Aurora PostgreSQL Serverless | Account Management: S3 + Cognito | Email: SES
+      Integration'

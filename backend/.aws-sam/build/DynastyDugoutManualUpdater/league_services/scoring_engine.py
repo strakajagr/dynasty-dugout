@@ -1,68 +1,106 @@
 """
 Dynasty Dugout - Scoring Engine Service
 Aggregates MLB player stats into team totals and calculates derived statistics
+UPDATED: Full PostgreSQL compatibility with database-per-league architecture
 """
 
 import logging
 from typing import Dict, List, Any, Optional
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime, date
-from core.database import execute_sql
+from core.database import execute_sql, get_league_database_name
 
 logger = logging.getLogger(__name__)
 
 class ScoringEngineService:
     """
     Core service for aggregating player statistics into team totals.
-    Handles all stat calculations including derived stats like AVG, ERA, WHIP, QS.
+    PostgreSQL-compatible with separate databases per league.
     """
     
     @staticmethod
     def get_league_rosters(league_id: str) -> Dict[str, List[Dict[str, Any]]]:
-        """Get all active rosters for teams in a league"""
+        """Get all active rosters for teams in a league from league database"""
         try:
-            table_name = f"league_{league_id.replace('-', '_')}_players"
+            db_name = get_league_database_name(league_id)
             
-            sql = f"""
+            # Query the league database for roster information
+            sql = """
                 SELECT 
-                    lp.team_id,
-                    lp.mlb_player_id,
-                    lp.salary,
-                    lp.contract_years,
-                    lp.roster_status,
-                    mp.first_name,
-                    mp.last_name,
-                    mp.position,
-                    mp.mlb_team
-                FROM {table_name} lp
-                JOIN mlb_players mp ON lp.mlb_player_id = mp.player_id
-                WHERE lp.team_id IS NOT NULL 
-                AND lp.roster_status = 'active'
-                ORDER BY lp.team_id, mp.position, mp.last_name
+                    team_id,
+                    mlb_player_id,
+                    salary,
+                    contract_years,
+                    roster_status,
+                    first_name,
+                    last_name,
+                    position,
+                    mlb_team
+                FROM players
+                WHERE team_id IS NOT NULL 
+                AND roster_status IN ('rostered', 'active')
+                ORDER BY team_id, position, last_name
             """
             
-            response = execute_sql(sql)
+            # Execute on league database
+            response = execute_sql(sql, database_name=db_name)
             
             rosters = {}
             if response.get('records'):
                 for record in response['records']:
-                    team_id = record[0].get('stringValue') if record[0] and not record[0].get('isNull') else None
+                    team_id_value = record[0]
+                    if team_id_value and not team_id_value.get('isNull'):
+                        team_id = team_id_value.get('stringValue')
+                    else:
+                        continue
                     
-                    if team_id:
-                        if team_id not in rosters:
-                            rosters[team_id] = []
-                        
-                        player = {
-                            'mlb_player_id': record[1].get('longValue') if record[1] and not record[1].get('isNull') else None,
-                            'salary': record[2].get('doubleValue') if record[2] and not record[2].get('isNull') else 1.0,
-                            'contract_years': record[3].get('longValue') if record[3] and not record[3].get('isNull') else 1,
-                            'roster_status': record[4].get('stringValue') if record[4] and not record[4].get('isNull') else 'active',
-                            'first_name': record[5].get('stringValue') if record[5] and not record[5].get('isNull') else '',
-                            'last_name': record[6].get('stringValue') if record[6] and not record[6].get('isNull') else '',
-                            'position': record[7].get('stringValue') if record[7] and not record[7].get('isNull') else '',
-                            'mlb_team': record[8].get('stringValue') if record[8] and not record[8].get('isNull') else ''
-                        }
-                        rosters[team_id].append(player)
+                    if team_id not in rosters:
+                        rosters[team_id] = []
+                    
+                    # Safe value extraction
+                    mlb_player_id = None
+                    if record[1] and not record[1].get('isNull'):
+                        mlb_player_id = record[1].get('longValue')
+                    
+                    salary = 1.0
+                    if record[2] and not record[2].get('isNull'):
+                        salary = record[2].get('doubleValue', 1.0)
+                    
+                    contract_years = 1
+                    if record[3] and not record[3].get('isNull'):
+                        contract_years = record[3].get('longValue', 1)
+                    
+                    roster_status = 'active'
+                    if record[4] and not record[4].get('isNull'):
+                        roster_status = record[4].get('stringValue', 'active')
+                    
+                    first_name = ''
+                    if record[5] and not record[5].get('isNull'):
+                        first_name = record[5].get('stringValue', '')
+                    
+                    last_name = ''
+                    if record[6] and not record[6].get('isNull'):
+                        last_name = record[6].get('stringValue', '')
+                    
+                    position = ''
+                    if record[7] and not record[7].get('isNull'):
+                        position = record[7].get('stringValue', '')
+                    
+                    mlb_team = ''
+                    if record[8] and not record[8].get('isNull'):
+                        mlb_team = record[8].get('stringValue', '')
+                    
+                    player = {
+                        'mlb_player_id': mlb_player_id,
+                        'salary': salary,
+                        'contract_years': contract_years,
+                        'roster_status': roster_status,
+                        'first_name': first_name,
+                        'last_name': last_name,
+                        'position': position,
+                        'mlb_team': mlb_team
+                    }
+                    rosters[team_id].append(player)
             
             return rosters
             
@@ -72,36 +110,44 @@ class ScoringEngineService:
 
     @staticmethod
     def get_player_season_stats(player_id: int, season_year: int = None) -> Dict[str, Any]:
-        """Get a player's current season statistics"""
+        """Get a player's current season statistics from main database"""
         try:
             if season_year is None:
                 season_year = datetime.now().year
             
-            # Get hitting stats
-            hitting_sql = f"""
+            # Get hitting stats from main database
+            hitting_sql = """
                 SELECT 
                     games_played, at_bats, runs, hits, doubles, triples, home_runs,
                     rbis, stolen_bases, caught_stealing, walks, hit_by_pitch, strikeouts,
                     grounded_into_double_plays, errors
                 FROM player_stats 
-                WHERE player_id = {player_id} AND season_year = {season_year}
+                WHERE player_id = :player_id AND season_year = :season_year
                 AND stat_type = 'hitting'
             """
             
-            hitting_response = execute_sql(hitting_sql)
+            # Execute on main database
+            hitting_response = execute_sql(hitting_sql, {
+                'player_id': player_id,
+                'season_year': season_year
+            })
             
-            # Get pitching stats
-            pitching_sql = f"""
+            # Get pitching stats from main database
+            pitching_sql = """
                 SELECT 
                     games_played, games_started, wins, losses, saves, blown_saves,
                     innings_pitched, hits_allowed, earned_runs, walks_allowed,
                     strikeouts_pitched, home_runs_allowed, complete_games, shutouts
                 FROM player_stats 
-                WHERE player_id = {player_id} AND season_year = {season_year}
+                WHERE player_id = :player_id AND season_year = :season_year
                 AND stat_type = 'pitching'
             """
             
-            pitching_response = execute_sql(pitching_sql)
+            # Execute on main database
+            pitching_response = execute_sql(pitching_sql, {
+                'player_id': player_id,
+                'season_year': season_year
+            })
             
             stats = {
                 'player_id': player_id,
@@ -122,43 +168,25 @@ class ScoringEngineService:
             # Process hitting stats
             if hitting_response.get('records') and hitting_response['records']:
                 hitting_record = hitting_response['records'][0]
-                stats.update({
-                    'G': hitting_record[0].get('longValue', 0) if hitting_record[0] and not hitting_record[0].get('isNull') else 0,
-                    'AB': hitting_record[1].get('longValue', 0) if hitting_record[1] and not hitting_record[1].get('isNull') else 0,
-                    'R': hitting_record[2].get('longValue', 0) if hitting_record[2] and not hitting_record[2].get('isNull') else 0,
-                    'H': hitting_record[3].get('longValue', 0) if hitting_record[3] and not hitting_record[3].get('isNull') else 0,
-                    '2B': hitting_record[4].get('longValue', 0) if hitting_record[4] and not hitting_record[4].get('isNull') else 0,
-                    '3B': hitting_record[5].get('longValue', 0) if hitting_record[5] and not hitting_record[5].get('isNull') else 0,
-                    'HR': hitting_record[6].get('longValue', 0) if hitting_record[6] and not hitting_record[6].get('isNull') else 0,
-                    'RBI': hitting_record[7].get('longValue', 0) if hitting_record[7] and not hitting_record[7].get('isNull') else 0,
-                    'SB': hitting_record[8].get('longValue', 0) if hitting_record[8] and not hitting_record[8].get('isNull') else 0,
-                    'CS': hitting_record[9].get('longValue', 0) if hitting_record[9] and not hitting_record[9].get('isNull') else 0,
-                    'BB': hitting_record[10].get('longValue', 0) if hitting_record[10] and not hitting_record[10].get('isNull') else 0,
-                    'HBP': hitting_record[11].get('longValue', 0) if hitting_record[11] and not hitting_record[11].get('isNull') else 0,
-                    'SO': hitting_record[12].get('longValue', 0) if hitting_record[12] and not hitting_record[12].get('isNull') else 0,
-                    'GIDP': hitting_record[13].get('longValue', 0) if hitting_record[13] and not hitting_record[13].get('isNull') else 0,
-                    'E': hitting_record[14].get('longValue', 0) if hitting_record[14] and not hitting_record[14].get('isNull') else 0
-                })
+                
+                # Safe value extraction for hitting stats
+                hitting_stats = ['G', 'AB', 'R', 'H', '2B', '3B', 'HR', 'RBI', 'SB', 'CS', 'BB', 'HBP', 'SO', 'GIDP', 'E']
+                for i, stat in enumerate(hitting_stats):
+                    if i < len(hitting_record) and hitting_record[i] and not hitting_record[i].get('isNull'):
+                        stats[stat] = hitting_record[i].get('longValue', 0)
             
             # Process pitching stats
             if pitching_response.get('records') and pitching_response['records']:
                 pitching_record = pitching_response['records'][0]
-                stats.update({
-                    'G_P': pitching_record[0].get('longValue', 0) if pitching_record[0] and not pitching_record[0].get('isNull') else 0,
-                    'GS': pitching_record[1].get('longValue', 0) if pitching_record[1] and not pitching_record[1].get('isNull') else 0,
-                    'W': pitching_record[2].get('longValue', 0) if pitching_record[2] and not pitching_record[2].get('isNull') else 0,
-                    'L': pitching_record[3].get('longValue', 0) if pitching_record[3] and not pitching_record[3].get('isNull') else 0,
-                    'SV': pitching_record[4].get('longValue', 0) if pitching_record[4] and not pitching_record[4].get('isNull') else 0,
-                    'BS': pitching_record[5].get('longValue', 0) if pitching_record[5] and not pitching_record[5].get('isNull') else 0,
-                    'IP': pitching_record[6].get('doubleValue', 0.0) if pitching_record[6] and not pitching_record[6].get('isNull') else 0.0,
-                    'H_A': pitching_record[7].get('longValue', 0) if pitching_record[7] and not pitching_record[7].get('isNull') else 0,
-                    'ER': pitching_record[8].get('longValue', 0) if pitching_record[8] and not pitching_record[8].get('isNull') else 0,
-                    'BB_A': pitching_record[9].get('longValue', 0) if pitching_record[9] and not pitching_record[9].get('isNull') else 0,
-                    'SO_P': pitching_record[10].get('longValue', 0) if pitching_record[10] and not pitching_record[10].get('isNull') else 0,
-                    'HR_A': pitching_record[11].get('longValue', 0) if pitching_record[11] and not pitching_record[11].get('isNull') else 0,
-                    'CG': pitching_record[12].get('longValue', 0) if pitching_record[12] and not pitching_record[12].get('isNull') else 0,
-                    'SHO': pitching_record[13].get('longValue', 0) if pitching_record[13] and not pitching_record[13].get('isNull') else 0
-                })
+                
+                # Safe value extraction for pitching stats
+                pitching_stats = ['G_P', 'GS', 'W', 'L', 'SV', 'BS', 'IP', 'H_A', 'ER', 'BB_A', 'SO_P', 'HR_A', 'CG', 'SHO']
+                for i, stat in enumerate(pitching_stats):
+                    if i < len(pitching_record) and pitching_record[i] and not pitching_record[i].get('isNull'):
+                        if stat == 'IP':  # Special handling for innings pitched (decimal)
+                            stats[stat] = pitching_record[i].get('doubleValue', 0.0)
+                        else:
+                            stats[stat] = pitching_record[i].get('longValue', 0)
             
             return stats
             
@@ -168,27 +196,36 @@ class ScoringEngineService:
 
     @staticmethod
     def calculate_quality_starts(player_id: int, season_year: int = None) -> int:
-        """Calculate Quality Starts from game log data (6+ IP, ≤3 ER)"""
+        """Calculate Quality Starts from game log data (6+ IP, ≤3 ER) from main database"""
         try:
             if season_year is None:
                 season_year = datetime.now().year
             
-            sql = f"""
+            sql = """
                 SELECT innings_pitched, earned_runs
                 FROM player_game_logs 
-                WHERE player_id = {player_id} 
-                AND season_year = {season_year}
+                WHERE player_id = :player_id 
+                AND season_year = :season_year
                 AND innings_pitched IS NOT NULL
                 AND earned_runs IS NOT NULL
             """
             
-            response = execute_sql(sql)
+            # Execute on main database
+            response = execute_sql(sql, {
+                'player_id': player_id,
+                'season_year': season_year
+            })
             
             quality_starts = 0
             if response.get('records'):
                 for record in response['records']:
-                    innings = record[0].get('doubleValue', 0.0) if record[0] and not record[0].get('isNull') else 0.0
-                    earned_runs = record[1].get('longValue', 0) if record[1] and not record[1].get('isNull') else 0
+                    innings = 0.0
+                    if record[0] and not record[0].get('isNull'):
+                        innings = record[0].get('doubleValue', 0.0)
+                    
+                    earned_runs = 0
+                    if record[1] and not record[1].get('isNull'):
+                        earned_runs = record[1].get('longValue', 0)
                     
                     # Quality Start: 6+ innings and 3 or fewer earned runs
                     if innings >= 6.0 and earned_runs <= 3:
@@ -273,7 +310,7 @@ class ScoringEngineService:
                 if not player_id:
                     continue
                 
-                # Get player's season stats
+                # Get player's season stats from main database
                 player_stats = ScoringEngineService.get_player_season_stats(player_id, season_year)
                 
                 if not player_stats:
@@ -315,7 +352,7 @@ class ScoringEngineService:
             if season_year is None:
                 season_year = datetime.now().year
             
-            # Get all team rosters
+            # Get all team rosters from league database
             rosters = ScoringEngineService.get_league_rosters(league_id)
             
             team_stats = {}
@@ -346,7 +383,7 @@ class ScoringEngineService:
             if season_year is None:
                 season_year = datetime.now().year
             
-            # Get team roster
+            # Get team roster from league database
             rosters = ScoringEngineService.get_league_rosters(league_id)
             
             if team_id not in rosters:
@@ -364,6 +401,7 @@ class ScoringEngineService:
                 if not player_id:
                     continue
                 
+                # Get stats from main database
                 player_stats = ScoringEngineService.get_player_season_stats(player_id, season_year)
                 
                 if player_stats:
@@ -390,3 +428,69 @@ class ScoringEngineService:
         except Exception as e:
             logger.error(f"Error getting team stats summary: {str(e)}")
             return {'error': str(e)}
+
+    @staticmethod
+    def get_league_stat_leaders(league_id: str, stat_category: str, limit: int = 10, season_year: int = None) -> List[Dict[str, Any]]:
+        """Get top players in a specific stat category across the league"""
+        try:
+            if season_year is None:
+                season_year = datetime.now().year
+            
+            # Get all team rosters
+            rosters = ScoringEngineService.get_league_rosters(league_id)
+            
+            all_players = []
+            for team_id, roster in rosters.items():
+                for player in roster:
+                    player_id = player['mlb_player_id']
+                    if not player_id:
+                        continue
+                    
+                    # Get player stats from main database
+                    player_stats = ScoringEngineService.get_player_season_stats(player_id, season_year)
+                    
+                    if player_stats:
+                        # Calculate derived stats and QS
+                        if player_stats.get('GS', 0) > 0:
+                            player_stats['QS'] = ScoringEngineService.calculate_quality_starts(player_id, season_year)
+                        
+                        player_stats = ScoringEngineService.calculate_derived_stats(player_stats)
+                        
+                        all_players.append({
+                            'team_id': team_id,
+                            'player_info': player,
+                            'stats': player_stats
+                        })
+            
+            # Sort by the requested stat category
+            # Handle inverse stats (lower is better)
+            inverse_stats = ['ERA', 'WHIP', 'L', 'BS', 'CS', 'E', 'GIDP']
+            is_inverse = stat_category in inverse_stats
+            
+            # Filter out players with 0 in the stat (to avoid meaningless leaders)
+            filtered_players = [p for p in all_players if p['stats'].get(stat_category, 0) > 0]
+            
+            sorted_players = sorted(
+                filtered_players,
+                key=lambda p: p['stats'].get(stat_category, 0),
+                reverse=not is_inverse
+            )
+            
+            # Format the results
+            leaders = []
+            for rank, player_data in enumerate(sorted_players[:limit], 1):
+                leaders.append({
+                    'rank': rank,
+                    'team_id': player_data['team_id'],
+                    'player_name': f"{player_data['player_info']['first_name']} {player_data['player_info']['last_name']}".strip(),
+                    'position': player_data['player_info']['position'],
+                    'mlb_team': player_data['player_info']['mlb_team'],
+                    'stat_value': player_data['stats'].get(stat_category, 0),
+                    'category': stat_category
+                })
+            
+            return leaders
+            
+        except Exception as e:
+            logger.error(f"Error getting league stat leaders: {str(e)}")
+            return []

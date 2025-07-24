@@ -1,6 +1,7 @@
 """
 Dynasty Dugout - Transaction Service
 Handles trades, waivers, free agent pickups, and transaction processing
+UPDATED: Full PostgreSQL compatibility with database-per-league architecture
 """
 
 import logging
@@ -9,7 +10,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime, date, timedelta
 import json
 from uuid import uuid4
-from core.database import execute_sql
+from core.database import execute_sql, get_league_database_name
 
 logger = logging.getLogger(__name__)
 
@@ -23,15 +24,16 @@ class TransactionService:
     def get_league_transaction_rules(league_id: str) -> Dict[str, Any]:
         """Get league-specific transaction rules and deadlines"""
         try:
-            sql = f"""
+            # Query main database for league rules
+            sql = """
                 SELECT 
                     transaction_deadline, use_waivers, season_start_date, season_end_date,
                     max_teams, scoring_system
                 FROM user_leagues 
-                WHERE league_id = '{league_id}'
+                WHERE league_id = :league_id::uuid
             """
             
-            response = execute_sql(sql)
+            response = execute_sql(sql, {'league_id': league_id})
             
             if not response.get('records'):
                 raise Exception(f"League {league_id} not found")
@@ -54,12 +56,12 @@ class TransactionService:
 
     @staticmethod
     def create_transaction_log_table(league_id: str) -> None:
-        """Create transaction log table for the league"""
+        """Create transaction log table in the league database"""
         try:
-            table_name = f"league_{league_id.replace('-', '_')}_transactions"
+            db_name = get_league_database_name(league_id)
             
-            sql = f"""
-                CREATE TABLE IF NOT EXISTS {table_name} (
+            sql = """
+                CREATE TABLE IF NOT EXISTS transactions (
                     transaction_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     transaction_type VARCHAR(50) NOT NULL,
                     from_team_id UUID,
@@ -71,12 +73,11 @@ class TransactionService:
                     processed_date TIMESTAMP,
                     status VARCHAR(20) DEFAULT 'pending',
                     notes TEXT,
-                    created_by VARCHAR(255),
-                    CONSTRAINT fk_player FOREIGN KEY (player_id) REFERENCES mlb_players(player_id)
+                    created_by VARCHAR(255)
                 );
             """
             
-            execute_sql(sql)
+            execute_sql(sql, {}, database_name=db_name)
             
         except Exception as e:
             logger.error(f"Error creating transaction log table: {str(e)}")
@@ -101,19 +102,27 @@ class TransactionService:
                     'reasons': can_add['reasons']
                 }
             
-            # Create transaction record
+            # Create transaction record in league database
             transaction_id = str(uuid4())
-            transaction_table = f"league_{league_id.replace('-', '_')}_transactions"
+            db_name = get_league_database_name(league_id)
             
             TransactionService.create_transaction_log_table(league_id)
             
-            transaction_sql = f"""
-                INSERT INTO {transaction_table} 
+            transaction_sql = """
+                INSERT INTO transactions 
                 (transaction_id, transaction_type, to_team_id, player_id, salary_change, contract_change, status)
-                VALUES ('{transaction_id}', 'free_agent_pickup', '{team_id}', {player_id}, {salary}, {contract_years}, 'completed')
+                VALUES (:transaction_id::uuid, :transaction_type, :team_id::uuid, :player_id, :salary_change, :contract_change, :status)
             """
             
-            execute_sql(transaction_sql)
+            execute_sql(transaction_sql, {
+                'transaction_id': transaction_id,
+                'transaction_type': 'free_agent_pickup',
+                'team_id': team_id,
+                'player_id': player_id,
+                'salary_change': salary,
+                'contract_change': contract_years,
+                'status': 'completed'
+            }, database_name=db_name)
             
             # Add player to roster
             add_result = RosterManagementService.add_player_to_roster(
@@ -128,13 +137,16 @@ class TransactionService:
                 }
             
             # Update transaction with completion
-            complete_sql = f"""
-                UPDATE {transaction_table}
-                SET processed_date = NOW(), notes = 'Free agent pickup completed'
-                WHERE transaction_id = '{transaction_id}'
+            complete_sql = """
+                UPDATE transactions
+                SET processed_date = NOW(), notes = :notes
+                WHERE transaction_id = :transaction_id::uuid
             """
             
-            execute_sql(complete_sql)
+            execute_sql(complete_sql, {
+                'transaction_id': transaction_id,
+                'notes': 'Free agent pickup completed'
+            }, database_name=db_name)
             
             logger.info(f"Free agent pickup: Player {player_id} added to team {team_id} in league {league_id}")
             
@@ -160,19 +172,25 @@ class TransactionService:
         try:
             from league_services.roster_management import RosterManagementService
             
-            # Create transaction record
+            # Create transaction record in league database
             transaction_id = str(uuid4())
-            transaction_table = f"league_{league_id.replace('-', '_')}_transactions"
+            db_name = get_league_database_name(league_id)
             
             TransactionService.create_transaction_log_table(league_id)
             
-            transaction_sql = f"""
-                INSERT INTO {transaction_table} 
+            transaction_sql = """
+                INSERT INTO transactions 
                 (transaction_id, transaction_type, from_team_id, player_id, status)
-                VALUES ('{transaction_id}', 'drop', '{team_id}', {player_id}, 'completed')
+                VALUES (:transaction_id::uuid, :transaction_type, :team_id::uuid, :player_id, :status)
             """
             
-            execute_sql(transaction_sql)
+            execute_sql(transaction_sql, {
+                'transaction_id': transaction_id,
+                'transaction_type': 'drop',
+                'team_id': team_id,
+                'player_id': player_id,
+                'status': 'completed'
+            }, database_name=db_name)
             
             # Remove player from roster
             drop_result = RosterManagementService.remove_player_from_roster(league_id, team_id, player_id)
@@ -185,13 +203,16 @@ class TransactionService:
                 }
             
             # Update transaction with completion
-            complete_sql = f"""
-                UPDATE {transaction_table}
-                SET processed_date = NOW(), notes = 'Player drop completed'
-                WHERE transaction_id = '{transaction_id}'
+            complete_sql = """
+                UPDATE transactions
+                SET processed_date = NOW(), notes = :notes
+                WHERE transaction_id = :transaction_id::uuid
             """
             
-            execute_sql(complete_sql)
+            execute_sql(complete_sql, {
+                'transaction_id': transaction_id,
+                'notes': 'Player drop completed'
+            }, database_name=db_name)
             
             logger.info(f"Player drop: Player {player_id} dropped from team {team_id} in league {league_id}")
             
@@ -216,7 +237,7 @@ class TransactionService:
         """Create a trade proposal between teams"""
         try:
             trade_id = str(uuid4())
-            transaction_table = f"league_{league_id.replace('-', '_')}_transactions"
+            db_name = get_league_database_name(league_id)
             
             TransactionService.create_transaction_log_table(league_id)
             
@@ -230,33 +251,56 @@ class TransactionService:
                     'message': 'Trade must include at least one player'
                 }
             
-            # Create trade proposal record
-            proposal_sql = f"""
-                INSERT INTO {transaction_table} 
+            # Create trade proposal record in league database
+            proposal_sql = """
+                INSERT INTO transactions 
                 (transaction_id, transaction_type, from_team_id, to_team_id, status, notes)
-                VALUES ('{trade_id}', 'trade_proposal', '{from_team_id}', '{to_team_id}', 'pending', '{json.dumps(trade_details)}')
+                VALUES (:transaction_id::uuid, :transaction_type, :from_team_id::uuid, :to_team_id::uuid, :status, :notes)
             """
             
-            execute_sql(proposal_sql)
+            execute_sql(proposal_sql, {
+                'transaction_id': trade_id,
+                'transaction_type': 'trade_proposal',
+                'from_team_id': from_team_id,
+                'to_team_id': to_team_id,
+                'status': 'pending',
+                'notes': json.dumps(trade_details)
+            }, database_name=db_name)
             
             # Create individual transaction records for each player in trade
             for player_id in from_players:
                 player_trade_id = str(uuid4())
-                player_sql = f"""
-                    INSERT INTO {transaction_table} 
+                player_sql = """
+                    INSERT INTO transactions 
                     (transaction_id, transaction_type, from_team_id, to_team_id, player_id, status, notes)
-                    VALUES ('{player_trade_id}', 'trade_player', '{from_team_id}', '{to_team_id}', {player_id}, 'pending', 'Part of trade {trade_id}')
+                    VALUES (:transaction_id::uuid, :transaction_type, :from_team_id::uuid, :to_team_id::uuid, :player_id, :status, :notes)
                 """
-                execute_sql(player_sql)
+                execute_sql(player_sql, {
+                    'transaction_id': player_trade_id,
+                    'transaction_type': 'trade_player',
+                    'from_team_id': from_team_id,
+                    'to_team_id': to_team_id,
+                    'player_id': player_id,
+                    'status': 'pending',
+                    'notes': f'Part of trade {trade_id}'
+                }, database_name=db_name)
             
             for player_id in to_players:
                 player_trade_id = str(uuid4())
-                player_sql = f"""
-                    INSERT INTO {transaction_table} 
+                player_sql = """
+                    INSERT INTO transactions 
                     (transaction_id, transaction_type, from_team_id, to_team_id, player_id, status, notes)
-                    VALUES ('{player_trade_id}', 'trade_player', '{to_team_id}', '{from_team_id}', {player_id}, 'pending', 'Part of trade {trade_id}')
+                    VALUES (:transaction_id::uuid, :transaction_type, :from_team_id::uuid, :to_team_id::uuid, :player_id, :status, :notes)
                 """
-                execute_sql(player_sql)
+                execute_sql(player_sql, {
+                    'transaction_id': player_trade_id,
+                    'transaction_type': 'trade_player',
+                    'from_team_id': to_team_id,
+                    'to_team_id': from_team_id,
+                    'player_id': player_id,
+                    'status': 'pending',
+                    'notes': f'Part of trade {trade_id}'
+                }, database_name=db_name)
             
             logger.info(f"Trade proposal created: {trade_id} between teams {from_team_id} and {to_team_id}")
             
@@ -282,16 +326,19 @@ class TransactionService:
         try:
             from league_services.roster_management import RosterManagementService
             
-            transaction_table = f"league_{league_id.replace('-', '_')}_transactions"
+            db_name = get_league_database_name(league_id)
             
-            # Get trade details
-            trade_sql = f"""
+            # Get trade details from league database
+            trade_sql = """
                 SELECT from_team_id, to_team_id, notes, status
-                FROM {transaction_table}
-                WHERE transaction_id = '{trade_id}' AND transaction_type = 'trade_proposal'
+                FROM transactions
+                WHERE transaction_id = :trade_id::uuid AND transaction_type = :transaction_type
             """
             
-            trade_response = execute_sql(trade_sql)
+            trade_response = execute_sql(trade_sql, {
+                'trade_id': trade_id,
+                'transaction_type': 'trade_proposal'
+            }, database_name=db_name)
             
             if not trade_response.get('records'):
                 return {
@@ -300,10 +347,10 @@ class TransactionService:
                 }
             
             trade_record = trade_response['records'][0]
-            from_team = trade_record[0].get('stringValue')
-            to_team = trade_record[1].get('stringValue')
-            trade_details_str = trade_record[2].get('stringValue', '{}')
-            status = trade_record[3].get('stringValue')
+            from_team = trade_record[0].get('stringValue') if trade_record[0] and not trade_record[0].get('isNull') else None
+            to_team = trade_record[1].get('stringValue') if trade_record[1] and not trade_record[1].get('isNull') else None
+            trade_details_str = trade_record[2].get('stringValue', '{}') if trade_record[2] and not trade_record[2].get('isNull') else '{}'
+            status = trade_record[3].get('stringValue') if trade_record[3] and not trade_record[3].get('isNull') else None
             
             if status != 'pending':
                 return {
@@ -338,28 +385,35 @@ class TransactionService:
                 # Add to from_team
                 RosterManagementService.add_player_to_roster(league_id, from_team, player_id, 1.0, 1, 'bench')
             
-            # Update trade status
-            complete_sql = f"""
-                UPDATE {transaction_table}
+            # Update trade status in league database
+            complete_sql = """
+                UPDATE transactions
                 SET 
-                    status = 'completed',
+                    status = :status,
                     processed_date = NOW(),
-                    notes = notes || ' - Trade completed'
-                WHERE transaction_id = '{trade_id}'
+                    notes = notes || :completion_note
+                WHERE transaction_id = :trade_id::uuid
             """
             
-            execute_sql(complete_sql)
+            execute_sql(complete_sql, {
+                'status': 'completed',
+                'completion_note': ' - Trade completed',
+                'trade_id': trade_id
+            }, database_name=db_name)
             
             # Update related player transaction records
-            update_players_sql = f"""
-                UPDATE {transaction_table}
+            update_players_sql = """
+                UPDATE transactions
                 SET 
-                    status = 'completed',
+                    status = :status,
                     processed_date = NOW()
-                WHERE notes LIKE '%Part of trade {trade_id}%'
+                WHERE notes LIKE :pattern
             """
             
-            execute_sql(update_players_sql)
+            execute_sql(update_players_sql, {
+                'status': 'completed',
+                'pattern': f'%Part of trade {trade_id}%'
+            }, database_name=db_name)
             
             logger.info(f"Trade completed: {trade_id} in league {league_id}")
             
@@ -384,7 +438,7 @@ class TransactionService:
                            waiver_priority: int, salary: float = 1.0) -> Dict[str, Any]:
         """Process a waiver claim"""
         try:
-            # Check league waiver rules
+            # Check league waiver rules from main database
             rules = TransactionService.get_league_transaction_rules(league_id)
             
             if not rules['use_waivers']:
@@ -394,18 +448,26 @@ class TransactionService:
                 }
             
             waiver_id = str(uuid4())
-            transaction_table = f"league_{league_id.replace('-', '_')}_transactions"
+            db_name = get_league_database_name(league_id)
             
             TransactionService.create_transaction_log_table(league_id)
             
-            # Create waiver claim record
-            claim_sql = f"""
-                INSERT INTO {transaction_table} 
+            # Create waiver claim record in league database
+            claim_sql = """
+                INSERT INTO transactions 
                 (transaction_id, transaction_type, to_team_id, player_id, salary_change, status, notes)
-                VALUES ('{waiver_id}', 'waiver_claim', '{team_id}', {player_id}, {salary}, 'pending', 'Waiver priority: {waiver_priority}')
+                VALUES (:transaction_id::uuid, :transaction_type, :team_id::uuid, :player_id, :salary_change, :status, :notes)
             """
             
-            execute_sql(claim_sql)
+            execute_sql(claim_sql, {
+                'transaction_id': waiver_id,
+                'transaction_type': 'waiver_claim',
+                'team_id': team_id,
+                'player_id': player_id,
+                'salary_change': salary,
+                'status': 'pending',
+                'notes': f'Waiver priority: {waiver_priority}'
+            }, database_name=db_name)
             
             logger.info(f"Waiver claim submitted: Player {player_id} by team {team_id} in league {league_id}")
             
@@ -430,45 +492,52 @@ class TransactionService:
     def get_transaction_history(league_id: str, filters: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         """Get transaction history for the league"""
         try:
-            transaction_table = f"league_{league_id.replace('-', '_')}_transactions"
+            db_name = get_league_database_name(league_id)
             
-            # Check if table exists
-            check_sql = f"""
+            # Check if transactions table exists in league database
+            check_sql = """
                 SELECT COUNT(*) FROM information_schema.tables 
-                WHERE table_name = '{transaction_table.lower()}'
+                WHERE table_name = 'transactions' AND table_schema = 'public'
             """
             
-            check_response = execute_sql(check_sql)
+            check_response = execute_sql(check_sql, {}, database_name=db_name)
             if not check_response.get('records') or check_response['records'][0][0].get('longValue', 0) == 0:
                 return []
             
             if filters is None:
                 filters = {}
             
-            # Build WHERE clause
-            where_conditions = []
+            # Build WHERE clause with parameterized queries
+            where_conditions = ["1=1"]  # Base condition
+            params = {}
             
             transaction_type = filters.get('transaction_type')
             if transaction_type:
-                where_conditions.append(f"transaction_type = '{transaction_type}'")
+                where_conditions.append("transaction_type = :transaction_type")
+                params['transaction_type'] = transaction_type
             
             team_id = filters.get('team_id')
             if team_id:
-                where_conditions.append(f"(from_team_id = '{team_id}' OR to_team_id = '{team_id}')")
+                where_conditions.append("(from_team_id = :team_id::uuid OR to_team_id = :team_id::uuid)")
+                params['team_id'] = team_id
             
             status = filters.get('status')
             if status:
-                where_conditions.append(f"status = '{status}'")
+                where_conditions.append("status = :status")
+                params['status'] = status
             
             # Date range
             days_back = filters.get('days_back', 30)
-            where_conditions.append(f"transaction_date > NOW() - INTERVAL '{days_back} days'")
+            where_conditions.append("transaction_date > NOW() - INTERVAL ':days_back days'")
+            params['days_back'] = days_back
             
-            where_clause = " AND ".join(where_conditions) if where_conditions else "1=1"
+            where_clause = " AND ".join(where_conditions)
             
             # Pagination
             limit = filters.get('limit', 100)
             offset = filters.get('offset', 0)
+            params['limit'] = limit
+            params['offset'] = offset
             
             sql = f"""
                 SELECT 
@@ -484,13 +553,13 @@ class TransactionService:
                     status,
                     notes,
                     created_by
-                FROM {transaction_table}
+                FROM transactions
                 WHERE {where_clause}
                 ORDER BY transaction_date DESC
-                LIMIT {limit} OFFSET {offset}
+                LIMIT :limit OFFSET :offset
             """
             
-            response = execute_sql(sql)
+            response = execute_sql(sql, params, database_name=db_name)
             
             transactions = []
             if response.get('records'):
@@ -534,15 +603,17 @@ class TransactionService:
     def cancel_transaction(league_id: str, transaction_id: str, cancelling_user: str) -> Dict[str, Any]:
         """Cancel a pending transaction"""
         try:
-            transaction_table = f"league_{league_id.replace('-', '_')}_transactions"
+            db_name = get_league_database_name(league_id)
             
-            # Check if transaction exists and is pending
-            check_sql = f"""
-                SELECT status, transaction_type FROM {transaction_table}
-                WHERE transaction_id = '{transaction_id}'
+            # Check if transaction exists and is pending in league database
+            check_sql = """
+                SELECT status, transaction_type FROM transactions
+                WHERE transaction_id = :transaction_id::uuid
             """
             
-            check_response = execute_sql(check_sql)
+            check_response = execute_sql(check_sql, {
+                'transaction_id': transaction_id
+            }, database_name=db_name)
             
             if not check_response.get('records'):
                 return {
@@ -550,8 +621,9 @@ class TransactionService:
                     'message': 'Transaction not found'
                 }
             
-            status = check_response['records'][0][0].get('stringValue')
-            transaction_type = check_response['records'][0][1].get('stringValue')
+            record = check_response['records'][0]
+            status = record[0].get('stringValue') if record[0] and not record[0].get('isNull') else None
+            transaction_type = record[1].get('stringValue') if record[1] and not record[1].get('isNull') else None
             
             if status != 'pending':
                 return {
@@ -559,17 +631,21 @@ class TransactionService:
                     'message': f'Cannot cancel {status} transaction'
                 }
             
-            # Cancel the transaction
-            cancel_sql = f"""
-                UPDATE {transaction_table}
+            # Cancel the transaction in league database
+            cancel_sql = """
+                UPDATE transactions
                 SET 
-                    status = 'cancelled',
+                    status = :status,
                     processed_date = NOW(),
-                    notes = COALESCE(notes, '') || ' - Cancelled by {cancelling_user}'
-                WHERE transaction_id = '{transaction_id}'
+                    notes = COALESCE(notes, '') || :cancellation_note
+                WHERE transaction_id = :transaction_id::uuid
             """
             
-            execute_sql(cancel_sql)
+            execute_sql(cancel_sql, {
+                'status': 'cancelled',
+                'cancellation_note': f' - Cancelled by {cancelling_user}',
+                'transaction_id': transaction_id
+            }, database_name=db_name)
             
             logger.info(f"Transaction cancelled: {transaction_id} by {cancelling_user}")
             
@@ -591,6 +667,7 @@ class TransactionService:
     def validate_transaction_deadline(league_id: str) -> Dict[str, Any]:
         """Check if transactions are currently allowed based on league deadlines"""
         try:
+            # Get rules from main database
             rules = TransactionService.get_league_transaction_rules(league_id)
             
             current_time = datetime.now()

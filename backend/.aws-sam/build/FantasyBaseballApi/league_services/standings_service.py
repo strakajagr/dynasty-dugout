@@ -1,44 +1,69 @@
 """
 Dynasty Dugout - League Standings Service
 Handles all league standings calculations for any scoring system configuration
+UPDATED: Full PostgreSQL compatibility with database-per-league architecture
 """
 
 import logging
 from typing import Dict, List, Any, Optional, Tuple
 from decimal import Decimal, ROUND_HALF_UP
-from core.database import execute_sql
+import json
+from core.database import execute_sql, get_league_database_name
 
 logger = logging.getLogger(__name__)
 
 class LeagueStandingsService:
     """
     Core service for calculating league standings across all scoring systems.
-    Reads league configuration and applies appropriate scoring logic.
+    PostgreSQL-compatible with separate databases per league.
     """
     
     @staticmethod
     def get_league_config(league_id: str) -> Dict[str, Any]:
-        """Get league configuration including scoring system and categories"""
+        """Get league configuration including scoring system and categories from main database"""
         try:
-            sql = f"""
+            sql = """
                 SELECT scoring_system, scoring_categories, use_salaries, salary_cap, max_teams
                 FROM user_leagues 
-                WHERE league_id = '{league_id}'
+                WHERE league_id = :league_id::uuid
             """
             
-            response = execute_sql(sql)
+            # Execute on main database
+            response = execute_sql(sql, {'league_id': league_id})
             
             if not response.get('records'):
                 raise Exception(f"League {league_id} not found")
             
             record = response['records'][0]
+            
+            # Safe value extraction
+            scoring_system = 'rotisserie_ytd'
+            if record[0] and not record[0].get('isNull'):
+                scoring_system = record[0].get('stringValue', 'rotisserie_ytd')
+            
+            scoring_categories = '{}'
+            if record[1] and not record[1].get('isNull'):
+                scoring_categories = record[1].get('stringValue', '{}')
+            
+            use_salaries = False
+            if record[2] and not record[2].get('isNull'):
+                use_salaries = record[2].get('booleanValue', False)
+            
+            salary_cap = 200.0
+            if record[3] and not record[3].get('isNull'):
+                salary_cap = record[3].get('doubleValue', 200.0)
+            
+            max_teams = 12
+            if record[4] and not record[4].get('isNull'):
+                max_teams = record[4].get('longValue', 12)
+            
             return {
                 'league_id': league_id,
-                'scoring_system': record[0].get('stringValue') if record[0] and not record[0].get('isNull') else 'rotisserie_ytd',
-                'scoring_categories': record[1].get('stringValue') if record[1] and not record[1].get('isNull') else '{}',
-                'use_salaries': record[2].get('booleanValue') if record[2] and not record[2].get('isNull') else False,
-                'salary_cap': record[3].get('doubleValue') if record[3] and not record[3].get('isNull') else 200.0,
-                'max_teams': record[4].get('longValue') if record[4] and not record[4].get('isNull') else 12
+                'scoring_system': scoring_system,
+                'scoring_categories': scoring_categories,
+                'use_salaries': use_salaries,
+                'salary_cap': salary_cap,
+                'max_teams': max_teams
             }
             
         except Exception as e:
@@ -49,47 +74,123 @@ class LeagueStandingsService:
     def get_team_stats(league_id: str) -> List[Dict[str, Any]]:
         """
         Get aggregated team statistics by summing stats from all rostered players.
-        This is the foundation for all scoring calculations.
+        This queries the league-specific database.
         """
         try:
-            table_name = f"league_{league_id.replace('-', '_')}_players"
+            db_name = get_league_database_name(league_id)
             
-            # This is a complex query that will need to join with actual player stats
-            # For now, returning mock data structure
-            sql = f"""
+            # Get basic team info from league database
+            sql = """
                 SELECT 
                     team_id,
                     COUNT(*) as roster_count,
                     COALESCE(SUM(salary), 0) as total_salary
-                FROM {table_name}
-                WHERE team_id IS NOT NULL AND roster_status = 'active'
+                FROM players
+                WHERE team_id IS NOT NULL AND roster_status = 'rostered'
                 GROUP BY team_id
             """
             
-            response = execute_sql(sql)
+            # Execute on league database
+            response = execute_sql(sql, database_name=db_name)
             
             teams = []
             if response.get('records'):
                 for record in response['records']:
+                    team_id_value = record[0]
+                    if team_id_value and not team_id_value.get('isNull'):
+                        team_id = team_id_value.get('stringValue')
+                    else:
+                        continue
+                    
+                    roster_count = 0
+                    if record[1] and not record[1].get('isNull'):
+                        roster_count = record[1].get('longValue', 0)
+                    
+                    total_salary = 0.0
+                    if record[2] and not record[2].get('isNull'):
+                        total_salary = record[2].get('doubleValue', 0.0)
+                    
                     team = {
-                        'team_id': record[0].get('stringValue') if record[0] and not record[0].get('isNull') else None,
-                        'roster_count': record[1].get('longValue') if record[1] and not record[1].get('isNull') else 0,
-                        'total_salary': record[2].get('doubleValue') if record[2] and not record[2].get('isNull') else 0.0,
+                        'team_id': team_id,
+                        'roster_count': roster_count,
+                        'total_salary': total_salary,
                         
                         # TODO: These will come from actual MLB stats aggregation
+                        # For now, using placeholder values
                         'stats': {
                             # Hitting stats
-                            'R': 0, 'HR': 0, 'RBI': 0, 'SB': 0, 
-                            'AVG': 0.000, 'OBP': 0.000, 'SLG': 0.000, 'OPS': 0.000,
-                            'AB': 0, 'H': 0, 'BB': 0, 'SO': 0,
+                            'R': roster_count * 50,      # Placeholder: ~50 runs per player
+                            'HR': roster_count * 15,     # Placeholder: ~15 HRs per player
+                            'RBI': roster_count * 45,    # Placeholder: ~45 RBIs per player
+                            'SB': roster_count * 8,      # Placeholder: ~8 SBs per player
+                            'AVG': 0.275,                # Placeholder batting average
+                            'OBP': 0.340,                # Placeholder OBP
+                            'SLG': 0.450,                # Placeholder SLG
+                            'OPS': 0.790,                # Placeholder OPS
+                            'AB': roster_count * 400,    # Placeholder ABs
+                            'H': roster_count * 110,     # Placeholder hits
+                            'BB': roster_count * 35,     # Placeholder walks
+                            'SO': roster_count * 85,     # Placeholder strikeouts
                             
                             # Pitching stats  
-                            'W': 0, 'L': 0, 'SV': 0, 'QS': 0,
-                            'ERA': 0.00, 'WHIP': 0.00, 'SO_P': 0,
-                            'IP': 0.0, 'ER': 0, 'H_A': 0, 'BB_A': 0
+                            'W': roster_count * 2,       # Placeholder wins
+                            'L': roster_count * 2,       # Placeholder losses
+                            'SV': roster_count * 5,      # Placeholder saves
+                            'QS': roster_count * 8,      # Placeholder quality starts
+                            'ERA': 3.50,                 # Placeholder ERA
+                            'WHIP': 1.25,                # Placeholder WHIP
+                            'SO_P': roster_count * 120,  # Placeholder pitcher Ks
+                            'IP': roster_count * 80.0,   # Placeholder innings
+                            'ER': roster_count * 25,     # Placeholder earned runs
+                            'H_A': roster_count * 75,    # Placeholder hits allowed
+                            'BB_A': roster_count * 25    # Placeholder walks allowed
                         }
                     }
                     teams.append(team)
+            
+            # If no teams with players, get all teams from teams table
+            if not teams:
+                teams_sql = """
+                    SELECT team_id, team_name, manager_name
+                    FROM teams
+                    WHERE is_active = true
+                """
+                
+                teams_response = execute_sql(teams_sql, database_name=db_name)
+                
+                if teams_response.get('records'):
+                    for record in teams_response['records']:
+                        team_id_value = record[0]
+                        if team_id_value and not team_id_value.get('isNull'):
+                            team_id = team_id_value.get('stringValue')
+                        else:
+                            continue
+                        
+                        team_name = ''
+                        if record[1] and not record[1].get('isNull'):
+                            team_name = record[1].get('stringValue', '')
+                        
+                        manager_name = ''
+                        if record[2] and not record[2].get('isNull'):
+                            manager_name = record[2].get('stringValue', '')
+                        
+                        team = {
+                            'team_id': team_id,
+                            'team_name': team_name,
+                            'manager_name': manager_name,
+                            'roster_count': 0,
+                            'total_salary': 0.0,
+                            'stats': {
+                                # Empty stats for teams with no players
+                                'R': 0, 'HR': 0, 'RBI': 0, 'SB': 0, 
+                                'AVG': 0.000, 'OBP': 0.000, 'SLG': 0.000, 'OPS': 0.000,
+                                'AB': 0, 'H': 0, 'BB': 0, 'SO': 0,
+                                'W': 0, 'L': 0, 'SV': 0, 'QS': 0,
+                                'ERA': 0.00, 'WHIP': 0.00, 'SO_P': 0,
+                                'IP': 0.0, 'ER': 0, 'H_A': 0, 'BB_A': 0
+                            }
+                        }
+                        teams.append(team)
             
             return teams
             
@@ -153,7 +254,6 @@ class LeagueStandingsService:
                 # Handle ties - teams with same value get same rank, next rank skips
                 current_rank = 1
                 previous_value = None
-                teams_at_rank = 0
                 
                 for i, team in enumerate(sorted_teams):
                     stat_value = team['stats'].get(category, 0)
@@ -287,12 +387,11 @@ class LeagueStandingsService:
         This is the primary entry point for getting standings for any league.
         """
         try:
-            # Get league configuration
+            # Get league configuration from main database
             config = LeagueStandingsService.get_league_config(league_id)
             scoring_system = config['scoring_system']
             
             # Parse scoring categories from JSON string
-            import json
             try:
                 scoring_categories = json.loads(config['scoring_categories'])
             except:
@@ -311,12 +410,12 @@ class LeagueStandingsService:
                         {'category': 'SV', 'weight': 5},
                         {'category': 'ERA', 'weight': -1},
                         {'category': 'WHIP', 'weight': -1},
-                        {'category': 'SO', 'weight': 1},
+                        {'category': 'SO_P', 'weight': 1},
                         {'category': 'QS', 'weight': 3}
                     ]
                 }
             
-            # Get team stats
+            # Get team stats from league database
             teams = LeagueStandingsService.get_team_stats(league_id)
             
             if not teams:
