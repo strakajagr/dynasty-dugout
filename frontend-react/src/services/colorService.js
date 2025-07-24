@@ -16,10 +16,10 @@ export const dynastyColors = {
   goldLight: 'rgba(234, 179, 8, 0.1)',
   
   // Neutral colors
-  dark: '#111827',
-  darkLighter: '#1f2937',
-  gray: '#374151',
-  lightGray: '#6b7280',
+  dark: '#272727ff',
+  darkLighter: '#363637ff',
+  gray: '#4b4b4cff',
+  lightGray: '#767676ff',
   white: '#ffffff',
   black: '#000000',
   

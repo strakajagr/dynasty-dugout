@@ -183,7 +183,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
 
   return (
     <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-900 rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto border border-yellow-500/20">
+      <div className="bg-zinc-900 rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto border border-yellow-500/20">
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-gray-700">
           <div className="flex items-center space-x-3">
@@ -244,7 +244,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
                     name="email"
                     value={formData.email}
                     onChange={handleInputChange}
-                    className="w-full pl-10 pr-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
+                    className="w-full pl-10 pr-4 py-3 bg-zinc-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
                     required
                   />
                 </div>
@@ -258,7 +258,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
                     name="password"
                     value={formData.password}
                     onChange={handleInputChange}
-                    className="w-full pl-10 pr-12 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
+                    className="w-full pl-10 pr-12 py-3 bg-zinc-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
                     required
                   />
                   <button
@@ -300,7 +300,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
                       name="firstName"
                       value={formData.firstName}
                       onChange={handleInputChange}
-                      className="w-full pl-10 pr-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
+                      className="w-full pl-10 pr-4 py-3 bg-zinc-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
                       required
                     />
                   </div>
@@ -312,7 +312,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
                     name="lastName"
                     value={formData.lastName}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
+                    className="w-full px-4 py-3 bg-zinc-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
                     required
                   />
                 </div>
@@ -327,7 +327,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
                     name="email"
                     value={formData.email}
                     onChange={handleInputChange}
-                    className="w-full pl-10 pr-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
+                    className="w-full pl-10 pr-4 py-3 bg-zinc-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
                     required
                   />
                 </div>
@@ -341,7 +341,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
                     name="favoriteTeam"
                     value={formData.favoriteTeam}
                     onChange={handleInputChange}
-                    className="w-full pl-10 pr-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
+                    className="w-full pl-10 pr-4 py-3 bg-zinc-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
                     required
                   >
                     <option value="">Select your favorite team</option>
@@ -361,7 +361,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
                     name="password"
                     value={formData.password}
                     onChange={handleInputChange}
-                    className="w-full pl-10 pr-12 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
+                    className="w-full pl-10 pr-12 py-3 bg-zinc-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
                     required
                   />
                   <button
@@ -381,7 +381,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
                   name="confirmPassword"
                   value={formData.confirmPassword}
                   onChange={handleInputChange}
-                  className="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
+                  className="w-full px-4 py-3 bg-zinc-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
                   required
                 />
               </div>
@@ -411,7 +411,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
                   name="verificationCode"
                   value={formData.verificationCode}
                   onChange={handleInputChange}
-                  className="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 text-center text-lg tracking-widest"
+                  className="w-full px-4 py-3 bg-zinc-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 text-center text-lg tracking-widest"
                   placeholder="000000"
                   maxLength="6"
                   required
@@ -455,7 +455,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
                         name="email"
                         value={formData.email}
                         onChange={handleInputChange}
-                        className="w-full pl-10 pr-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
+                        className="w-full pl-10 pr-4 py-3 bg-zinc-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
                         required
                       />
                     </div>
@@ -478,7 +478,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
                       name="resetCode"
                       value={formData.resetCode}
                       onChange={handleInputChange}
-                      className="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 text-center text-lg tracking-widest"
+                      className="w-full px-4 py-3 bg-zinc-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 text-center text-lg tracking-widest"
                       placeholder="000000"
                       maxLength="6"
                       required
@@ -494,7 +494,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
                         name="password"
                         value={formData.password}
                         onChange={handleInputChange}
-                        className="w-full pl-10 pr-12 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
+                        className="w-full pl-10 pr-12 py-3 bg-zinc-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
                         required
                       />
                       <button
@@ -514,7 +514,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
                       name="confirmPassword"
                       value={formData.confirmPassword}
                       onChange={handleInputChange}
-                      className="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
+                      className="w-full px-4 py-3 bg-zinc-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
                       required
                     />
                   </div>

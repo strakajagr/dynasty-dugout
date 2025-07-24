@@ -152,7 +152,7 @@ const CreateLeague = () => {
                   type="text"
                   value={formData.league_name}
                   onChange={(e) => handleInputChange('league_name', e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="w-full px-4 py-3 bg-zinc-800 border border-gray-700 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
                   placeholder="Enter your league name"
                   required
                 />
@@ -165,7 +165,7 @@ const CreateLeague = () => {
                 <select
                   value={formData.max_teams}
                   onChange={(e) => handleInputChange('max_teams', parseInt(e.target.value))}
-                  className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="w-full px-4 py-3 bg-zinc-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
                 >
                   {[8, 10, 12, 14, 16, 18, 20].map(num => (
                     <option key={num} value={num}>{num} teams</option>
@@ -180,7 +180,7 @@ const CreateLeague = () => {
                 <select
                   value={formData.player_pool}
                   onChange={(e) => handleInputChange('player_pool', e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="w-full px-4 py-3 bg-zinc-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
                 >
                   <option value="all_mlb">All MLB Players</option>
                   <option value="american_national">AL & NL Only</option>
@@ -211,7 +211,7 @@ const CreateLeague = () => {
                 <select
                   value={formData.scoring_system}
                   onChange={(e) => handleInputChange('scoring_system', e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
+                  className="w-full px-4 py-3 bg-zinc-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent"
                 >
                   <option value="rotisserie_ytd">Rotisserie (Year-to-Date)</option>
                   <option value="points_h2h">Head-to-Head Points</option>
@@ -299,7 +299,7 @@ const CreateLeague = () => {
                     type="number"
                     value={formData.max_players_total}
                     onChange={(e) => handleInputChange('max_players_total', parseInt(e.target.value))}
-                    className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                    className="w-full px-4 py-2 bg-zinc-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
                     min="15"
                     max="40"
                   />
@@ -313,7 +313,7 @@ const CreateLeague = () => {
                     type="number"
                     value={formData.min_hitters}
                     onChange={(e) => handleInputChange('min_hitters', parseInt(e.target.value))}
-                    className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                    className="w-full px-4 py-2 bg-zinc-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
                     min="8"
                     max="25"
                   />
@@ -327,7 +327,7 @@ const CreateLeague = () => {
                     type="number"
                     value={formData.max_pitchers}
                     onChange={(e) => handleInputChange('max_pitchers', parseInt(e.target.value))}
-                    className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                    className="w-full px-4 py-2 bg-zinc-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
                     min="5"
                     max="15"
                   />
@@ -341,7 +341,7 @@ const CreateLeague = () => {
                     type="number"
                     value={formData.min_pitchers}
                     onChange={(e) => handleInputChange('min_pitchers', parseInt(e.target.value))}
-                    className="w-full px-4 py-2 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                    className="w-full px-4 py-2 bg-zinc-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
                     min="5"
                     max="15"
                   />
@@ -362,7 +362,7 @@ const CreateLeague = () => {
                         type="number"
                         value={reqs.min}
                         onChange={(e) => handlePositionChange(position, 'min', e.target.value)}
-                        className="w-full px-3 py-1 bg-gray-800 border border-gray-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                        className="w-full px-3 py-1 bg-zinc-800 border border-gray-700 rounded text-white text-sm focus:outline-none focus:ring-2 focus:ring-yellow-500"
                         min="0"
                         max="5"
                       />
@@ -409,7 +409,7 @@ const CreateLeague = () => {
                       type="number"
                       value={formData.salary_cap}
                       onChange={(e) => handleInputChange('salary_cap', parseFloat(e.target.value))}
-                      className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                      className="w-full px-4 py-3 bg-zinc-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
                       min="100"
                       max="1000"
                     />
@@ -423,7 +423,7 @@ const CreateLeague = () => {
                       type="number"
                       value={formData.salary_floor}
                       onChange={(e) => handleInputChange('salary_floor', parseFloat(e.target.value))}
-                      className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                      className="w-full px-4 py-3 bg-zinc-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
                       min="0"
                       max="500"
                     />
@@ -452,7 +452,7 @@ const CreateLeague = () => {
                   <select
                     value={formData.max_contract_years}
                     onChange={(e) => handleInputChange('max_contract_years', parseInt(e.target.value))}
-                    className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                    className="w-full px-4 py-3 bg-zinc-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
                   >
                     {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(years => (
                       <option key={years} value={years}>{years} year{years > 1 ? 's' : ''}</option>
@@ -483,7 +483,7 @@ const CreateLeague = () => {
                 <select
                   value={formData.transaction_deadline}
                   onChange={(e) => handleInputChange('transaction_deadline', e.target.value)}
-                  className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                  className="w-full px-4 py-3 bg-zinc-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
                 >
                   <option value="none">No deadline</option>
                   <option value="monday">Monday</option>
@@ -518,7 +518,7 @@ const CreateLeague = () => {
                     type="date"
                     value={formData.season_start_date}
                     onChange={(e) => handleInputChange('season_start_date', e.target.value)}
-                    className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                    className="w-full px-4 py-3 bg-zinc-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
                   />
                 </div>
 
@@ -530,7 +530,7 @@ const CreateLeague = () => {
                     type="date"
                     value={formData.season_end_date}
                     onChange={(e) => handleInputChange('season_end_date', e.target.value)}
-                    className="w-full px-4 py-3 bg-gray-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                    className="w-full px-4 py-3 bg-zinc-800 border border-gray-700 rounded-lg text-white focus:outline-none focus:ring-2 focus:ring-yellow-500"
                   />
                 </div>
               </div>
@@ -546,7 +546,7 @@ const CreateLeague = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-gray-900">
       {/* Header */}
-      <div className="bg-gray-900/50 backdrop-blur-sm border-b border-gray-700">
+      <div className="bg-zinc-900/50 backdrop-blur-sm border-b border-gray-700">
         <div className="max-w-4xl mx-auto px-6 py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-4">
@@ -557,7 +557,7 @@ const CreateLeague = () => {
                 <ChevronLeft className="w-5 h-5" />
                 <span>Back to Dashboard</span>
               </button>
-              <div className="w-px h-6 bg-gray-600"></div>
+              <div className="w-px h-6 bg-zinc-600"></div>
               <h1 className="text-xl font-bold text-white flex items-center space-x-2">
                 <Crown className="w-6 h-6 text-yellow-400" />
                 <span>Create New League</span>
@@ -581,7 +581,7 @@ const CreateLeague = () => {
                     ? 'bg-yellow-500 border-yellow-500 text-white' 
                     : step.id < currentStep 
                       ? 'bg-green-500 border-green-500 text-white'
-                      : 'bg-gray-700 border-gray-600 text-gray-400'
+                      : 'bg-zinc-700 border-gray-600 text-gray-400'
                 }`}>
                   {step.id < currentStep ? (
                     <Check className="w-5 h-5" />
@@ -599,7 +599,7 @@ const CreateLeague = () => {
               </div>
               {index < steps.length - 1 && (
                 <div className={`flex-1 h-px mx-4 ${
-                  step.id < currentStep ? 'bg-green-500' : 'bg-gray-600'
+                  step.id < currentStep ? 'bg-green-500' : 'bg-zinc-600'
                 }`}></div>
               )}
             </div>
@@ -607,7 +607,7 @@ const CreateLeague = () => {
         </div>
 
         {/* Step Content */}
-        <div className="bg-gray-800/50 backdrop-blur-sm rounded-2xl border border-gray-700 p-8">
+        <div className="bg-zinc-800/50 backdrop-blur-sm rounded-2xl border border-gray-700 p-8">
           {renderStepContent()}
         </div>
 
@@ -618,8 +618,8 @@ const CreateLeague = () => {
             disabled={currentStep === 1}
             className={`flex items-center space-x-2 px-6 py-3 rounded-lg font-medium transition-all ${
               currentStep === 1
-                ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                : 'bg-gray-700 text-white hover:bg-gray-600'
+                ? 'bg-zinc-700 text-gray-500 cursor-not-allowed'
+                : 'bg-zinc-700 text-white hover:bg-zinc-600'
             }`}
           >
             <ChevronLeft className="w-4 h-4" />
@@ -632,7 +632,7 @@ const CreateLeague = () => {
               disabled={isCreating || !formData.league_name}
               className={`flex items-center space-x-2 px-8 py-3 rounded-lg font-medium transition-all ${
                 isCreating || !formData.league_name
-                  ? 'bg-gray-600 text-gray-400 cursor-not-allowed'
+                  ? 'bg-zinc-600 text-gray-400 cursor-not-allowed'
                   : 'bg-gradient-to-r from-yellow-500 to-yellow-600 text-white hover:from-yellow-600 hover:to-yellow-700'
               }`}
             >
