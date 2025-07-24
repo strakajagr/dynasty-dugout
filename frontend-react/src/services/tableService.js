@@ -171,7 +171,7 @@ export const DynastyTable = ({
             {sortedData.map((row, index) => (
               <tr 
                 key={row.id || row.season_year || index}
-                className={`${index % 2 === 0 ? dynastyUtils.getCardClasses('default') : 'bg-gray-800/50'} hover:bg-gray-700 transition-colors border-b ${dynastyTheme.classes.borders.gray}`}
+                className={`${index % 2 === 0 ? dynastyUtils.getCardClasses('default') : 'bg-zinc-800/50'} hover:bg-zinc-700 transition-colors border-b ${dynastyTheme.classes.borders.gray}`}
               >
                 {columns.map((column) => (
                   <td

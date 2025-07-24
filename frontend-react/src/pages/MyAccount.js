@@ -267,7 +267,7 @@ const MyAccount = () => {
   return (
     <div className="dynasty-page-container" style={{ 
       minHeight: '100vh',
-      background: 'linear-gradient(135deg, #111827 0%, #374151 100%)',
+      background: 'linear-gradient(135deg, #272727ff 0%, #363637ff 100%)',
       padding: '2rem'
     }}>
       <div className="dynasty-content-container" style={{ maxWidth: '800px', margin: '0 auto' }}>
