@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { playersAPI } from '../services/apiService';
-import { dynastyUtils, dynastyComponents, dynastyTheme, dynastyClasses } from '../services/colorService';
+import { dynastyTheme } from '../services/colorService';
 import { DynastyTable, createCareerStatsColumns, calculateCareerTotals, createGameLogsColumns } from '../services/tableService';
 
 const PlayerProfile = () => {
@@ -130,7 +130,7 @@ const PlayerProfile = () => {
   };
 
   const getHotColdIcon = () => {
-    if (!hotColdAnalysis) return <Activity className={`w-5 h-5 ${dynastyUtils.getIconClasses('gray')}`} />;
+    if (!hotColdAnalysis) return <Activity className={`w-5 h-5 ${dynastyTheme.classes.text.neutral}`} />;
     
     switch (hotColdAnalysis.status) {
       case 'hot':
@@ -138,12 +138,12 @@ const PlayerProfile = () => {
       case 'cold':
         return <Snowflake className="w-5 h-5 text-blue-400" />;
       default:
-        return <Activity className={`w-5 h-5 ${dynastyUtils.getIconClasses('gray')}`} />;
+        return <Activity className={`w-5 h-5 ${dynastyTheme.classes.text.neutral}`} />;
     }
   };
 
   const getHotColdColor = () => {
-    if (!hotColdAnalysis) return dynastyClasses.text.gray;
+    if (!hotColdAnalysis) return dynastyTheme.classes.text.neutral;
     
     switch (hotColdAnalysis.status) {
       case 'hot':
@@ -151,7 +151,7 @@ const PlayerProfile = () => {
       case 'cold':
         return 'text-blue-400';
       default:
-        return dynastyClasses.text.gray;
+        return dynastyTheme.classes.text.neutral;
     }
   };
 
@@ -223,10 +223,10 @@ const PlayerProfile = () => {
 
   if (loading) {
     return (
-      <div className={dynastyTheme.common.pageBackground}>
+      <div className={dynastyTheme.components.page}>
         <div className="flex items-center justify-center min-h-screen">
           <div className="text-center">
-            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-dynasty-gold mx-auto mb-4"></div>
+            <div className={`animate-spin rounded-full h-12 w-12 border-b-2 ${dynastyTheme.classes.border.primary} mx-auto mb-4`}></div>
             <p className={dynastyTheme.classes.text.white}>Loading comprehensive player data...</p>
           </div>
         </div>
@@ -236,13 +236,13 @@ const PlayerProfile = () => {
 
   if (error || !player) {
     return (
-      <div className={dynastyTheme.common.pageBackground}>
+      <div className={dynastyTheme.components.page}>
         <div className="flex items-center justify-center min-h-screen">
           <div className="text-center">
-            <p className="text-dynasty-error text-xl mb-4">{error || 'Player not found'}</p>
+            <p className={`${dynastyTheme.classes.text.error} text-xl mb-4`}>{error || 'Player not found'}</p>
             <button 
               onClick={() => navigate(-1)}
-              className={dynastyUtils.getButtonClasses('primary', 'md')}
+              className={`${dynastyTheme.utils.getComponent('button', 'primary', 'md')} flex items-center`}
             >
               <ArrowLeft className="w-4 h-4 mr-2" />
               Go Back
@@ -254,28 +254,28 @@ const PlayerProfile = () => {
   }
 
   return (
-    <div className={dynastyTheme.common.pageBackground}>
+    <div className={dynastyTheme.components.page}>
       {/* Header with Hot/Cold Status */}
-      <header className={dynastyTheme.common.headerBackground}>
+      <header className={`${dynastyTheme.components.card.base} border-b ${dynastyTheme.classes.border.light}`}>
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             <div className="flex items-center">
               <button 
                 onClick={() => navigate(-1)}
-                className={dynastyUtils.getButtonClasses('secondary', 'sm')}
+                className={`${dynastyTheme.utils.getComponent('button', 'secondary', 'sm')} flex items-center`}
               >
                 <ArrowLeft className="w-4 h-4 mr-2" />
                 Back
               </button>
               <div className="flex items-center ml-4">
-                <User className={`w-8 h-8 mr-3 ${dynastyUtils.getIconClasses('primary')}`} />
+                <User className={`w-8 h-8 mr-3 ${dynastyTheme.classes.text.primary}`} />
                 <div>
                   <div className="flex items-center">
                     <h1 className={`text-2xl font-bold ${dynastyTheme.classes.text.white} mr-3`}>
                       {player.first_name} {player.last_name}
                     </h1>
                     {hotColdAnalysis && (
-                      <div className={`flex items-center px-3 py-1 rounded-full ${dynastyUtils.getCardClasses('default')} ${getHotColdColor()}`}>
+                      <div className={`flex items-center px-3 py-1 rounded-full ${dynastyTheme.components.card.base} ${getHotColdColor()}`}>
                         {getHotColdIcon()}
                         <span className="ml-1 text-sm font-medium capitalize">
                           {hotColdAnalysis.status}
@@ -286,7 +286,7 @@ const PlayerProfile = () => {
                       </div>
                     )}
                   </div>
-                  <p className={dynastyTheme.classes.text.lightGray}>
+                  <p className={dynastyTheme.classes.text.neutralLight}>
                     {player.position} • {player.mlb_team || 'Free Agent'}
                   </p>
                 </div>
@@ -301,29 +301,29 @@ const PlayerProfile = () => {
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Player Info Card */}
-        <div className={`${dynastyUtils.getCardClasses('default')} mb-8`}>
+        <div className={`${dynastyTheme.components.card.base} p-6 mb-8`}>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
             {/* Basic Info */}
             <div className="space-y-3">
               <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary}`}>Player Information</h3>
               <div className="space-y-2">
                 <div className="flex items-center">
-                  <User className={`w-4 h-4 mr-2 ${dynastyUtils.getIconClasses('primary')}`} />
-                  <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>Name:</span>
+                  <User className={`w-4 h-4 mr-2 ${dynastyTheme.classes.text.primary}`} />
+                  <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>Name:</span>
                   <span className={`${dynastyTheme.classes.text.white} ml-1 font-medium`}>
                     {player.first_name} {player.last_name}
                   </span>
                 </div>
                 <div className="flex items-center">
-                  <MapPin className={`w-4 h-4 mr-2 ${dynastyUtils.getIconClasses('primary')}`} />
-                  <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>Team:</span>
+                  <MapPin className={`w-4 h-4 mr-2 ${dynastyTheme.classes.text.primary}`} />
+                  <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>Team:</span>
                   <span className={`${dynastyTheme.classes.text.white} ml-1 font-medium`}>
                     {player.mlb_team || 'Free Agent'}
                   </span>
                 </div>
                 <div className="flex items-center">
-                  <Target className={`w-4 h-4 mr-2 ${dynastyUtils.getIconClasses('primary')}`} />
-                  <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>Position:</span>
+                  <Target className={`w-4 h-4 mr-2 ${dynastyTheme.classes.text.primary}`} />
+                  <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>Position:</span>
                   <span className={`${dynastyTheme.classes.text.white} ml-1 font-medium`}>
                     {player.position}
                   </span>
@@ -336,21 +336,21 @@ const PlayerProfile = () => {
               <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary}`}>Physical</h3>
               <div className="space-y-2">
                 <div className="flex items-center">
-                  <Activity className={`w-4 h-4 mr-2 ${dynastyUtils.getIconClasses('primary')}`} />
-                  <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>Height:</span>
+                  <Activity className={`w-4 h-4 mr-2 ${dynastyTheme.classes.text.primary}`} />
+                  <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>Height:</span>
                   <span className={`${dynastyTheme.classes.text.white} ml-1 font-medium`}>
                     {formatHeight(player.height_inches)}
                   </span>
                 </div>
                 <div className="flex items-center">
-                  <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>Weight:</span>
+                  <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>Weight:</span>
                   <span className={`${dynastyTheme.classes.text.white} ml-1 font-medium`}>
                     {player.weight_pounds || 'N/A'} lbs
                   </span>
                 </div>
                 <div className="flex items-center">
-                  <Calendar className={`w-4 h-4 mr-2 ${dynastyUtils.getIconClasses('primary')}`} />
-                  <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>Age:</span>
+                  <Calendar className={`w-4 h-4 mr-2 ${dynastyTheme.classes.text.primary}`} />
+                  <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>Age:</span>
                   <span className={`${dynastyTheme.classes.text.white} ml-1 font-medium`}>
                     {calculateAge(player.birthdate)}
                   </span>
@@ -363,14 +363,14 @@ const PlayerProfile = () => {
               <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary}`}>Status</h3>
               <div className="space-y-2">
                 <div className="flex items-center">
-                  <Activity className={`w-4 h-4 mr-2 ${dynastyUtils.getIconClasses('primary')}`} />
-                  <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>Status:</span>
-                  <span className={`ml-1 font-medium ${player.is_active ? 'text-dynasty-success' : 'text-dynasty-error'}`}>
+                  <Activity className={`w-4 h-4 mr-2 ${dynastyTheme.classes.text.primary}`} />
+                  <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>Status:</span>
+                  <span className={`ml-1 font-medium ${player.is_active ? dynastyTheme.classes.text.success : dynastyTheme.classes.text.error}`}>
                     {player.is_active ? 'Active' : 'Inactive'}
                   </span>
                 </div>
                 <div className="flex items-center">
-                  <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>Injury:</span>
+                  <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>Injury:</span>
                   <span className={`${dynastyTheme.classes.text.white} ml-1 font-medium`}>
                     {player.injury_status || 'Healthy'}
                   </span>
@@ -386,45 +386,45 @@ const PlayerProfile = () => {
                   {seasonStats.isPitcher ? (
                     <>
                       <div className="flex justify-between">
-                        <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>ERA:</span>
+                        <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>ERA:</span>
                         <span className={`${dynastyTheme.classes.text.white} font-mono`}>{seasonStats.ERA}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>WHIP:</span>
+                        <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>WHIP:</span>
                         <span className={`${dynastyTheme.classes.text.white} font-mono`}>{seasonStats.WHIP}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>W:</span>
+                        <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>W:</span>
                         <span className={`${dynastyTheme.classes.text.white} font-mono`}>{seasonStats.wins}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>SO:</span>
+                        <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>SO:</span>
                         <span className={`${dynastyTheme.classes.text.white} font-mono`}>{seasonStats.SO}</span>
                       </div>
                     </>
                   ) : (
                     <>
                       <div className="flex justify-between">
-                        <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>AVG:</span>
+                        <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>AVG:</span>
                         <span className={`${dynastyTheme.classes.text.white} font-mono`}>{seasonStats.AVG}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>HR:</span>
+                        <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>HR:</span>
                         <span className={`${dynastyTheme.classes.text.white} font-mono`}>{seasonStats.home_runs}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>RBI:</span>
+                        <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>RBI:</span>
                         <span className={`${dynastyTheme.classes.text.white} font-mono`}>{seasonStats.rbis}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>OPS:</span>
+                        <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>OPS:</span>
                         <span className={`${dynastyTheme.classes.text.white} font-mono`}>{seasonStats.OPS}</span>
                       </div>
                     </>
                   )}
                 </div>
               ) : (
-                <p className={`${dynastyTheme.classes.text.lightGray} text-sm`}>No stats available</p>
+                <p className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>No stats available</p>
               )}
             </div>
 
@@ -437,7 +437,7 @@ const PlayerProfile = () => {
               {recentPerformance && recentPerformance.aggregated_stats && recentPerformance.aggregated_stats.games > 0 ? (
                 <div className="space-y-2">
                   <div className="flex justify-between">
-                    <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>Games:</span>
+                    <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>Games:</span>
                     <span className={`${dynastyTheme.classes.text.white} font-mono`}>
                       {recentPerformance.aggregated_stats.games}
                     </span>
@@ -445,13 +445,13 @@ const PlayerProfile = () => {
                   {recentPerformance.aggregated_stats.type === 'hitting' ? (
                     <>
                       <div className="flex justify-between">
-                        <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>AVG:</span>
+                        <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>AVG:</span>
                         <span className={`${dynastyTheme.classes.text.white} font-mono`}>
                           {recentPerformance.aggregated_stats.avg.toFixed(3)}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>HR:</span>
+                        <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>HR:</span>
                         <span className={`${dynastyTheme.classes.text.white} font-mono`}>
                           {recentPerformance.aggregated_stats.home_runs}
                         </span>
@@ -460,34 +460,34 @@ const PlayerProfile = () => {
                   ) : (
                     <>
                       <div className="flex justify-between">
-                        <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>ERA:</span>
+                        <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>ERA:</span>
                         <span className={`${dynastyTheme.classes.text.white} font-mono`}>
                           {recentPerformance.aggregated_stats.era}
                         </span>
                       </div>
                       <div className="flex justify-between">
-                        <span className={`${dynastyTheme.classes.text.lightGray} text-sm`}>WHIP:</span>
+                        <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>WHIP:</span>
                         <span className={`${dynastyTheme.classes.text.white} font-mono`}>
                           {recentPerformance.aggregated_stats.whip}
                         </span>
                       </div>
                     </>
                   )}
-                  <div className={`text-xs ${dynastyClasses.text.gray} mt-2`}>
+                  <div className={`text-xs ${dynastyTheme.classes.text.neutral} mt-2`}>
                     Last {recentPerformance.period_days} days
                   </div>
                 </div>
               ) : (
-                <p className={`${dynastyTheme.classes.text.lightGray} text-sm`}>No recent games</p>
+                <p className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>No recent games</p>
               )}
             </div>
           </div>
         </div>
 
         {/* Enhanced Stats Tabs */}
-        <div className={dynastyUtils.getCardClasses('default')}>
+        <div className={`${dynastyTheme.components.card.base} p-6`}>
           {/* Tab Navigation */}
-          <div className={`border-b ${dynastyTheme.classes.borders.gray} mb-6`}>
+          <div className={`border-b ${dynastyTheme.classes.border.neutral} mb-6`}>
             <nav className="flex space-x-8">
               {[
                 { id: 'recent', label: 'Recent Performance', icon: TrendingUp },
@@ -499,10 +499,10 @@ const PlayerProfile = () => {
                 <button
                   key={id}
                   onClick={() => setActiveTab(id)}
-                  className={`py-4 px-1 border-b-2 font-medium text-sm transition-colors ${
+                  className={`py-4 px-1 border-b-2 font-medium text-sm ${dynastyTheme.classes.transition} ${
                     activeTab === id
-                      ? `${dynastyTheme.classes.borders.primary} ${dynastyTheme.classes.text.primary}`
-                      : `border-transparent ${dynastyTheme.classes.text.lightGray} hover:${dynastyTheme.classes.text.white} hover:border-gray-300`
+                      ? `${dynastyTheme.classes.border.primary} ${dynastyTheme.classes.text.primary}`
+                      : `border-transparent ${dynastyTheme.classes.text.neutralLight} hover:${dynastyTheme.classes.text.white} hover:border-neutral-300`
                   }`}
                 >
                   <Icon className="w-4 h-4 inline mr-2" />
@@ -538,7 +538,7 @@ const PlayerProfile = () => {
                         ].map(({ label, value }) => (
                           <div key={label} className="text-center">
                             <div className={`${dynastyTheme.classes.text.primary} text-2xl font-bold`}>{value}</div>
-                            <div className={`${dynastyTheme.classes.text.lightGray} text-sm`}>{label}</div>
+                            <div className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>{label}</div>
                           </div>
                         ))
                       ) : (
@@ -554,7 +554,7 @@ const PlayerProfile = () => {
                         ].map(({ label, value }) => (
                           <div key={label} className="text-center">
                             <div className={`${dynastyTheme.classes.text.primary} text-2xl font-bold`}>{value}</div>
-                            <div className={`${dynastyTheme.classes.text.lightGray} text-sm`}>{label}</div>
+                            <div className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>{label}</div>
                           </div>
                         ))
                       )}
@@ -575,7 +575,7 @@ const PlayerProfile = () => {
                     )}
                   </div>
                 ) : (
-                  <p className={dynastyTheme.classes.text.lightGray}>No recent performance data available</p>
+                  <p className={dynastyTheme.classes.text.neutralLight}>No recent performance data available</p>
                 )}
               </div>
             )}
@@ -596,7 +596,7 @@ const PlayerProfile = () => {
                     stickyHeader={true}
                   />
                 ) : (
-                  <p className={dynastyTheme.classes.text.lightGray}>No game logs available</p>
+                  <p className={dynastyTheme.classes.text.neutralLight}>No game logs available</p>
                 )}
               </div>
             )}
@@ -616,7 +616,7 @@ const PlayerProfile = () => {
                     stickyHeader={true}
                   />
                 ) : (
-                  <p className={dynastyTheme.classes.text.lightGray}>No career statistics available</p>
+                  <p className={dynastyTheme.classes.text.neutralLight}>No career statistics available</p>
                 )}
               </div>
             )}
@@ -628,14 +628,14 @@ const PlayerProfile = () => {
                   <div className="space-y-6">
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                       {/* Hot/Cold Status */}
-                      <div className={`p-6 rounded-lg ${dynastyUtils.getCardClasses('default')}`}>
+                      <div className={`p-6 rounded-lg ${dynastyTheme.components.card.base}`}>
                         <div className="flex items-center mb-4">
                           {getHotColdIcon()}
                           <h4 className={`text-lg font-semibold ml-2 ${getHotColdColor()}`}>
                             Player is {hotColdAnalysis.status.toUpperCase()}
                           </h4>
                         </div>
-                        <p className={`${dynastyTheme.classes.text.lightGray} mb-2`}>
+                        <p className={`${dynastyTheme.classes.text.neutralLight} mb-2`}>
                           Confidence: {hotColdAnalysis.confidence}%
                         </p>
                         <p className={`${dynastyTheme.classes.text.white} text-sm`}>
@@ -644,7 +644,7 @@ const PlayerProfile = () => {
                       </div>
 
                       {/* Performance Comparison */}
-                      <div className={`p-6 ${dynastyUtils.getCardClasses('default')} rounded-lg`}>
+                      <div className={`p-6 ${dynastyTheme.components.card.base} rounded-lg`}>
                         <h4 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary} mb-4`}>
                           Recent vs Season
                         </h4>
@@ -652,15 +652,15 @@ const PlayerProfile = () => {
                           {hotColdAnalysis.type === 'hitting' ? (
                             <>
                               <div className="flex justify-between">
-                                <span className={dynastyTheme.classes.text.lightGray}>Recent AVG:</span>
+                                <span className={dynastyTheme.classes.text.neutralLight}>Recent AVG:</span>
                                 <span className={dynastyTheme.classes.text.white}>{hotColdAnalysis.recent_avg}</span>
                               </div>
                               <div className="flex justify-between">
-                                <span className={dynastyTheme.classes.text.lightGray}>Season AVG:</span>
+                                <span className={dynastyTheme.classes.text.neutralLight}>Season AVG:</span>
                                 <span className={dynastyTheme.classes.text.white}>{hotColdAnalysis.season_avg}</span>
                               </div>
                               <div className="flex justify-between">
-                                <span className={dynastyTheme.classes.text.lightGray}>Difference:</span>
+                                <span className={dynastyTheme.classes.text.neutralLight}>Difference:</span>
                                 <span className={`${hotColdAnalysis.avg_change > 0 ? 'text-green-400' : 'text-red-400'}`}>
                                   {hotColdAnalysis.avg_change > 0 ? '+' : ''}{hotColdAnalysis.avg_change}
                                 </span>
@@ -669,15 +669,15 @@ const PlayerProfile = () => {
                           ) : (
                             <>
                               <div className="flex justify-between">
-                                <span className={dynastyTheme.classes.text.lightGray}>Recent ERA:</span>
+                                <span className={dynastyTheme.classes.text.neutralLight}>Recent ERA:</span>
                                 <span className={dynastyTheme.classes.text.white}>{hotColdAnalysis.recent_era}</span>
                               </div>
                               <div className="flex justify-between">
-                                <span className={dynastyTheme.classes.text.lightGray}>Season ERA:</span>
+                                <span className={dynastyTheme.classes.text.neutralLight}>Season ERA:</span>
                                 <span className={dynastyTheme.classes.text.white}>{hotColdAnalysis.season_era}</span>
                               </div>
                               <div className="flex justify-between">
-                                <span className={dynastyTheme.classes.text.lightGray}>Difference:</span>
+                                <span className={dynastyTheme.classes.text.neutralLight}>Difference:</span>
                                 <span className={`${hotColdAnalysis.era_change > 0 ? 'text-green-400' : 'text-red-400'}`}>
                                   {hotColdAnalysis.era_change > 0 ? '+' : ''}{hotColdAnalysis.era_change}
                                 </span>
@@ -689,7 +689,7 @@ const PlayerProfile = () => {
                     </div>
                   </div>
                 ) : (
-                  <p className={dynastyTheme.classes.text.lightGray}>Loading advanced analysis...</p>
+                  <p className={dynastyTheme.classes.text.neutralLight}>Loading advanced analysis...</p>
                 )}
               </div>
             )}
@@ -712,7 +712,7 @@ const PlayerProfile = () => {
                       ].map(({ label, value }) => (
                         <div key={label} className="text-center">
                           <div className={`${dynastyTheme.classes.text.primary} text-3xl font-bold mb-2`}>{value}</div>
-                          <div className={`${dynastyTheme.classes.text.lightGray} text-sm`}>{label}</div>
+                          <div className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>{label}</div>
                         </div>
                       ))
                     ) : (
@@ -728,13 +728,13 @@ const PlayerProfile = () => {
                       ].map(({ label, value }) => (
                         <div key={label} className="text-center">
                           <div className={`${dynastyTheme.classes.text.primary} text-3xl font-bold mb-2`}>{value}</div>
-                          <div className={`${dynastyTheme.classes.text.lightGray} text-sm`}>{label}</div>
+                          <div className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>{label}</div>
                         </div>
                       ))
                     )}
                   </div>
                 ) : (
-                  <p className={dynastyTheme.classes.text.lightGray}>No season statistics available</p>
+                  <p className={dynastyTheme.classes.text.neutralLight}>No season statistics available</p>
                 )}
               </div>
             )}

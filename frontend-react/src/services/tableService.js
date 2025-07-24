@@ -2,7 +2,7 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
-import { dynastyTheme, dynastyUtils } from './colorService';
+import { dynastyTheme } from './colorService';
 
 /**
  * Reusable Sortable & Resizable Table Component
@@ -90,13 +90,13 @@ export const DynastyTable = ({
   // Get sort icon for column
   const getSortIcon = (columnKey) => {
     if (!sortConfig || sortConfig.key !== columnKey) {
-      return <ChevronsUpDown className="w-3 h-3 text-gray-400 opacity-0 group-hover:opacity-100 transition-opacity" />;
+      return <ChevronsUpDown className={`w-3 h-3 ${dynastyTheme.classes.text.neutralLighter} opacity-0 group-hover:opacity-100 ${dynastyTheme.classes.transition}`} />;
     }
     
     return sortConfig.direction === 'asc' ? (
-      <ChevronUp className="w-3 h-3 text-dynasty-gold" />
+      <ChevronUp className={`w-3 h-3 ${dynastyTheme.classes.text.primary}`} />
     ) : (
-      <ChevronDown className="w-3 h-3 text-dynasty-gold" />
+      <ChevronDown className={`w-3 h-3 ${dynastyTheme.classes.text.primary}`} />
     );
   };
 
@@ -128,23 +128,23 @@ export const DynastyTable = ({
     <div className={`dynasty-table-wrapper ${className}`}>
       {/* Table Title */}
       {title && (
-        <div className={`${dynastyTheme.common.headerBackground} ${dynastyTheme.classes.text.primary} text-center py-2 px-4 font-bold text-sm`}>
+        <div className={`${dynastyTheme.components.card.base} ${dynastyTheme.classes.text.primary} text-center py-2 px-4 font-bold text-sm`}>
           {title}
         </div>
       )}
       
       <div 
-        className={`overflow-auto border ${dynastyTheme.classes.borders.gray}`}
+        className={`overflow-auto border ${dynastyTheme.classes.border.neutral}`}
         style={{ maxHeight }}
       >
         <table ref={tableRef} className="w-full table-fixed text-xs">
           {/* Header */}
-          <thead className={`${stickyHeader ? 'sticky top-0' : ''} ${dynastyTheme.common.headerBackground} z-10`}>
+          <thead className={`${stickyHeader ? 'sticky top-0' : ''} ${dynastyTheme.components.card.base} z-10`}>
             <tr>
               {columns.map((column) => (
                 <th
                   key={column.key}
-                  className={`relative text-center py-2 px-1 ${dynastyTheme.classes.text.primary} font-bold text-xs border-r ${dynastyTheme.classes.borders.primary} cursor-pointer hover:bg-black/30 transition-colors select-none group`}
+                  className={`relative text-center py-2 px-1 ${dynastyTheme.classes.text.primary} font-bold text-xs border-r ${dynastyTheme.classes.border.primary} cursor-pointer hover:bg-black/30 ${dynastyTheme.classes.transition} select-none group`}
                   style={{ width: columnWidths[column.key] || column.width || 80 }}
                   onClick={() => column.sortable !== false && handleSort(column.key)}
                 >
@@ -155,10 +155,10 @@ export const DynastyTable = ({
                   
                   {/* Resize handle */}
                   <div
-                    className="absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-dynasty-gold transition-all z-20"
+                    className={`absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-yellow-400 ${dynastyTheme.classes.transition} z-20`}
                     onMouseDown={(e) => handleMouseDown(e, column.key)}
                     style={{ 
-                      background: isResizing ? '#eab308' : 'transparent'
+                      background: isResizing ? dynastyTheme.tokens.colors.primary : 'transparent'
                     }}
                   />
                 </th>
@@ -167,16 +167,16 @@ export const DynastyTable = ({
           </thead>
 
           {/* Body */}
-          <tbody className={dynastyUtils.getCardClasses('default')}>
+          <tbody className={dynastyTheme.components.card.base}>
             {sortedData.map((row, index) => (
               <tr 
                 key={row.id || row.season_year || index}
-                className={`${index % 2 === 0 ? dynastyUtils.getCardClasses('default') : 'bg-gray-800/50'} hover:bg-gray-700 transition-colors border-b ${dynastyTheme.classes.borders.gray}`}
+                className={`${index % 2 === 0 ? dynastyTheme.components.card.base : 'bg-neutral-800/50'} hover:bg-neutral-700 ${dynastyTheme.classes.transition} border-b ${dynastyTheme.classes.border.neutral}`}
               >
                 {columns.map((column) => (
                   <td
                     key={column.key}
-                    className={`py-1 px-2 text-center ${dynastyTheme.classes.text.white} text-xs border-r ${dynastyTheme.classes.borders.gray} ${column.className || ''}`}
+                    className={`py-1 px-2 text-center ${dynastyTheme.classes.text.white} text-xs border-r ${dynastyTheme.classes.border.neutral} ${column.className || ''}`}
                     style={{ width: columnWidths[column.key] || column.width || 80 }}
                   >
                     <div className="truncate">
@@ -189,11 +189,11 @@ export const DynastyTable = ({
             
             {/* Totals Row */}
             {showTotals && totalsRow && (
-              <tr className={`${dynastyTheme.common.headerBackground} ${dynastyTheme.classes.text.primary} font-bold border-t-2 ${dynastyTheme.classes.borders.primary}`}>
+              <tr className={`${dynastyTheme.components.card.base} ${dynastyTheme.classes.text.primary} font-bold border-t-2 ${dynastyTheme.classes.border.primary}`}>
                 {columns.map((column) => (
                   <td
                     key={column.key}
-                    className={`py-1 px-2 text-center text-xs border-r ${dynastyTheme.classes.borders.primary}`}
+                    className={`py-1 px-2 text-center text-xs border-r ${dynastyTheme.classes.border.primary}`}
                     style={{ width: columnWidths[column.key] || column.width || 80 }}
                   >
                     <div className="truncate">
@@ -208,15 +208,15 @@ export const DynastyTable = ({
 
         {/* Empty state */}
         {sortedData.length === 0 && (
-          <div className={`text-center py-8 ${dynastyUtils.getCardClasses('default')}`}>
-            <p className={dynastyTheme.classes.text.lightGray}>No data available</p>
+          <div className={`text-center py-8 ${dynastyTheme.components.card.base}`}>
+            <p className={dynastyTheme.classes.text.neutralLight}>No data available</p>
           </div>
         )}
       </div>
 
       {/* Sort indicator */}
       {sortConfig && (
-        <div className={`mt-1 text-xs ${dynastyTheme.classes.text.lightGray}`}>
+        <div className={`mt-1 text-xs ${dynastyTheme.classes.text.neutralLight}`}>
           Sorted by {columns.find(c => c.key === sortConfig.key)?.title} ({sortConfig.direction === 'asc' ? '↑' : '↓'})
         </div>
       )}

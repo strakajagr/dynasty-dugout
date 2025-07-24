@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { X, Eye, EyeOff, Crown, Mail, Lock, User, Heart } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { authAPI } from '../services/apiService';
+import { dynastyTheme } from '../services/colorService';
 
 const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -149,7 +150,6 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
     try {
       await authAPI.forgotPassword(formData.email);
       setMessage('Reset code sent to your email.');
-      // Stay on reset tab for code entry
     } catch (error) {
       setError(error.response?.data?.detail || 'Failed to send reset code');
     }
@@ -181,33 +181,43 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
 
   if (!isOpen) return null;
 
+  // Modal styles using existing design system
+  const modalOverlay = 'fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4';
+  const modalContainer = `${dynastyTheme.components.card.base} w-full max-w-md max-h-[90vh] overflow-y-auto border ${dynastyTheme.classes.border.light}`;
+  const tabButton = `flex-1 py-3 px-4 text-sm font-medium capitalize ${dynastyTheme.classes.transition}`;
+  const inputWithIcon = `${dynastyTheme.components.input} pl-10 pr-4 py-3`;
+  const inputWithIconRight = `${dynastyTheme.components.input} pl-10 pr-12 py-3`;
+  const inputBasic = `${dynastyTheme.components.input} px-4 py-3`;
+  const iconLeft = `absolute left-3 top-3 w-5 h-5 ${dynastyTheme.classes.text.neutralLighter}`;
+  const iconRight = `absolute right-3 top-3 ${dynastyTheme.classes.text.neutralLighter} hover:${dynastyTheme.classes.text.white}`;
+
   return (
-    <div className="fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-gray-900 rounded-2xl w-full max-w-md max-h-[90vh] overflow-y-auto border border-yellow-500/20">
+    <div className={modalOverlay}>
+      <div className={modalContainer}>
         {/* Header */}
-        <div className="flex items-center justify-between p-6 border-b border-gray-700">
+        <div className={`flex items-center justify-between p-6 border-b ${dynastyTheme.classes.border.neutral}`}>
           <div className="flex items-center space-x-3">
-            <Crown className="w-6 h-6 text-yellow-500" />
-            <h2 className="text-xl font-bold text-white">Dynasty Dugout</h2>
+            <Crown className={`w-6 h-6 ${dynastyTheme.classes.text.primary}`} />
+            <h2 className={dynastyTheme.components.heading.h2}>Dynasty Dugout</h2>
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-white transition-colors"
+            className={dynastyTheme.components.button.ghost}
           >
             <X className="w-6 h-6" />
           </button>
         </div>
 
         {/* Tabs */}
-        <div className="flex border-b border-gray-700">
+        <div className={`flex border-b ${dynastyTheme.classes.border.neutral}`}>
           {['signin', 'signup', 'verify', 'reset'].map((tab) => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              className={`flex-1 py-3 px-4 text-sm font-medium capitalize transition-colors ${
+              className={`${tabButton} ${
                 activeTab === tab
-                  ? 'text-yellow-500 border-b-2 border-yellow-500'
-                  : 'text-gray-400 hover:text-white'
+                  ? `${dynastyTheme.classes.text.primary} border-b-2 ${dynastyTheme.classes.border.primary}`
+                  : `${dynastyTheme.classes.text.neutralLighter} ${dynastyTheme.classes.text.primaryHover}`
               }`}
             >
               {tab === 'signin' ? 'Sign In' : 
@@ -220,12 +230,12 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
 
         {/* Messages */}
         {message && (
-          <div className="mx-6 mt-4 p-3 bg-green-500/20 border border-green-500/50 rounded-lg text-green-300 text-sm">
+          <div className={`mx-6 mt-4 p-3 ${dynastyTheme.components.badge.success} rounded-lg text-sm`}>
             {message}
           </div>
         )}
         {error && (
-          <div className="mx-6 mt-4 p-3 bg-red-500/20 border border-red-500/50 rounded-lg text-red-300 text-sm">
+          <div className={`mx-6 mt-4 p-3 ${dynastyTheme.components.badge.error} rounded-lg text-sm`}>
             {error}
           </div>
         )}
@@ -236,35 +246,35 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
           {activeTab === 'signin' && (
             <form onSubmit={handleSignIn} className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Email</label>
+                <label className={dynastyTheme.components.label}>Email</label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+                  <Mail className={iconLeft} />
                   <input
                     type="email"
                     name="email"
                     value={formData.email}
                     onChange={handleInputChange}
-                    className="w-full pl-10 pr-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
+                    className={inputWithIcon}
                     required
                   />
                 </div>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Password</label>
+                <label className={dynastyTheme.components.label}>Password</label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+                  <Lock className={iconLeft} />
                   <input
                     type={showPassword ? 'text' : 'password'}
                     name="password"
                     value={formData.password}
                     onChange={handleInputChange}
-                    className="w-full pl-10 pr-12 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
+                    className={inputWithIconRight}
                     required
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-3 text-gray-400 hover:text-white"
+                    className={iconRight}
                   >
                     {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
@@ -273,14 +283,14 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3 bg-yellow-500 text-black font-semibold rounded-lg hover:bg-yellow-400 disabled:opacity-50 transition-colors"
+                className={dynastyTheme.utils.getComponent('button', 'primary', 'lg')}
               >
                 {loading ? 'Signing In...' : 'Sign In'}
               </button>
               <button
                 type="button"
                 onClick={() => setActiveTab('reset')}
-                className="w-full text-sm text-gray-400 hover:text-yellow-500 transition-colors"
+                className={`w-full text-sm ${dynastyTheme.classes.text.neutralLighter} ${dynastyTheme.classes.text.primaryHover} ${dynastyTheme.classes.transition}`}
               >
                 Forgot your password?
               </button>
@@ -292,56 +302,56 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
             <form onSubmit={handleSignUp} className="space-y-4">
               <div className="grid grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">First Name</label>
+                  <label className={dynastyTheme.components.label}>First Name</label>
                   <div className="relative">
-                    <User className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+                    <User className={iconLeft} />
                     <input
                       type="text"
                       name="firstName"
                       value={formData.firstName}
                       onChange={handleInputChange}
-                      className="w-full pl-10 pr-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
+                      className={inputWithIcon}
                       required
                     />
                   </div>
                 </div>
                 <div>
-                  <label className="block text-sm font-medium text-gray-300 mb-1">Last Name</label>
+                  <label className={dynastyTheme.components.label}>Last Name</label>
                   <input
                     type="text"
                     name="lastName"
                     value={formData.lastName}
                     onChange={handleInputChange}
-                    className="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
+                    className={inputBasic}
                     required
                   />
                 </div>
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Email</label>
+                <label className={dynastyTheme.components.label}>Email</label>
                 <div className="relative">
-                  <Mail className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+                  <Mail className={iconLeft} />
                   <input
                     type="email"
                     name="email"
                     value={formData.email}
                     onChange={handleInputChange}
-                    className="w-full pl-10 pr-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
+                    className={inputWithIcon}
                     required
                   />
                 </div>
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Favorite Team</label>
+                <label className={dynastyTheme.components.label}>Favorite Team</label>
                 <div className="relative">
-                  <Heart className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+                  <Heart className={iconLeft} />
                   <select
                     name="favoriteTeam"
                     value={formData.favoriteTeam}
                     onChange={handleInputChange}
-                    className="w-full pl-10 pr-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
+                    className={inputWithIcon}
                     required
                   >
                     <option value="">Select your favorite team</option>
@@ -353,21 +363,21 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Password</label>
+                <label className={dynastyTheme.components.label}>Password</label>
                 <div className="relative">
-                  <Lock className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+                  <Lock className={iconLeft} />
                   <input
                     type={showPassword ? 'text' : 'password'}
                     name="password"
                     value={formData.password}
                     onChange={handleInputChange}
-                    className="w-full pl-10 pr-12 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
+                    className={inputWithIconRight}
                     required
                   />
                   <button
                     type="button"
                     onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-3 text-gray-400 hover:text-white"
+                    className={iconRight}
                   >
                     {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                   </button>
@@ -375,13 +385,13 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
               </div>
 
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Confirm Password</label>
+                <label className={dynastyTheme.components.label}>Confirm Password</label>
                 <input
                   type="password"
                   name="confirmPassword"
                   value={formData.confirmPassword}
                   onChange={handleInputChange}
-                  className="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
+                  className={inputBasic}
                   required
                 />
               </div>
@@ -389,7 +399,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3 bg-yellow-500 text-black font-semibold rounded-lg hover:bg-yellow-400 disabled:opacity-50 transition-colors"
+                className={dynastyTheme.utils.getComponent('button', 'primary', 'lg')}
               >
                 {loading ? 'Creating Account...' : 'Create Account'}
               </button>
@@ -399,19 +409,19 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
           {/* Email Verification Form */}
           {activeTab === 'verify' && (
             <form onSubmit={handleVerifyEmail} className="space-y-4">
-              <div className="text-center text-gray-300 mb-4">
+              <div className={`text-center ${dynastyTheme.classes.text.neutral} mb-4`}>
                 <p>Please enter the verification code sent to your email:</p>
-                <p className="text-yellow-500 font-medium">{formData.email}</p>
+                <p className={`${dynastyTheme.classes.text.primary} font-medium`}>{formData.email}</p>
               </div>
               
               <div>
-                <label className="block text-sm font-medium text-gray-300 mb-1">Verification Code</label>
+                <label className={dynastyTheme.components.label}>Verification Code</label>
                 <input
                   type="text"
                   name="verificationCode"
                   value={formData.verificationCode}
                   onChange={handleInputChange}
-                  className="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 text-center text-lg tracking-widest"
+                  className={`${inputBasic} text-center text-lg tracking-widest`}
                   placeholder="000000"
                   maxLength="6"
                   required
@@ -421,7 +431,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-3 bg-yellow-500 text-black font-semibold rounded-lg hover:bg-yellow-400 disabled:opacity-50 transition-colors"
+                className={dynastyTheme.utils.getComponent('button', 'primary', 'lg')}
               >
                 {loading ? 'Verifying...' : 'Verify Email'}
               </button>
@@ -430,7 +440,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
                 type="button"
                 onClick={handleResendVerification}
                 disabled={loading}
-                className="w-full text-sm text-gray-400 hover:text-yellow-500 transition-colors"
+                className={`w-full text-sm ${dynastyTheme.classes.text.neutralLighter} ${dynastyTheme.classes.text.primaryHover} ${dynastyTheme.classes.transition}`}
               >
                 Resend verification code
               </button>
@@ -442,20 +452,20 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
             <form onSubmit={message ? handleResetPassword : handleForgotPassword} className="space-y-4">
               {!message ? (
                 <>
-                  <div className="text-center text-gray-300 mb-4">
+                  <div className={`text-center ${dynastyTheme.classes.text.neutral} mb-4`}>
                     <p>Enter your email address to receive a password reset code.</p>
                   </div>
                   
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-1">Email</label>
+                    <label className={dynastyTheme.components.label}>Email</label>
                     <div className="relative">
-                      <Mail className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+                      <Mail className={iconLeft} />
                       <input
                         type="email"
                         name="email"
                         value={formData.email}
                         onChange={handleInputChange}
-                        className="w-full pl-10 pr-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
+                        className={inputWithIcon}
                         required
                       />
                     </div>
@@ -464,7 +474,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full py-3 bg-yellow-500 text-black font-semibold rounded-lg hover:bg-yellow-400 disabled:opacity-50 transition-colors"
+                    className={dynastyTheme.utils.getComponent('button', 'primary', 'lg')}
                   >
                     {loading ? 'Sending...' : 'Send Reset Code'}
                   </button>
@@ -472,13 +482,13 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
               ) : (
                 <>
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-1">Reset Code</label>
+                    <label className={dynastyTheme.components.label}>Reset Code</label>
                     <input
                       type="text"
                       name="resetCode"
                       value={formData.resetCode}
                       onChange={handleInputChange}
-                      className="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500 text-center text-lg tracking-widest"
+                      className={`${inputBasic} text-center text-lg tracking-widest`}
                       placeholder="000000"
                       maxLength="6"
                       required
@@ -486,21 +496,21 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-1">New Password</label>
+                    <label className={dynastyTheme.components.label}>New Password</label>
                     <div className="relative">
-                      <Lock className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
+                      <Lock className={iconLeft} />
                       <input
                         type={showPassword ? 'text' : 'password'}
                         name="password"
                         value={formData.password}
                         onChange={handleInputChange}
-                        className="w-full pl-10 pr-12 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
+                        className={inputWithIconRight}
                         required
                       />
                       <button
                         type="button"
                         onClick={() => setShowPassword(!showPassword)}
-                        className="absolute right-3 top-3 text-gray-400 hover:text-white"
+                        className={iconRight}
                       >
                         {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
                       </button>
@@ -508,13 +518,13 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
                   </div>
 
                   <div>
-                    <label className="block text-sm font-medium text-gray-300 mb-1">Confirm New Password</label>
+                    <label className={dynastyTheme.components.label}>Confirm New Password</label>
                     <input
                       type="password"
                       name="confirmPassword"
                       value={formData.confirmPassword}
                       onChange={handleInputChange}
-                      className="w-full px-4 py-3 bg-gray-800 border border-gray-600 rounded-lg text-white focus:border-yellow-500 focus:ring-1 focus:ring-yellow-500"
+                      className={inputBasic}
                       required
                     />
                   </div>
@@ -522,7 +532,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
                   <button
                     type="submit"
                     disabled={loading}
-                    className="w-full py-3 bg-yellow-500 text-black font-semibold rounded-lg hover:bg-yellow-400 disabled:opacity-50 transition-colors"
+                    className={dynastyTheme.utils.getComponent('button', 'primary', 'lg')}
                   >
                     {loading ? 'Resetting...' : 'Reset Password'}
                   </button>

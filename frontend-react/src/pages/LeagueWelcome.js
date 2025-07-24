@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { leaguesAPI } from '../services/apiService';
-import { dynastyColors, dynastyUtils } from '../services/colorService';
+import { dynastyTheme } from '../services/colorService';
 
 const LeagueWelcome = () => {
   const { leagueId } = useParams();
@@ -26,8 +26,8 @@ const LeagueWelcome = () => {
     manager_name: user?.given_name || user?.firstName || '',
     team_logo_url: '',
     team_colors: {
-      primary: dynastyColors.gold,
-      secondary: dynastyColors.dark
+      primary: dynastyTheme.tokens.colors.primary,
+      secondary: dynastyTheme.tokens.colors.neutral[900]
     },
     team_motto: ''
   });
@@ -39,18 +39,18 @@ const LeagueWelcome = () => {
   const loadLeague = async () => {
     try {
       setLoading(true);
-      // We'll need to add this API call to get single league details
-      // For now, using mock data based on league creation
-      const mockLeague = {
-        league_id: leagueId,
-        league_name: "New League", // Will be replaced with actual data
-        status: "setup",
-        role: "commissioner"
-      };
-      setLeague(mockLeague);
+      setError('');
+      
+      const response = await leaguesAPI.getLeagueDetails(leagueId);
+      
+      if (response.success) {
+        setLeague(response.league);
+      } else {
+        throw new Error(response.message || 'Failed to load league');
+      }
     } catch (error) {
       console.error('Error loading league:', error);
-      setError('Failed to load league details');
+      setError('Failed to load league details. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -70,9 +70,7 @@ const LeagueWelcome = () => {
         return;
       }
 
-      // TODO: API call to create team
       const teamSetupData = {
-        league_id: leagueId,
         team_name: teamData.team_name.trim(),
         manager_name: teamData.manager_name.trim(),
         team_logo_url: teamData.team_logo_url,
@@ -82,14 +80,18 @@ const LeagueWelcome = () => {
 
       console.log('Setting up team:', teamSetupData);
       
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 1000));
+      const response = await leaguesAPI.setupTeam(leagueId, teamSetupData);
       
-      setStep(3); // Success step
+      if (response.success) {
+        setStep(3);
+      } else {
+        throw new Error(response.message || 'Failed to setup team');
+      }
       
     } catch (error) {
       console.error('Team setup error:', error);
-      setError('Failed to setup team. Please try again.');
+      const errorMessage = error.response?.data?.detail || error.message || 'Failed to setup team. Please try again.';
+      setError(errorMessage);
     } finally {
       setSubmitting(false);
     }
@@ -101,14 +103,41 @@ const LeagueWelcome = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen" style={{ background: dynastyUtils.getGradient('page') }}>
+      <div className={dynastyTheme.components.page}>
         <div className="flex justify-center items-center min-h-screen">
           <div className="flex items-center space-x-3">
             <div 
               className="w-8 h-8 border-2 border-t-transparent animate-spin rounded-full"
-              style={{ borderColor: dynastyColors.gold, borderTopColor: 'transparent' }}
+              style={{ 
+                borderColor: dynastyTheme.tokens.colors.primary, 
+                borderTopColor: 'transparent' 
+              }}
             />
-            <span className="text-white text-lg">Loading league...</span>
+            <span className={`${dynastyTheme.classes.text.white} text-lg`}>Loading league...</span>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (error && !league) {
+    return (
+      <div className={dynastyTheme.components.page}>
+        <div className="flex justify-center items-center min-h-screen">
+          <div className="text-center space-y-4">
+            <div 
+              className={`w-16 h-16 rounded-full mx-auto flex items-center justify-center ${dynastyTheme.classes.bg.error}`}
+            >
+              <Crown className={`w-8 h-8 ${dynastyTheme.classes.text.white}`} />
+            </div>
+            <h2 className={`text-2xl font-bold ${dynastyTheme.classes.text.white}`}>Unable to Load League</h2>
+            <p className={`${dynastyTheme.classes.text.white} max-w-md`}>{error}</p>
+            <button
+              onClick={() => navigate('/dashboard')}
+              className={dynastyTheme.utils.getComponent('button', 'primary', 'md')}
+            >
+              Return to Dashboard
+            </button>
           </div>
         </div>
       </div>
@@ -119,53 +148,43 @@ const LeagueWelcome = () => {
     <div className="text-center space-y-6">
       <div className="space-y-4">
         <div 
-          className="w-24 h-24 rounded-full mx-auto flex items-center justify-center"
-          style={{ backgroundColor: dynastyColors.success }}
+          className={`w-24 h-24 rounded-full mx-auto flex items-center justify-center ${dynastyTheme.classes.bg.success}`}
         >
-          <Check className="w-12 h-12 text-white" />
+          <Check className={`w-12 h-12 ${dynastyTheme.classes.text.white}`} />
         </div>
         
-        <h1 className="text-4xl font-bold text-white">
+        <h1 className={dynastyTheme.components.heading.h1}>
           League Created Successfully!
         </h1>
         
-        <p className="text-xl dynasty-text-secondary max-w-2xl mx-auto">
-          Your dynasty league <span style={{ color: dynastyColors.gold }} className="font-semibold">
+        <p className={`text-xl ${dynastyTheme.classes.text.neutralLight} max-w-2xl mx-auto`}>
+          Your dynasty league <span className={`${dynastyTheme.classes.text.primary} font-semibold`}>
             "{league?.league_name}"
           </span> is ready. Now let's setup your team to get started.
         </p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6 my-12">
-        <div 
-          className="dynasty-card p-6 text-center"
-          style={{ background: dynastyUtils.getGradient('card') }}
-        >
-          <Users className="w-8 h-8 mx-auto mb-3" style={{ color: dynastyColors.gold }} />
-          <h3 className="font-semibold text-white mb-2">Setup Your Team</h3>
-          <p className="text-sm dynasty-text-secondary">
+        <div className={`${dynastyTheme.components.card.base} p-6 text-center`}>
+          <Users className={`w-8 h-8 mx-auto mb-3 ${dynastyTheme.classes.text.primary}`} />
+          <h3 className={`font-semibold ${dynastyTheme.classes.text.white} mb-2`}>Setup Your Team</h3>
+          <p className={`text-sm ${dynastyTheme.classes.text.neutralLight}`}>
             Choose your team name, colors, and manager details
           </p>
         </div>
         
-        <div 
-          className="dynasty-card p-6 text-center"
-          style={{ background: dynastyUtils.getGradient('card') }}
-        >
-          <Crown className="w-8 h-8 mx-auto mb-3" style={{ color: dynastyColors.gold }} />
-          <h3 className="font-semibold text-white mb-2">Invite Managers</h3>
-          <p className="text-sm dynasty-text-secondary">
+        <div className={`${dynastyTheme.components.card.base} p-6 text-center`}>
+          <Crown className={`w-8 h-8 mx-auto mb-3 ${dynastyTheme.classes.text.primary}`} />
+          <h3 className={`font-semibold ${dynastyTheme.classes.text.white} mb-2`}>Invite Managers</h3>
+          <p className={`text-sm ${dynastyTheme.classes.text.neutralLight}`}>
             Send invitations to other managers to join your league
           </p>
         </div>
         
-        <div 
-          className="dynasty-card p-6 text-center"
-          style={{ background: dynastyUtils.getGradient('card') }}
-        >
-          <Trophy className="w-8 h-8 mx-auto mb-3" style={{ color: dynastyColors.gold }} />
-          <h3 className="font-semibold text-white mb-2">Start Playing</h3>
-          <p className="text-sm dynasty-text-secondary">
+        <div className={`${dynastyTheme.components.card.base} p-6 text-center`}>
+          <Trophy className={`w-8 h-8 mx-auto mb-3 ${dynastyTheme.classes.text.primary}`} />
+          <h3 className={`font-semibold ${dynastyTheme.classes.text.white} mb-2`}>Start Playing</h3>
+          <p className={`text-sm ${dynastyTheme.classes.text.neutralLight}`}>
             Draft players and begin your dynasty baseball journey
           </p>
         </div>
@@ -173,7 +192,7 @@ const LeagueWelcome = () => {
 
       <button
         onClick={() => setStep(2)}
-        className="dynasty-button text-lg px-8 py-4 flex items-center space-x-3 mx-auto"
+        className={`${dynastyTheme.utils.getComponent('button', 'primary', 'lg')} flex items-center space-x-3 mx-auto`}
       >
         <Users className="w-5 h-5" />
         <span>Setup Your Team</span>
@@ -185,22 +204,19 @@ const LeagueWelcome = () => {
   const renderTeamSetupStep = () => (
     <div className="max-w-2xl mx-auto space-y-8">
       <div className="text-center space-y-4">
-        <Crown className="w-16 h-16 mx-auto" style={{ color: dynastyColors.gold }} />
-        <h1 className="text-3xl font-bold text-white">Setup Your Team</h1>
-        <p className="dynasty-text-secondary">
-          Customize your team identity in <span style={{ color: dynastyColors.gold }}>
+        <Crown className={`w-16 h-16 mx-auto ${dynastyTheme.classes.text.primary}`} />
+        <h1 className={dynastyTheme.components.heading.h1}>Setup Your Team</h1>
+        <p className={dynastyTheme.classes.text.neutralLight}>
+          Customize your team identity in <span className={dynastyTheme.classes.text.primary}>
             {league?.league_name}
           </span>
         </p>
       </div>
 
-      <div 
-        className="dynasty-card p-8 space-y-6"
-        style={{ background: dynastyUtils.getGradient('card') }}
-      >
+      <div className={`${dynastyTheme.components.card.base} p-8 space-y-6`}>
         {/* Team Name */}
         <div>
-          <label className="block text-sm font-medium text-white mb-2">
+          <label className={dynastyTheme.components.label}>
             Team Name *
           </label>
           <input
@@ -208,17 +224,17 @@ const LeagueWelcome = () => {
             value={teamData.team_name}
             onChange={(e) => handleInputChange('team_name', e.target.value)}
             placeholder="e.g., Dynasty Dragons, Baseball Legends, Championship Chasers"
-            className="dynasty-input w-full text-lg"
+            className={`${dynastyTheme.components.input} w-full text-lg`}
             maxLength={50}
           />
-          <p className="text-xs dynasty-text-secondary mt-1">
+          <p className={`text-xs ${dynastyTheme.classes.text.neutralLight} mt-1`}>
             Choose a memorable name that represents your team
           </p>
         </div>
 
         {/* Manager Name */}
         <div>
-          <label className="block text-sm font-medium text-white mb-2">
+          <label className={dynastyTheme.components.label}>
             Manager Name
           </label>
           <input
@@ -226,19 +242,19 @@ const LeagueWelcome = () => {
             value={teamData.manager_name}
             onChange={(e) => handleInputChange('manager_name', e.target.value)}
             placeholder="Your name as team manager"
-            className="dynasty-input w-full"
+            className={`${dynastyTheme.components.input} w-full`}
             maxLength={50}
           />
         </div>
 
         {/* Team Logo Upload */}
         <div>
-          <label className="block text-sm font-medium text-white mb-2">
+          <label className={dynastyTheme.components.label}>
             Team Logo (Optional)
           </label>
           <div 
-            className="border-2 border-dashed rounded-lg p-8 text-center transition-colors hover:border-dynasty-gold/50"
-            style={{ borderColor: dynastyColors.gray }}
+            className={`border-2 border-dashed rounded-lg p-8 text-center ${dynastyTheme.classes.transition} hover:border-yellow-400/50`}
+            style={{ borderColor: dynastyTheme.tokens.colors.neutral[600] }}
           >
             {teamData.team_logo_url ? (
               <div className="space-y-3">
@@ -247,25 +263,24 @@ const LeagueWelcome = () => {
                   alt="Team logo" 
                   className="w-16 h-16 mx-auto rounded-lg object-cover"
                 />
-                <p className="text-sm text-white">Logo uploaded</p>
+                <p className={`text-sm ${dynastyTheme.classes.text.white}`}>Logo uploaded</p>
                 <button 
                   onClick={() => handleInputChange('team_logo_url', '')}
-                  className="dynasty-button-secondary text-sm"
+                  className={dynastyTheme.utils.getComponent('button', 'secondary', 'sm')}
                 >
                   Remove
                 </button>
               </div>
             ) : (
               <div className="space-y-3">
-                <Camera className="w-12 h-12 mx-auto dynasty-text-secondary" />
+                <Camera className={`w-12 h-12 mx-auto ${dynastyTheme.classes.text.neutralLight}`} />
                 <div>
-                  <p className="text-white font-medium">Upload team logo</p>
-                  <p className="text-xs dynasty-text-secondary">PNG, JPG up to 2MB</p>
+                  <p className={`${dynastyTheme.classes.text.white} font-medium`}>Upload team logo</p>
+                  <p className={`text-xs ${dynastyTheme.classes.text.neutralLight}`}>PNG, JPG up to 2MB</p>
                 </div>
                 <button 
-                  className="dynasty-button-secondary flex items-center space-x-2 mx-auto"
+                  className={`${dynastyTheme.utils.getComponent('button', 'secondary', 'sm')} flex items-center space-x-2 mx-auto`}
                   onClick={() => {
-                    // TODO: Implement file upload
                     console.log('File upload would go here');
                   }}
                 >
@@ -279,12 +294,12 @@ const LeagueWelcome = () => {
 
         {/* Team Colors */}
         <div>
-          <label className="block text-sm font-medium text-white mb-3">
+          <label className={dynastyTheme.components.label}>
             Team Colors
           </label>
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-xs dynasty-text-secondary mb-2">Primary Color</label>
+              <label className={`block text-xs ${dynastyTheme.classes.text.neutralLight} mb-2`}>Primary Color</label>
               <div className="flex items-center space-x-3">
                 <input
                   type="color"
@@ -302,12 +317,12 @@ const LeagueWelcome = () => {
                     ...teamData.team_colors,
                     primary: e.target.value
                   })}
-                  className="dynasty-input flex-1 font-mono text-sm"
+                  className={`${dynastyTheme.components.input} flex-1 font-mono text-sm`}
                 />
               </div>
             </div>
             <div>
-              <label className="block text-xs dynasty-text-secondary mb-2">Secondary Color</label>
+              <label className={`block text-xs ${dynastyTheme.classes.text.neutralLight} mb-2`}>Secondary Color</label>
               <div className="flex items-center space-x-3">
                 <input
                   type="color"
@@ -325,7 +340,7 @@ const LeagueWelcome = () => {
                     ...teamData.team_colors,
                     secondary: e.target.value
                   })}
-                  className="dynasty-input flex-1 font-mono text-sm"
+                  className={`${dynastyTheme.components.input} flex-1 font-mono text-sm`}
                 />
               </div>
             </div>
@@ -334,7 +349,7 @@ const LeagueWelcome = () => {
 
         {/* Team Motto */}
         <div>
-          <label className="block text-sm font-medium text-white mb-2">
+          <label className={dynastyTheme.components.label}>
             Team Motto (Optional)
           </label>
           <input
@@ -342,20 +357,17 @@ const LeagueWelcome = () => {
             value={teamData.team_motto}
             onChange={(e) => handleInputChange('team_motto', e.target.value)}
             placeholder="e.g., Champions are made here, Dynasty starts now"
-            className="dynasty-input w-full"
+            className={`${dynastyTheme.components.input} w-full`}
             maxLength={100}
           />
-          <p className="text-xs dynasty-text-secondary mt-1">
+          <p className={`text-xs ${dynastyTheme.classes.text.neutralLight} mt-1`}>
             A motivational phrase or slogan for your team
           </p>
         </div>
 
         {/* Error Message */}
         {error && (
-          <div 
-            className="p-4 rounded-lg"
-            style={dynastyUtils.getMessageStyles('error')}
-          >
+          <div className={`${dynastyTheme.components.badge.error} p-4 rounded-lg mb-4`}>
             {error}
           </div>
         )}
@@ -364,7 +376,7 @@ const LeagueWelcome = () => {
         <div className="flex items-center justify-between pt-6">
           <button
             onClick={() => setStep(1)}
-            className="dynasty-button-secondary flex items-center space-x-2"
+            className={`${dynastyTheme.utils.getComponent('button', 'secondary', 'md')} flex items-center space-x-2`}
           >
             <ChevronLeft className="w-4 h-4" />
             <span>Back</span>
@@ -373,7 +385,7 @@ const LeagueWelcome = () => {
           <button
             onClick={handleTeamSetup}
             disabled={submitting || !teamData.team_name.trim()}
-            className="dynasty-button flex items-center space-x-2 disabled:opacity-50"
+            className={`${dynastyTheme.utils.getComponent('button', 'primary', 'md')} flex items-center space-x-2 disabled:opacity-50`}
           >
             {submitting ? (
               <>
@@ -396,28 +408,24 @@ const LeagueWelcome = () => {
     <div className="text-center space-y-8">
       <div className="space-y-4">
         <div 
-          className="w-24 h-24 rounded-full mx-auto flex items-center justify-center"
-          style={{ backgroundColor: dynastyColors.success }}
+          className={`w-24 h-24 rounded-full mx-auto flex items-center justify-center ${dynastyTheme.classes.bg.success}`}
         >
-          <Star className="w-12 h-12 text-white" />
+          <Star className={`w-12 h-12 ${dynastyTheme.classes.text.white}`} />
         </div>
         
-        <h1 className="text-4xl font-bold text-white">
+        <h1 className={dynastyTheme.components.heading.h1}>
           Team Setup Complete!
         </h1>
         
-        <p className="text-xl dynasty-text-secondary max-w-2xl mx-auto">
-          <span style={{ color: dynastyColors.gold }} className="font-semibold">
+        <p className={`text-xl ${dynastyTheme.classes.text.neutralLight} max-w-2xl mx-auto`}>
+          <span className={`${dynastyTheme.classes.text.primary} font-semibold`}>
             {teamData.team_name}
           </span> is ready to dominate in {league?.league_name}
         </p>
       </div>
 
       {/* Team Summary Card */}
-      <div 
-        className="dynasty-card p-8 max-w-md mx-auto"
-        style={{ background: dynastyUtils.getGradient('card') }}
-      >
+      <div className={`${dynastyTheme.components.card.highlighted} p-8 max-w-md mx-auto`}>
         <div className="text-center space-y-4">
           <div 
             className="w-16 h-16 rounded-full mx-auto flex items-center justify-center text-2xl font-bold"
@@ -430,10 +438,10 @@ const LeagueWelcome = () => {
           </div>
           
           <div>
-            <h3 className="text-xl font-bold text-white">{teamData.team_name}</h3>
-            <p className="dynasty-text-secondary">Manager: {teamData.manager_name}</p>
+            <h3 className={`text-xl font-bold ${dynastyTheme.classes.text.white}`}>{teamData.team_name}</h3>
+            <p className={dynastyTheme.classes.text.neutralLight}>Manager: {teamData.manager_name}</p>
             {teamData.team_motto && (
-              <p className="text-sm italic mt-2" style={{ color: dynastyColors.gold }}>
+              <p className={`text-sm italic mt-2 ${dynastyTheme.classes.text.primary}`}>
                 "{teamData.team_motto}"
               </p>
             )}
@@ -444,14 +452,14 @@ const LeagueWelcome = () => {
       <div className="space-y-4">
         <button
           onClick={proceedToLeague}
-          className="dynasty-button text-lg px-8 py-4 flex items-center space-x-3 mx-auto"
+          className={`${dynastyTheme.utils.getComponent('button', 'primary', 'lg')} flex items-center space-x-3 mx-auto`}
         >
           <Crown className="w-5 h-5" />
           <span>Enter League Dashboard</span>
           <ArrowRight className="w-5 h-5" />
         </button>
         
-        <p className="text-sm dynasty-text-secondary">
+        <p className={`text-sm ${dynastyTheme.classes.text.neutralLight}`}>
           You can customize your team details anytime from the league settings
         </p>
       </div>
@@ -459,21 +467,18 @@ const LeagueWelcome = () => {
   );
 
   return (
-    <div className="min-h-screen" style={{ background: dynastyUtils.getGradient('page') }}>
+    <div className={dynastyTheme.components.page}>
       {/* Header */}
       <header 
-        className="px-6 py-4 border-b"
-        style={{ 
-          background: dynastyUtils.getGradient('card'),
-          borderColor: dynastyColors.gold + '20'
-        }}
+        className={`px-6 py-4 border-b ${dynastyTheme.classes.border.light}`}
+        style={{ background: dynastyTheme.utils.gradient('dark') }}
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-3">
-            <Crown className="w-8 h-8" style={{ color: dynastyColors.gold }} />
+            <Crown className={`w-8 h-8 ${dynastyTheme.classes.text.primary}`} />
             <div>
-              <h1 className="text-xl font-bold text-white">Dynasty Dugout</h1>
-              <p className="text-sm dynasty-text-secondary">League Setup</p>
+              <h1 className={`text-xl font-bold ${dynastyTheme.classes.text.white}`}>Dynasty Dugout</h1>
+              <p className={`text-sm ${dynastyTheme.classes.text.neutralLight}`}>League Setup</p>
             </div>
           </div>
           
@@ -482,19 +487,16 @@ const LeagueWelcome = () => {
             {[1, 2, 3].map((stepNum) => (
               <div
                 key={stepNum}
-                className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors ${
-                  step === stepNum 
-                    ? 'text-black' 
-                    : step > stepNum 
-                    ? 'text-white' 
-                    : 'text-gray-400'
-                }`}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors"
                 style={{
                   backgroundColor: step === stepNum 
-                    ? dynastyColors.gold 
+                    ? dynastyTheme.tokens.colors.primary 
                     : step > stepNum 
-                    ? dynastyColors.success 
-                    : dynastyColors.gray
+                    ? dynastyTheme.tokens.colors.success 
+                    : dynastyTheme.tokens.colors.neutral[600],
+                  color: step === stepNum 
+                    ? dynastyTheme.tokens.colors.neutral[900]
+                    : dynastyTheme.tokens.colors.neutral[50]
                 }}
               >
                 {step > stepNum ? <Check className="w-4 h-4" /> : stepNum}
@@ -505,7 +507,7 @@ const LeagueWelcome = () => {
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-6 py-12">
+      <main className={dynastyTheme.components.container}>
         {step === 1 && renderWelcomeStep()}
         {step === 2 && renderTeamSetupStep()}
         {step === 3 && renderSuccessStep()}

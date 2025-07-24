@@ -9,7 +9,8 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { leaguesAPI } from '../services/apiService';
-import { dynastyColors, dynastyUtils } from '../services/colorService';
+import { dynastyTheme } from '../services/colorService';
+import LeagueSettings from '../components/LeagueSettings';
 
 const LeagueDashboard = () => {
   const { leagueId } = useParams();
@@ -17,32 +18,11 @@ const LeagueDashboard = () => {
   const navigate = useNavigate();
   
   const [league, setLeague] = useState(null);
+  const [teams, setTeams] = useState([]);
+  const [standings, setStandings] = useState([]);
   const [activeSection, setActiveSection] = useState('league-home');
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  
-  // Mock data - will be replaced with real API calls
-  const [standings, setStandings] = useState([
-    { team: "Pastrami", manager: "strakajagr", points: 105.5, rank: 1 },
-    { team: "South of the Border", manager: "manager2", points: 86.0, rank: 2 },
-    { team: "Deadwood", manager: "manager3", points: 81.0, rank: 3 },
-    { team: "Vlad Dicks are HUGE", manager: "manager4", points: 78.0, rank: 4 },
-    { team: "10¢ Grifter", manager: "manager5", points: 60.5, rank: 5 }
-  ]);
-
-  const [recentTransactions, setRecentTransactions] = useState([
-    { date: "07.23", action: "Kaysen Irvin, Was (Mike Soroka)", type: "Trade" },
-    { date: "07.23", action: "Fairchild, Atl: Traded to TB for cash", type: "Trade" },
-    { date: "07.22", action: "Dylan Cease: Sent on a rehab assignment", type: "Transaction" }
-  ]);
-
-  const [todaysGames, setTodaysGames] = useState([
-    { away: "Was", home: "ChC", time: "at" },
-    { away: "SD", home: "Mia", time: "at" },
-    { away: "SF", home: "Atl", time: "at" },
-    { away: "Det", home: "Pit", time: "at" },
-    { away: "LAA", home: "NYM", time: "at" }
-  ]);
 
   // Navigation structure matching OnRoto
   const navigationSections = [
@@ -98,25 +78,34 @@ const LeagueDashboard = () => {
   ];
 
   useEffect(() => {
-    loadLeague();
+    loadLeagueData();
   }, [leagueId]);
 
-  const loadLeague = async () => {
+  const loadLeagueData = async () => {
     try {
       setLoading(true);
-      // TODO: Replace with actual API call
-      const mockLeague = {
-        league_id: leagueId,
-        league_name: "Harry Caray Memorial League (HCML)",
-        status: "active",
-        role: "commissioner",
-        scoring_system: "rotisserie_ytd",
-        current_week: "Week 17",
-        season: "2025"
-      };
-      setLeague(mockLeague);
+      
+      // Load league details
+      const leagueResponse = await leaguesAPI.getLeagueDetails(leagueId);
+      if (leagueResponse.success) {
+        setLeague(leagueResponse.league);
+      }
+
+      // Load league standings (which includes team info)
+      try {
+        const standingsResponse = await leaguesAPI.getLeagueStandings(leagueId);
+        if (standingsResponse.success) {
+          setStandings(standingsResponse.standings || []);
+          setTeams(standingsResponse.teams || []);
+        }
+      } catch (standingsError) {
+        console.log('Standings not available yet - this is normal for new leagues');
+        setStandings([]);
+        setTeams([]);
+      }
+
     } catch (error) {
-      console.error('Error loading league:', error);
+      console.error('Error loading league data:', error);
     } finally {
       setLoading(false);
     }
@@ -126,291 +115,360 @@ const LeagueDashboard = () => {
     await signOut();
   };
 
-  const renderLeagueHome = () => (
-    <div className="space-y-6">
-      {/* League Header */}
-      <div 
-        className="dynasty-card p-6"
-        style={{ background: dynastyUtils.getGradient('card') }}
-      >
-        <div className="flex items-center justify-between mb-4">
-          <div>
-            <h1 className="text-3xl font-bold text-white">{league?.league_name}</h1>
-            <p className="dynasty-text-secondary">
-              {league?.current_week} • {league?.season} Season • {league?.scoring_system?.replace(/_/g, ' ')}
-            </p>
-          </div>
-          <div className="flex items-center space-x-2">
-            <span 
-              className="px-3 py-1 rounded text-sm font-semibold"
-              style={{ backgroundColor: dynastyColors.success, color: dynastyColors.white }}
-            >
-              ACTIVE
-            </span>
-            {league?.role === 'commissioner' && (
+  const handleLeagueDeleted = (leagueName) => {
+    navigate('/dashboard', { 
+      state: { 
+        message: `League "${leagueName}" has been permanently deleted.`,
+        type: 'success'
+      }
+    });
+  };
+
+  const generateEmptyTeamSlots = () => {
+    if (!league) return [];
+    
+    const maxTeams = league.max_teams || 12;
+    const currentTeams = teams.length;
+    const emptySlots = [];
+    
+    for (let i = currentTeams; i < maxTeams; i++) {
+      emptySlots.push({
+        slot: i + 1,
+        team_name: "Awaiting New Owner",
+        manager_name: null,
+        points: null,
+        isEmpty: true
+      });
+    }
+    
+    return emptySlots;
+  };
+
+  const getAllTeamSlots = () => {
+    const filledTeams = teams.map((team, index) => ({
+      ...team,
+      slot: index + 1,
+      isEmpty: false
+    }));
+    
+    const emptySlots = generateEmptyTeamSlots();
+    
+    return [...filledTeams, ...emptySlots];
+  };
+
+  const renderLeagueHome = () => {
+    const allTeamSlots = getAllTeamSlots();
+    const halfPoint = Math.ceil(allTeamSlots.length / 2);
+    const leftColumn = allTeamSlots.slice(0, halfPoint);
+    const rightColumn = allTeamSlots.slice(halfPoint);
+
+    return (
+      <div className="space-y-6">
+        {/* League Header */}
+        <div className={`${dynastyTheme.components.card.base} p-6`}>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h1 className={`text-3xl font-bold ${dynastyTheme.classes.text.white}`}>
+                {league?.league_name || 'Loading...'}
+              </h1>
+              <p className={dynastyTheme.classes.text.neutralLight}>
+                {league?.current_week} • {league?.season} Season • {league?.scoring_system?.replace(/_/g, ' ')}
+              </p>
+            </div>
+            <div className="flex items-center space-x-2">
               <span 
-                className="px-3 py-1 rounded text-sm font-semibold"
-                style={{ backgroundColor: dynastyColors.gold, color: dynastyColors.black }}
+                className={`px-3 py-1 rounded text-sm font-semibold ${dynastyTheme.classes.bg.success} ${dynastyTheme.classes.text.white}`}
               >
-                COMMISSIONER
+                {league?.status?.toUpperCase() || 'LOADING'}
               </span>
-            )}
+              {league?.role === 'commissioner' && (
+                <span 
+                  className={`px-3 py-1 rounded text-sm font-semibold ${dynastyTheme.classes.bg.primary} ${dynastyTheme.classes.text.black}`}
+                >
+                  COMMISSIONER
+                </span>
+              )}
+            </div>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left Column - Standings */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* Overall Standings */}
+            <div className={dynastyTheme.components.card.base}>
+              <div className={`flex items-center justify-between p-4 border-b ${dynastyTheme.classes.border.neutral}`}>
+                <h3 className={`text-lg font-bold ${dynastyTheme.classes.text.white}`}>
+                  Current League Status - {teams.length}/{league?.max_teams || 12} Teams
+                </h3>
+                <button 
+                  onClick={() => setActiveSection('standings')}
+                  className={`${dynastyTheme.utils.getComponent('button', 'secondary', 'sm')}`}
+                >
+                  View Full Standings
+                </button>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead>
+                    <tr className={`text-left border-b ${dynastyTheme.classes.border.neutral}`}>
+                      <th className={`p-3 ${dynastyTheme.classes.text.white} font-semibold`}>Team</th>
+                      <th className={`p-3 ${dynastyTheme.classes.text.white} font-semibold`}>Pts</th>
+                      <th className={`p-3 ${dynastyTheme.classes.text.white} font-semibold`}>Team</th>
+                      <th className={`p-3 ${dynastyTheme.classes.text.white} font-semibold`}>Pts</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {leftColumn.map((team, index) => {
+                      const rightTeam = rightColumn[index];
+                      return (
+                        <tr key={index} className={`border-b hover:bg-black/20 ${dynastyTheme.classes.transition} ${dynastyTheme.classes.border.neutral}`}>
+                          <td className="p-3">
+                            <div className="flex items-center space-x-2">
+                              <span className={`${dynastyTheme.classes.text.white} font-medium`}>{team.slot}.</span>
+                              <span className={team.isEmpty ? "text-neutral-400 italic" : dynastyTheme.classes.text.white}>
+                                {team.team_name}
+                              </span>
+                              {team.manager_name && (
+                                <span className={`text-xs ${dynastyTheme.classes.text.neutralLight}`}>
+                                  ({team.manager_name})
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          <td className={`p-3 ${dynastyTheme.classes.text.white}`}>
+                            {team.points !== null ? team.points : '-'}
+                          </td>
+                          <td className="p-3">
+                            {rightTeam && (
+                              <div className="flex items-center space-x-2">
+                                <span className={`${dynastyTheme.classes.text.white} font-medium`}>{rightTeam.slot}.</span>
+                                <span className={rightTeam.isEmpty ? "text-neutral-400 italic" : dynastyTheme.classes.text.white}>
+                                  {rightTeam.team_name}
+                                </span>
+                                {rightTeam.manager_name && (
+                                  <span className={`text-xs ${dynastyTheme.classes.text.neutralLight}`}>
+                                    ({rightTeam.manager_name})
+                                  </span>
+                                )}
+                              </div>
+                            )}
+                          </td>
+                          <td className={`p-3 ${dynastyTheme.classes.text.white}`}>
+                            {rightTeam && rightTeam.points !== null ? rightTeam.points : '-'}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+              
+              {teams.length === 0 && (
+                <div className="p-6 text-center">
+                  <Users className={`w-12 h-12 mx-auto mb-3 opacity-50 ${dynastyTheme.classes.text.neutralLight}`} />
+                  <h4 className={`${dynastyTheme.classes.text.white} font-semibold mb-2`}>League Setup in Progress</h4>
+                  <p className={`text-sm mb-4 ${dynastyTheme.classes.text.neutralLight}`}>
+                    This league can support up to {league?.max_teams || 12} teams. 
+                    Once owners join, standings will appear here.
+                  </p>
+                  {league?.role === 'commissioner' && (
+                    <button className={`${dynastyTheme.utils.getComponent('button', 'primary', 'sm')}`}>
+                      Invite Team Owners
+                    </button>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Current Trading Block */}
+            <div className={dynastyTheme.components.card.base}>
+              <div className={`p-4 border-b ${dynastyTheme.classes.border.neutral}`}>
+                <h3 className={`text-lg font-bold ${dynastyTheme.classes.text.white}`}>Current Trading Block</h3>
+              </div>
+              <div className="p-4">
+                <div className={`text-center py-8 ${dynastyTheme.classes.text.neutralLight}`}>
+                  <Users className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <p>No players currently on the trading block</p>
+                  <button className={`${dynastyTheme.utils.getComponent('button', 'secondary', 'sm')} mt-3`}>
+                    Add Players to Trading Block
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            {/* Last Night's Box */}
+            <div className={dynastyTheme.components.card.base}>
+              <div className={`p-4 border-b ${dynastyTheme.classes.border.neutral}`}>
+                <h3 className={`text-lg font-bold ${dynastyTheme.classes.text.white}`}>Last Night's Box</h3>
+              </div>
+              <div className="p-4">
+                <div className={`text-center py-8 ${dynastyTheme.classes.text.neutralLight}`}>
+                  <Calendar className="w-12 h-12 mx-auto mb-3 opacity-50" />
+                  <p>No game data available yet</p>
+                  <p className="text-xs mt-2">Game boxes will appear here once the season starts</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Right Column - Secondary Info */}
+          <div className="space-y-6">
+            {/* League Information */}
+            <div className={dynastyTheme.components.card.base}>
+              <div className={`p-4 border-b ${dynastyTheme.classes.border.neutral}`}>
+                <h3 className={`text-lg font-bold ${dynastyTheme.classes.text.white}`}>League Information</h3>
+              </div>
+              <div className="p-4 space-y-3">
+                <div className="flex justify-between text-sm">
+                  <span className={dynastyTheme.classes.text.neutralLight}>Scoring:</span>
+                  <span className={dynastyTheme.classes.text.white}>{league?.scoring_system?.replace(/_/g, ' ')}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className={dynastyTheme.classes.text.neutralLight}>Player Pool:</span>
+                  <span className={dynastyTheme.classes.text.white}>{league?.player_pool?.replace(/_/g, ' ')}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className={dynastyTheme.classes.text.neutralLight}>Max Teams:</span>
+                  <span className={dynastyTheme.classes.text.white}>{league?.max_teams}</span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className={dynastyTheme.classes.text.neutralLight}>Salary Cap:</span>
+                  <span className={dynastyTheme.classes.text.white}>
+                    {league?.use_salaries ? `$${league?.salary_cap}` : 'None'}
+                  </span>
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className={dynastyTheme.classes.text.neutralLight}>Created:</span>
+                  <span className={dynastyTheme.classes.text.white}>
+                    {league?.created_at ? new Date(league.created_at).toLocaleDateString() : '-'}
+                  </span>
+                </div>
+              </div>
+            </div>
+
+            {/* Recent MLB Transactions */}
+            <div className={dynastyTheme.components.card.base}>
+              <div className={`p-4 border-b ${dynastyTheme.classes.border.neutral}`}>
+                <h3 className={`text-lg font-bold ${dynastyTheme.classes.text.white}`}>Recent MLB Transactions</h3>
+              </div>
+              <div className="p-4 text-center">
+                <MessageSquare className={`w-12 h-12 mx-auto mb-3 opacity-50 ${dynastyTheme.classes.text.neutralLight}`} />
+                <p className={`text-sm mb-3 ${dynastyTheme.classes.text.neutralLight}`}>
+                  MLB transaction feed coming soon
+                </p>
+              </div>
+            </div>
+
+            {/* Private Messages */}
+            <div className={dynastyTheme.components.card.base}>
+              <div className={`p-4 border-b ${dynastyTheme.classes.border.neutral}`}>
+                <h3 className={`text-lg font-bold ${dynastyTheme.classes.text.white}`}>Private Messages</h3>
+              </div>
+              <div className="p-4 text-center">
+                <MessageSquare className={`w-12 h-12 mx-auto mb-3 opacity-50 ${dynastyTheme.classes.text.neutralLight}`} />
+                <p className={`text-sm mb-3 ${dynastyTheme.classes.text.neutralLight}`}>
+                  You have 0 total messages and 0 unread messages
+                </p>
+                <button className={`${dynastyTheme.utils.getComponent('button', 'secondary', 'sm')}`}>
+                  Click here to view and send private messages
+                </button>
+              </div>
+            </div>
+
+            {/* Commissioner Messages */}
+            <div className={dynastyTheme.components.card.base}>
+              <div className={`p-4 border-b ${dynastyTheme.classes.border.neutral}`}>
+                <h3 className={`text-lg font-bold ${dynastyTheme.classes.text.white}`}>Commissioner Messages</h3>
+              </div>
+              <div className="p-4 text-center">
+                <Crown className={`w-12 h-12 mx-auto mb-3 opacity-50 ${dynastyTheme.classes.text.primary}`} />
+                <p className={`text-sm mb-3 ${dynastyTheme.classes.text.neutralLight}`}>
+                  There are 0 total messages and 0 unread messages
+                </p>
+                <button className={`${dynastyTheme.utils.getComponent('button', 'secondary', 'sm')}`}>
+                  Click here to view and send commissioner messages
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       </div>
+    );
+  };
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Left Column - Standings */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* Overall Standings */}
-          <div 
-            className="dynasty-card"
-            style={{ background: dynastyUtils.getGradient('card') }}
-          >
-            <div className="flex items-center justify-between p-4 border-b" style={{ borderColor: dynastyColors.gray }}>
-              <h3 className="text-lg font-bold text-white">Overall Standings as of 07/22/25</h3>
-              <button 
-                onClick={() => setActiveSection('standings')}
-                className="dynasty-button-secondary text-sm"
-              >
-                View Full Standings
-              </button>
-            </div>
+  const renderStandings = () => {
+    const allTeamSlots = getAllTeamSlots();
+    
+    return (
+      <div className={dynastyTheme.components.card.base}>
+        <div className={`p-6 border-b ${dynastyTheme.classes.border.neutral}`}>
+          <h2 className={`${dynastyTheme.components.heading.h2} ${dynastyTheme.classes.text.white}`}>League Standings</h2>
+          <p className={dynastyTheme.classes.text.neutralLight}>
+            Current season standings - {teams.length}/{league?.max_teams || 12} teams joined
+          </p>
+        </div>
+        <div className="p-6">
+          {allTeamSlots.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
-                  <tr className="text-left border-b" style={{ borderColor: dynastyColors.gray }}>
-                    <th className="p-3 text-white font-semibold">Team</th>
-                    <th className="p-3 text-white font-semibold">Pts</th>
-                    <th className="p-3 text-white font-semibold">Team</th>
-                    <th className="p-3 text-white font-semibold">Pts</th>
+                  <tr className={`border-b ${dynastyTheme.classes.border.neutral}`}>
+                    <th className={`text-left p-3 ${dynastyTheme.classes.text.white} font-semibold`}>Rank</th>
+                    <th className={`text-left p-3 ${dynastyTheme.classes.text.white} font-semibold`}>Team</th>
+                    <th className={`text-left p-3 ${dynastyTheme.classes.text.white} font-semibold`}>Manager</th>
+                    <th className={`text-left p-3 ${dynastyTheme.classes.text.white} font-semibold`}>Points</th>
+                    <th className={`text-left p-3 ${dynastyTheme.classes.text.white} font-semibold`}>Status</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {standings.slice(0, 5).map((team, index) => (
-                    <tr key={index} className="border-b hover:bg-black/20" style={{ borderColor: dynastyColors.gray }}>
-                      <td className="p-3">
-                        <div className="flex items-center space-x-2">
-                          <span className="text-white font-medium">{index + 1}.</span>
-                          <span className="text-white">{team.team}</span>
-                        </div>
+                  {allTeamSlots.map((team, index) => (
+                    <tr key={index} className={`border-b hover:bg-black/20 ${dynastyTheme.classes.transition} ${dynastyTheme.classes.border.neutral}`}>
+                      <td className={`p-3 ${dynastyTheme.classes.text.white} font-semibold`}>{team.slot}</td>
+                      <td className={`p-3 ${team.isEmpty ? 'text-neutral-400 italic' : dynastyTheme.classes.text.white}`}>
+                        {team.team_name}
                       </td>
-                      <td className="p-3 text-white">{team.points}</td>
+                      <td className={`p-3 ${dynastyTheme.classes.text.neutralLight}`}>
+                        {team.manager_name || '-'}
+                      </td>
+                      <td className={`p-3 ${dynastyTheme.classes.text.white}`}>
+                        {team.points !== null ? team.points : '-'}
+                      </td>
                       <td className="p-3">
-                        {standings[index + 5] && (
-                          <div className="flex items-center space-x-2">
-                            <span className="text-white font-medium">{index + 6}.</span>
-                            <span className="text-white">{standings[index + 5]?.team}</span>
-                          </div>
+                        {team.isEmpty ? (
+                          <span className={`px-2 py-1 rounded text-xs ${dynastyTheme.classes.bg.warning} ${dynastyTheme.classes.text.black}`}>
+                            Open
+                          </span>
+                        ) : (
+                          <span className={`px-2 py-1 rounded text-xs ${dynastyTheme.classes.bg.success} ${dynastyTheme.classes.text.white}`}>
+                            Active
+                          </span>
                         )}
-                      </td>
-                      <td className="p-3 text-white">
-                        {standings[index + 5]?.points || ''}
                       </td>
                     </tr>
                   ))}
                 </tbody>
               </table>
             </div>
-          </div>
-
-          {/* Current Trading Block */}
-          <div 
-            className="dynasty-card"
-            style={{ background: dynastyUtils.getGradient('card') }}
-          >
-            <div className="p-4 border-b" style={{ borderColor: dynastyColors.gray }}>
-              <h3 className="text-lg font-bold text-white">Current Trading Block</h3>
-            </div>
-            <div className="p-4">
-              <div className="text-center py-8 dynasty-text-secondary">
-                <Users className="w-12 h-12 mx-auto mb-3 opacity-50" />
-                <p>No players currently on the trading block</p>
-                <button className="dynasty-button-secondary mt-3 text-sm">
-                  Add Players to Trading Block
-                </button>
-              </div>
-            </div>
-          </div>
-
-          {/* Last Night's Box */}
-          <div 
-            className="dynasty-card"
-            style={{ background: dynastyUtils.getGradient('card') }}
-          >
-            <div className="p-4 border-b" style={{ borderColor: dynastyColors.gray }}>
-              <h3 className="text-lg font-bold text-white">Last Night's Box</h3>
-            </div>
-            <div className="p-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <h4 className="text-white font-semibold mb-2">Active Hitters</h4>
-                  <div className="space-y-1 text-sm">
-                    <div className="dynasty-text-secondary">T.Soderstrom Oak 1B</div>
-                    <div className="dynasty-text-secondary">J.Caballero TB 2B</div>
-                    <div className="dynasty-text-secondary">O.Cruz Pit SS</div>
-                  </div>
-                </div>
-                <div>
-                  <h4 className="text-white font-semibold mb-2">Active Pitchers</h4>
-                  <div className="space-y-1 text-sm">
-                    <div className="dynasty-text-secondary">G.Williams Cle</div>
-                    <div className="dynasty-text-secondary">A.Nola Phi</div>
-                    <div className="dynasty-text-secondary">R.Suarez SD</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* Right Column - Secondary Info */}
-        <div className="space-y-6">
-          {/* Recent MLB Transactions */}
-          <div 
-            className="dynasty-card"
-            style={{ background: dynastyUtils.getGradient('card') }}
-          >
-            <div className="p-4 border-b" style={{ borderColor: dynastyColors.gray }}>
-              <h3 className="text-lg font-bold text-white">Recent MLB Transactions</h3>
-            </div>
-            <div className="p-4 space-y-3">
-              {recentTransactions.map((transaction, index) => (
-                <div key={index} className="text-sm">
-                  <div className="flex items-start space-x-2">
-                    <span 
-                      className="px-2 py-1 rounded text-xs font-semibold flex-shrink-0"
-                      style={{ backgroundColor: dynastyColors.info, color: dynastyColors.white }}
-                    >
-                      {transaction.date}
-                    </span>
-                    <span className="dynasty-text-secondary text-xs leading-relaxed">
-                      {transaction.action}
-                    </span>
-                  </div>
-                </div>
-              ))}
-              <button className="dynasty-button-secondary w-full text-sm mt-3">
-                View All Transactions
-              </button>
-            </div>
-          </div>
-
-          {/* Today's MLB Scheduled Starters */}
-          <div 
-            className="dynasty-card"
-            style={{ background: dynastyUtils.getGradient('card') }}
-          >
-            <div className="p-4 border-b" style={{ borderColor: dynastyColors.gray }}>
-              <h3 className="text-lg font-bold text-white">07.23 MLB Scheduled Starters</h3>
-            </div>
-            <div className="p-4 space-y-2">
-              {todaysGames.map((game, index) => (
-                <div key={index} className="flex items-center justify-between text-sm">
-                  <span className="dynasty-text-secondary">
-                    {game.away} {game.time} {game.home}
-                  </span>
-                  <span className="text-white">
-                    Cin (Nick Lodolo)
-                  </span>
-                </div>
-              ))}
-              <button className="dynasty-button-secondary w-full text-sm mt-3">
-                View All Games
-              </button>
-            </div>
-          </div>
-
-          {/* Private Messages */}
-          <div 
-            className="dynasty-card"
-            style={{ background: dynastyUtils.getGradient('card') }}
-          >
-            <div className="p-4 border-b" style={{ borderColor: dynastyColors.gray }}>
-              <h3 className="text-lg font-bold text-white">Private Messages</h3>
-            </div>
-            <div className="p-4 text-center">
-              <MessageSquare className="w-12 h-12 mx-auto mb-3 opacity-50" style={{ color: dynastyColors.lightGray }} />
-              <p className="dynasty-text-secondary text-sm mb-3">
-                You have 0 total messages and 0 unread messages
+          ) : (
+            <div className="text-center py-12">
+              <Trophy className={`w-16 h-16 mx-auto mb-4 ${dynastyTheme.classes.text.neutralLight}`} />
+              <h3 className={`text-xl font-semibold mb-2 ${dynastyTheme.classes.text.white}`}>No Teams Yet</h3>
+              <p className={dynastyTheme.classes.text.neutralLight}>
+                Standings will appear here once team owners join the league.
               </p>
-              <button className="dynasty-button-secondary text-sm">
-                Click here to view and send private messages
-              </button>
             </div>
-          </div>
-
-          {/* Commissioner Messages */}
-          <div 
-            className="dynasty-card"
-            style={{ background: dynastyUtils.getGradient('card') }}
-          >
-            <div className="p-4 border-b" style={{ borderColor: dynastyColors.gray }}>
-              <h3 className="text-lg font-bold text-white">Commissioner Messages</h3>
-            </div>
-            <div className="p-4 text-center">
-              <Crown className="w-12 h-12 mx-auto mb-3 opacity-50" style={{ color: dynastyColors.gold }} />
-              <p className="dynasty-text-secondary text-sm mb-3">
-                There are 0 total messages and 0 unread messages
-              </p>
-              <button className="dynasty-button-secondary text-sm">
-                Click here to view and send commissioner messages
-              </button>
-            </div>
-          </div>
+          )}
         </div>
       </div>
-    </div>
-  );
-
-  const renderStandings = () => (
-    <div 
-      className="dynasty-card"
-      style={{ background: dynastyUtils.getGradient('card') }}
-    >
-      <div className="p-6 border-b" style={{ borderColor: dynastyColors.gray }}>
-        <h2 className="text-2xl font-bold text-white">League Standings</h2>
-        <p className="dynasty-text-secondary">Current season standings and statistics</p>
-      </div>
-      <div className="p-6">
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead>
-              <tr className="border-b" style={{ borderColor: dynastyColors.gray }}>
-                <th className="text-left p-3 text-white font-semibold">Rank</th>
-                <th className="text-left p-3 text-white font-semibold">Team</th>
-                <th className="text-left p-3 text-white font-semibold">Manager</th>
-                <th className="text-left p-3 text-white font-semibold">Points</th>
-                <th className="text-left p-3 text-white font-semibold">Games Back</th>
-              </tr>
-            </thead>
-            <tbody>
-              {standings.map((team, index) => (
-                <tr key={index} className="border-b hover:bg-black/20" style={{ borderColor: dynastyColors.gray }}>
-                  <td className="p-3 text-white font-semibold">{team.rank}</td>
-                  <td className="p-3 text-white">{team.team}</td>
-                  <td className="p-3 dynasty-text-secondary">{team.manager}</td>
-                  <td className="p-3 text-white">{team.points}</td>
-                  <td className="p-3 dynasty-text-secondary">
-                    {index === 0 ? '-' : (standings[0].points - team.points).toFixed(1)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
+    );
+  };
 
   const renderComingSoon = (title) => (
-    <div 
-      className="dynasty-card p-8 text-center"
-      style={{ background: dynastyUtils.getGradient('card') }}
-    >
-      <h2 className="text-2xl font-bold text-white mb-4">{title}</h2>
-      <div className="py-12 dynasty-text-secondary">
-        <FileText className="w-16 h-16 mx-auto mb-4" style={{ color: dynastyColors.lightGray }} />
+    <div className={`${dynastyTheme.components.card.base} p-8 text-center`}>
+      <h2 className={`${dynastyTheme.components.heading.h2} ${dynastyTheme.classes.text.white} mb-4`}>{title}</h2>
+      <div className={`py-12 ${dynastyTheme.classes.text.neutralLight}`}>
+        <FileText className={`w-16 h-16 mx-auto mb-4 ${dynastyTheme.classes.text.neutralLight}`} />
         <h3 className="text-xl font-semibold mb-2">Coming Soon</h3>
         <p>This feature is under development and will be available soon.</p>
       </div>
@@ -443,6 +501,14 @@ const LeagueDashboard = () => {
         return renderComingSoon('Messages');
       case 'team-setup':
         return renderComingSoon('Team Setup Options');
+      case 'set-up':
+        return (
+          <LeagueSettings 
+            leagueId={leagueId}
+            user={user}
+            onLeagueDeleted={handleLeagueDeleted}
+          />
+        );
       default:
         return renderComingSoon('Feature');
     }
@@ -450,14 +516,13 @@ const LeagueDashboard = () => {
 
   if (loading) {
     return (
-      <div className="min-h-screen" style={{ background: dynastyUtils.getGradient('page') }}>
+      <div className={dynastyTheme.components.page}>
         <div className="flex justify-center items-center min-h-screen">
           <div className="flex items-center space-x-3">
             <div 
-              className="w-8 h-8 border-2 border-t-transparent animate-spin rounded-full"
-              style={{ borderColor: dynastyColors.gold, borderTopColor: 'transparent' }}
+              className={`w-8 h-8 border-2 border-t-transparent animate-spin rounded-full ${dynastyTheme.classes.border.primary}`}
             />
-            <span className="text-white text-lg">Loading league...</span>
+            <span className={`${dynastyTheme.classes.text.white} text-lg`}>Loading league...</span>
           </div>
         </div>
       </div>
@@ -465,43 +530,39 @@ const LeagueDashboard = () => {
   }
 
   return (
-    <div className="min-h-screen" style={{ background: dynastyUtils.getGradient('page') }}>
+    <div className={dynastyTheme.components.page}>
       {/* Header */}
       <header 
-        className="px-6 py-4 border-b"
-        style={{ 
-          background: dynastyUtils.getGradient('card'),
-          borderColor: dynastyColors.gold + '20'
-        }}
+        className={`px-6 py-4 border-b ${dynastyTheme.components.card.base} ${dynastyTheme.classes.border.light}`}
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="lg:hidden text-white hover:text-dynasty-gold"
+              className={`lg:hidden ${dynastyTheme.classes.text.white} hover:text-yellow-400`}
             >
               {sidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
             
             <button
               onClick={() => navigate('/dashboard')}
-              className="flex items-center space-x-3 dynasty-text-secondary hover:text-white transition-colors"
+              className={`flex items-center space-x-3 hover:text-white ${dynastyTheme.classes.transition} ${dynastyTheme.classes.text.neutralLight}`}
             >
-              <Crown className="w-8 h-8" style={{ color: dynastyColors.gold }} />
+              <Crown className={`w-8 h-8 ${dynastyTheme.classes.text.primary}`} />
               <div className="text-left">
-                <div className="text-xl font-bold text-white">Dynasty Dugout</div>
+                <div className={`text-xl font-bold ${dynastyTheme.classes.text.white}`}>Dynasty Dugout</div>
                 <div className="text-sm">Return to Dashboard</div>
               </div>
             </button>
           </div>
           
           <div className="flex items-center space-x-4">
-            <span className="dynasty-text-secondary hidden md:block">
+            <span className={`hidden md:block ${dynastyTheme.classes.text.neutralLight}`}>
               Welcome, {user?.given_name || user?.firstName}
             </span>
             <button
               onClick={handleSignOut}
-              className="flex items-center space-x-2 dynasty-text-secondary hover:text-white transition-colors"
+              className={`flex items-center space-x-2 hover:text-white ${dynastyTheme.classes.transition} ${dynastyTheme.classes.text.neutralLight}`}
             >
               <LogOut className="w-5 h-5" />
               <span className="hidden md:inline">Sign Out</span>
@@ -513,28 +574,32 @@ const LeagueDashboard = () => {
       <div className="flex">
         {/* Sidebar */}
         <aside 
-          className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed lg:static w-80 min-h-screen border-r transition-transform duration-300 ease-in-out z-40`}
-          style={{ 
-            background: dynastyUtils.getGradient('card'),
-            borderColor: dynastyColors.gold + '20'
-          }}
+          className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed lg:static w-80 min-h-screen border-r ${dynastyTheme.classes.transition} duration-300 ease-in-out z-40 ${dynastyTheme.components.card.base} ${dynastyTheme.classes.border.light}`}
         >
           <div className="p-4 h-full overflow-y-auto">
             {/* League Info */}
-            <div className="mb-6 p-4 rounded-lg" style={{ backgroundColor: dynastyColors.darkLighter }}>
-              <h3 className="text-lg font-bold text-white mb-2">{league?.league_name}</h3>
+            <div className={`mb-6 p-4 rounded-lg ${dynastyTheme.classes.bg.darkLighter}`}>
+              <h3 className={`text-lg font-bold ${dynastyTheme.classes.text.white} mb-2`}>
+                {league?.league_name || 'Loading...'}
+              </h3>
               <div className="space-y-1 text-sm">
                 <div className="flex justify-between">
-                  <span className="dynasty-text-secondary">Status:</span>
-                  <span style={{ color: dynastyColors.success }}>Active</span>
+                  <span className={dynastyTheme.classes.text.neutralLight}>Status:</span>
+                  <span className={dynastyTheme.classes.text.success}>
+                    {league?.status || 'Loading'}
+                  </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="dynasty-text-secondary">Role:</span>
-                  <span style={{ color: dynastyColors.gold }}>Commissioner</span>
+                  <span className={dynastyTheme.classes.text.neutralLight}>Role:</span>
+                  <span className={dynastyTheme.classes.text.primary}>
+                    {league?.role || 'Loading'}
+                  </span>
                 </div>
                 <div className="flex justify-between">
-                  <span className="dynasty-text-secondary">Week:</span>
-                  <span className="text-white">Week 17</span>
+                  <span className={dynastyTheme.classes.text.neutralLight}>Teams:</span>
+                  <span className={dynastyTheme.classes.text.white}>
+                    {teams.length}/{league?.max_teams || 12}
+                  </span>
                 </div>
               </div>
             </div>
@@ -543,8 +608,7 @@ const LeagueDashboard = () => {
             {navigationSections.map((section, sectionIndex) => (
               <div key={sectionIndex} className="mb-6">
                 <h4 
-                  className="text-xs font-semibold uppercase tracking-wider mb-3 px-2"
-                  style={{ color: dynastyColors.gold }}
+                  className={`text-xs font-semibold uppercase tracking-wider mb-3 px-2 ${dynastyTheme.classes.text.primary}`}
                 >
                   {section.title}
                 </h4>
@@ -559,14 +623,11 @@ const LeagueDashboard = () => {
                           setActiveSection(item.id);
                           setSidebarOpen(false);
                         }}
-                        className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm transition-colors ${
+                        className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-semibold ${dynastyTheme.classes.transition} ${
                           isActive
-                            ? 'text-black font-semibold'
-                            : 'text-white hover:text-white hover:bg-black/20'
+                            ? `${dynastyTheme.classes.bg.primary} ${dynastyTheme.classes.text.black}`
+                            : `${dynastyTheme.classes.text.white} hover:text-white hover:bg-black/20`
                         }`}
-                        style={{
-                          backgroundColor: isActive ? dynastyColors.gold : 'transparent'
-                        }}
                       >
                         <Icon className="w-4 h-4 flex-shrink-0" />
                         <span className="flex-1 text-left">{item.label}</span>

@@ -5,7 +5,7 @@ import axios from 'axios';
 const api = axios.create({
   baseURL: process.env.REACT_APP_API_URL || 'https://d20wx6xzxkf84y.cloudfront.net',
   withCredentials: true,
-  timeout: 30000,
+  timeout: 30000, // Keep 30 second timeout for regular requests
   headers: {
     'Content-Type': 'application/json',
   }
@@ -40,7 +40,10 @@ api.interceptors.response.use(
   }
 );
 
-// Auth API - Method names matching AuthContext
+// =============================================================================
+// AUTH API
+// =============================================================================
+
 export const authAPI = {
   signIn: async (email, password) => {
     const response = await api.post('/api/auth/login', { email, password });
@@ -86,7 +89,6 @@ export const authAPI = {
     return response.data;
   },
 
-  // Additional methods for AuthModal features
   verifyEmail: async (email, code) => {
     const response = await api.post('/api/auth/verify', { email, code });
     return response.data;
@@ -112,7 +114,151 @@ export const authAPI = {
   }
 };
 
-// Players API
+// =============================================================================
+// LEAGUES API - UPDATED FOR ASYNCHRONOUS CREATION
+// =============================================================================
+
+export const leaguesAPI = {
+  // League Management - UPDATED ASYNC APPROACH
+  getMyLeagues: async () => {
+    const response = await api.get('/api/leagues/my-leagues');
+    return response.data;
+  },
+
+  /**
+   * Create league asynchronously - Returns immediately with league_id and status URL
+   * Frontend should then poll checkLeagueCreationStatus() until completion
+   */
+  createLeague: async (leagueData) => {
+    const response = await api.post('/api/leagues/create', leagueData);
+    return response.data;
+  },
+
+  /**
+   * Check the status of asynchronous league creation
+   * Poll this endpoint every 3-5 seconds until status is 'completed' or 'failed'
+   */
+  checkLeagueCreationStatus: async (leagueId) => {
+    const response = await api.get(`/api/leagues/${leagueId}/creation-status`);
+    return response.data;
+  },
+
+  getLeagueDetails: async (leagueId) => {
+    const response = await api.get(`/api/leagues/${leagueId}`);
+    return response.data;
+  },
+
+  deleteLeague: async (leagueId) => {
+    const response = await api.delete(`/api/leagues/${leagueId}/cleanup`);
+    return response.data;
+  },
+
+  // League Information
+  getLeagueStandings: async (leagueId) => {
+    const response = await api.get(`/api/leagues/${leagueId}/standings`);
+    return response.data;
+  },
+
+  getTeamStats: async (leagueId) => {
+    const response = await api.get(`/api/leagues/${leagueId}/team-stats`);
+    return response.data;
+  },
+
+  getPoolStats: async (leagueId) => {
+    const response = await api.get(`/api/leagues/${leagueId}/pool-stats`);
+    return response.data;
+  },
+
+  getDatabaseInfo: async (leagueId) => {
+    const response = await api.get(`/api/leagues/${leagueId}/database-info`);
+    return response.data;
+  },
+
+  // Roster Management
+  getMyRoster: async (leagueId) => {
+    const response = await api.get(`/api/leagues/${leagueId}/my-roster`);
+    return response.data;
+  },
+
+  getAvailablePlayers: async (leagueId, filters = {}) => {
+    const params = new URLSearchParams();
+    
+    if (filters.position) params.append('position', filters.position);
+    if (filters.search) params.append('search', filters.search);
+    if (filters.limit) params.append('limit', filters.limit);
+    if (filters.offset) params.append('offset', filters.offset);
+    
+    const queryString = params.toString();
+    const url = queryString ? `/api/leagues/${leagueId}/available-players?${queryString}` : `/api/leagues/${leagueId}/available-players`;
+    
+    const response = await api.get(url);
+    return response.data;
+  },
+
+  getLeaguePlayers: async (leagueId, filters = {}) => {
+    const params = new URLSearchParams();
+    
+    if (filters.status) params.append('status', filters.status);
+    if (filters.position) params.append('position', filters.position);
+    if (filters.search) params.append('search', filters.search);
+    if (filters.limit) params.append('limit', filters.limit);
+    if (filters.offset) params.append('offset', filters.offset);
+    
+    const queryString = params.toString();
+    const url = queryString ? `/api/leagues/${leagueId}/players?${queryString}` : `/api/leagues/${leagueId}/players`;
+    
+    const response = await api.get(url);
+    return response.data;
+  },
+
+  // Transactions
+  processTransaction: async (leagueId, transactionData) => {
+    const response = await api.post(`/api/leagues/${leagueId}/transactions`, transactionData);
+    return response.data;
+  },
+
+  createTrade: async (leagueId, tradeData) => {
+    const response = await api.post(`/api/leagues/${leagueId}/trades`, tradeData);
+    return response.data;
+  },
+
+  getTransactionHistory: async (leagueId, filters = {}) => {
+    const params = new URLSearchParams();
+    
+    if (filters.transaction_type) params.append('transaction_type', filters.transaction_type);
+    if (filters.days_back) params.append('days_back', filters.days_back);
+    if (filters.limit) params.append('limit', filters.limit);
+    
+    const queryString = params.toString();
+    const url = queryString ? `/api/leagues/${leagueId}/transactions?${queryString}` : `/api/leagues/${leagueId}/transactions`;
+    
+    const response = await api.get(url);
+    return response.data;
+  },
+
+  // Team Management
+  setupTeam: async (leagueId, teamData) => {
+    const response = await api.post(`/api/leagues/${leagueId}/setup-team`, teamData);
+    return response.data;
+  },
+
+  // League Administration
+  syncPlayers: async (leagueId) => {
+    const response = await api.post(`/api/leagues/${leagueId}/sync-players`);
+    return response.data;
+  },
+
+  // System
+  healthCheck: async () => {
+    const response = await api.get('/api/leagues/health');
+    return response.data;
+  }
+};
+
+// =============================================================================
+// PLAYERS API
+// =============================================================================
+
 export const playersAPI = {
   getPlayers: async (filters = {}) => {
     const params = new URLSearchParams();
@@ -141,7 +287,10 @@ export const playersAPI = {
   }
 };
 
-// Analytics API
+// =============================================================================
+// ANALYTICS API
+// =============================================================================
+
 export const analyticsAPI = {
   getCareerStats: async (playerId) => {
     const response = await api.get(`/api/analytics/career-stats/${playerId}`);
@@ -164,144 +313,10 @@ export const analyticsAPI = {
   }
 };
 
-// Leagues API - COMPLETE with all missing methods
-export const leaguesAPI = {
-  // Get user's leagues
-  getMyLeagues: async () => {
-    const response = await api.get('/api/leagues/my-leagues');
-    return response.data;
-  },
+// =============================================================================
+// UTILITIES API
+// =============================================================================
 
-  // Create a new league
-  createLeague: async (leagueData) => {
-    const response = await api.post('/api/leagues/create', leagueData);
-    return response.data;
-  },
-
-  // Get single league details (MISSING METHOD - ADDED)
-  getLeague: async (leagueId) => {
-    const response = await api.get(`/api/leagues/${leagueId}`);
-    return response.data;
-  },
-
-  // Get league standings (MISSING METHOD - ADDED)
-  getLeagueStandings: async (leagueId) => {
-    const response = await api.get(`/api/leagues/${leagueId}/standings`);
-    return response.data;
-  },
-
-  // Get team stats for league (MISSING METHOD - ADDED)
-  getTeamStats: async (leagueId) => {
-    const response = await api.get(`/api/leagues/${leagueId}/team-stats`);
-    return response.data;
-  },
-
-  // Get my roster in a league (MISSING METHOD - ADDED)
-  getMyRoster: async (leagueId) => {
-    const response = await api.get(`/api/leagues/${leagueId}/my-roster`);
-    return response.data;
-  },
-
-  // Get available players in a league (MISSING METHOD - ADDED)
-  getAvailablePlayers: async (leagueId, filters = {}) => {
-    const params = new URLSearchParams();
-    
-    if (filters.position) params.append('position', filters.position);
-    if (filters.search) params.append('search', filters.search);
-    if (filters.limit) params.append('limit', filters.limit);
-    if (filters.offset) params.append('offset', filters.offset);
-    
-    const queryString = params.toString();
-    const url = queryString ? `/api/leagues/${leagueId}/available-players?${queryString}` : `/api/leagues/${leagueId}/available-players`;
-    
-    const response = await api.get(url);
-    return response.data;
-  },
-
-  // Process transactions (MISSING METHOD - ADDED)
-  processTransaction: async (leagueId, transactionData) => {
-    const response = await api.post(`/api/leagues/${leagueId}/transactions`, transactionData);
-    return response.data;
-  },
-
-  // Create trade proposal (MISSING METHOD - ADDED)
-  createTrade: async (leagueId, tradeData) => {
-    const response = await api.post(`/api/leagues/${leagueId}/trades`, tradeData);
-    return response.data;
-  },
-
-  // Get transaction history (MISSING METHOD - ADDED)
-  getTransactionHistory: async (leagueId, filters = {}) => {
-    const params = new URLSearchParams();
-    
-    if (filters.transaction_type) params.append('transaction_type', filters.transaction_type);
-    if (filters.days_back) params.append('days_back', filters.days_back);
-    if (filters.limit) params.append('limit', filters.limit);
-    
-    const queryString = params.toString();
-    const url = queryString ? `/api/leagues/${leagueId}/transactions?${queryString}` : `/api/leagues/${leagueId}/transactions`;
-    
-    const response = await api.get(url);
-    return response.data;
-  },
-
-  // Team setup/creation (MISSING METHOD - ADDED)
-  createTeam: async (leagueId, teamData) => {
-    // For now, this could be a placeholder - we'll need to add this endpoint to backend later
-    // or handle team creation differently
-    const response = await api.post(`/api/leagues/${leagueId}/teams`, teamData);
-    return response.data;
-  },
-
-  // Sync league players with MLB updates (MISSING METHOD - ADDED)
-  syncPlayers: async (leagueId) => {
-    const response = await api.post(`/api/leagues/${leagueId}/sync-players`);
-    return response.data;
-  },
-
-  // Get league pool statistics (MISSING METHOD - ADDED)
-  getPoolStats: async (leagueId) => {
-    const response = await api.get(`/api/leagues/${leagueId}/pool-stats`);
-    return response.data;
-  },
-
-  // Delete league (commissioner only) (MISSING METHOD - ADDED)
-  deleteLeague: async (leagueId) => {
-    const response = await api.delete(`/api/leagues/${leagueId}/cleanup`);
-    return response.data;
-  },
-
-  // Get players in a specific league (EXISTING - KEPT)
-  getLeaguePlayers: async (leagueId, filters = {}) => {
-    const params = new URLSearchParams();
-    
-    if (filters.status) params.append('status', filters.status);
-    if (filters.position) params.append('position', filters.position);
-    if (filters.search) params.append('search', filters.search);
-    if (filters.limit) params.append('limit', filters.limit);
-    if (filters.offset) params.append('offset', filters.offset);
-    
-    const queryString = params.toString();
-    const url = queryString ? `/api/leagues/${leagueId}/players?${queryString}` : `/api/leagues/${leagueId}/players`;
-    
-    const response = await api.get(url);
-    return response.data;
-  },
-
-  // Health check for leagues (EXISTING - KEPT)
-  healthCheck: async () => {
-    const response = await api.get('/api/leagues/health');
-    return response.data;
-  },
-
-  // Cleanup test tables (development only) (EXISTING - KEPT)
-  cleanupTestTables: async () => {
-    const response = await api.delete('/api/leagues/cleanup-test-tables');
-    return response.data;
-  }
-};
-
-// Utilities API
 export const utilitiesAPI = {
   healthCheck: async () => {
     const response = await api.get('/api/health');
@@ -314,5 +329,113 @@ export const utilitiesAPI = {
   }
 };
 
+// =============================================================================
+// HELPER FUNCTIONS FOR ASYNC LEAGUE CREATION
+// =============================================================================
+
+/**
+ * Utility function to handle async league creation with automatic polling
+ * Usage:
+ * 
+ * const result = await createLeagueWithPolling(leagueData, {
+ *   onProgress: (status) => console.log('Progress:', status),
+ *   onComplete: (result) => console.log('League created:', result),
+ *   onError: (error) => console.error('Creation failed:', error)
+ * });
+ */
+export const createLeagueWithPolling = async (leagueData, callbacks = {}) => {
+  const { onProgress, onComplete, onError, pollInterval = 3000, maxAttempts = 60 } = callbacks;
+
+  try {
+    // Start league creation
+    const createResponse = await leaguesAPI.createLeague(leagueData);
+    
+    if (!createResponse.success || !createResponse.league_id) {
+      throw new Error(createResponse.message || 'Failed to start league creation');
+    }
+
+    const leagueId = createResponse.league_id;
+    let attempts = 0;
+
+    // Polling function
+    const pollStatus = async () => {
+      try {
+        attempts++;
+        const statusResponse = await leaguesAPI.checkLeagueCreationStatus(leagueId);
+        
+        if (statusResponse.success) {
+          // Call progress callback if provided
+          if (onProgress) {
+            onProgress(statusResponse);
+          }
+
+          if (statusResponse.status === 'completed') {
+            // Success!
+            if (onComplete) {
+              onComplete(statusResponse);
+            }
+            return statusResponse;
+            
+          } else if (statusResponse.status === 'failed') {
+            // Creation failed
+            const error = new Error(statusResponse.message || statusResponse.error || 'League creation failed');
+            if (onError) {
+              onError(error);
+            }
+            throw error;
+            
+          } else if (attempts >= maxAttempts) {
+            // Timeout
+            const error = new Error('League creation timed out');
+            if (onError) {
+              onError(error);
+            }
+            throw error;
+            
+          } else {
+            // Still in progress, continue polling
+            setTimeout(pollStatus, pollInterval);
+          }
+        } else {
+          throw new Error('Failed to get league creation status');
+        }
+      } catch (error) {
+        if (onError) {
+          onError(error);
+        }
+        throw error;
+      }
+    };
+
+    // Start polling
+    setTimeout(pollStatus, pollInterval);
+    
+    return { league_id: leagueId, status: 'polling_started' };
+    
+  } catch (error) {
+    if (onError) {
+      onError(error);
+    }
+    throw error;
+  }
+};
+
+/**
+ * Simple promise-based league creation that resolves when complete
+ * Returns the final league creation result
+ */
+export const createLeagueAsync = (leagueData, options = {}) => {
+  const { pollInterval = 3000, maxAttempts = 60 } = options;
+  
+  return new Promise((resolve, reject) => {
+    createLeagueWithPolling(leagueData, {
+      pollInterval,
+      maxAttempts,
+      onComplete: resolve,
+      onError: reject
+    });
+  });
+};
+
 // Export the axios instance for custom requests
-export default api;// Updated: Wed Jul 23 15:48:39 EDT 2025
+export default api;

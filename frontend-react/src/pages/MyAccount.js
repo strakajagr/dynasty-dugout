@@ -1,7 +1,7 @@
 // src/pages/MyAccount.js
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { dynastyColors, dynastyUtils, dynastyTheme } from '../services/colorService';
+import { dynastyTheme } from '../services/colorService';
 import '../styles/App.css';
 
 const MyAccount = () => {
@@ -24,7 +24,7 @@ const MyAccount = () => {
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
   const [activeTab, setActiveTab] = useState('profile');
-  const [profilePictureUrl, setProfilePictureUrl] = useState(null); // Simplified state
+  const [profilePictureUrl, setProfilePictureUrl] = useState(null);
 
   useEffect(() => {
     loadUserProfile();
@@ -52,7 +52,6 @@ const MyAccount = () => {
           profilePicture: null
         });
         
-        // Set profile picture URL directly
         setProfilePictureUrl(profile.picture || null);
         console.log('Profile picture URL set to:', profile.picture);
         
@@ -115,7 +114,6 @@ const MyAccount = () => {
       console.log('Upload response:', result);
 
       if (response.ok && result.success) {
-        // Immediately set the new S3 URL
         setProfilePictureUrl(result.profile_picture_url);
         console.log('Profile picture URL updated to:', result.profile_picture_url);
         
@@ -264,173 +262,103 @@ const MyAccount = () => {
     }
   };
 
+  const getMessageClass = (type) => {
+    switch (type) {
+      case 'error':
+        return `${dynastyTheme.classes.bg.error}/20 ${dynastyTheme.classes.text.error} border-red-500`;
+      case 'success':
+        return `${dynastyTheme.classes.bg.success}/20 ${dynastyTheme.classes.text.success} border-emerald-500`;
+      case 'info':
+        return `${dynastyTheme.classes.bg.darkLighter} ${dynastyTheme.classes.text.neutralLight} ${dynastyTheme.classes.border.primary}`;
+      default:
+        return `${dynastyTheme.classes.bg.darkLighter} ${dynastyTheme.classes.text.neutralLight} ${dynastyTheme.classes.border.primary}`;
+    }
+  };
+
   return (
-    <div className="dynasty-page-container" style={{ 
-      minHeight: '100vh',
-      background: 'linear-gradient(135deg, #111827 0%, #374151 100%)',
-      padding: '2rem'
-    }}>
-      <div className="dynasty-content-container" style={{ maxWidth: '800px', margin: '0 auto' }}>
+    <div className={dynastyTheme.patterns.pageLayout}>
+      <div className={dynastyTheme.components.container}>
         {/* Header */}
-        <div className="dynasty-header-section" style={{ 
-          marginBottom: '3rem', 
-          textAlign: 'center',
-          padding: '2rem',
-          background: `linear-gradient(135deg, ${dynastyColors.dark} 0%, rgba(26, 32, 46, 0.8) 100%)`,
-          borderRadius: '1rem',
-          border: `1px solid ${dynastyColors.gold}`,
-          boxShadow: `0 8px 32px rgba(234, 179, 8, 0.1)`
-        }}>
-          <h1 className="dynasty-page-title" style={{ 
-            color: dynastyColors.gold,
-            fontSize: '3rem',
-            fontWeight: '700',
-            marginBottom: '1rem',
-            textShadow: '0 2px 4px rgba(0, 0, 0, 0.5)',
-            background: `linear-gradient(135deg, ${dynastyColors.gold} 0%, #fcd34d 100%)`,
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            backgroundClip: 'text'
-          }}>
+        <div className={`${dynastyTheme.components.card.highlighted} p-8 text-center mb-12`}>
+          <h1 className={dynastyTheme.components.heading.h1}>
             My Account
           </h1>
-          <p className="dynasty-subtitle" style={{ 
-            color: dynastyColors.lightGray,
-            fontSize: '1.2rem',
-            fontWeight: '400',
-            opacity: '0.9',
-            maxWidth: '600px',
-            margin: '0 auto'
-          }}>
+          <p className={`text-xl ${dynastyTheme.classes.text.neutralLight}`}>
             Manage your profile information and account settings
           </p>
         </div>
 
         {/* Message */}
         {message.text && (
-          <div className={`dynasty-message-box ${
-            message.type === 'error' ? 'dynasty-error-message' : 
-            message.type === 'info' ? 'dynasty-info-message' : 'dynasty-success-message'
-          }`} 
-            style={{
-              backgroundColor: message.type === 'error' ? dynastyColors.errorLight : 
-                             message.type === 'info' ? '#1f2937' : dynastyColors.successLight,
-              color: message.type === 'error' ? dynastyColors.error : 
-                     message.type === 'info' ? dynastyColors.lightGray : dynastyColors.success,
-              border: `1px solid ${message.type === 'error' ? dynastyColors.error : 
-                                  message.type === 'info' ? dynastyColors.gold : dynastyColors.success}`,
-              padding: '1rem',
-              borderRadius: '0.5rem',
-              marginBottom: '1.5rem'
-            }}>
+          <div className={`${getMessageClass(message.type)} border p-4 rounded-lg mb-6`}>
             {message.text}
           </div>
         )}
 
         {/* Tab Navigation */}
-        <div className="dynasty-tab-container" style={dynastyTheme.components.tabs.container}>
-          <button
-            className={`dynasty-tab-custom ${activeTab === 'profile' ? 'dynasty-tab-active' : 'dynasty-tab-inactive'}`}
-            onClick={() => setActiveTab('profile')}
-            style={dynastyUtils.getTabStyles(activeTab === 'profile')}
-          >
-            Profile Information
-          </button>
-          <button
-            className={`dynasty-tab-custom ${activeTab === 'security' ? 'dynasty-tab-active' : 'dynasty-tab-inactive'}`}
-            onClick={() => setActiveTab('security')}
-            style={dynastyUtils.getTabStyles(activeTab === 'security')}
-          >
-            Security Settings
-          </button>
+        <div className="flex space-x-1 mb-8">
+          {[
+            { id: 'profile', label: 'Profile Information' },
+            { id: 'security', label: 'Security Settings' }
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              className={`px-6 py-3 rounded-t-lg font-semibold ${dynastyTheme.classes.transition} ${
+                activeTab === tab.id
+                  ? `${dynastyTheme.classes.bg.primary} ${dynastyTheme.classes.text.black}`
+                  : `${dynastyTheme.classes.bg.darkLighter} ${dynastyTheme.classes.text.primary} hover:bg-gray-700`
+              }`}
+              onClick={() => setActiveTab(tab.id)}
+            >
+              {tab.label}
+            </button>
+          ))}
         </div>
 
         {/* Profile Tab */}
         {activeTab === 'profile' && (
-          <div className="dynasty-card-container" style={{
-            backgroundColor: dynastyColors.dark,
-            padding: '2rem',
-            borderRadius: '0.5rem',
-            border: `1px solid ${dynastyColors.gray}`
-          }}>
-            <form onSubmit={handleProfileSubmit} className="dynasty-form">
+          <div className={`${dynastyTheme.components.card.base} p-8`}>
+            <form onSubmit={handleProfileSubmit} className="space-y-6">
               {/* Profile Picture Section */}
-              <div className="dynasty-profile-picture-section" style={{ marginBottom: '2rem' }}>
-                <label className="dynasty-label" style={{ 
-                  color: dynastyColors.white,
-                  fontSize: '1.1rem',
-                  fontWeight: '600',
-                  marginBottom: '1rem',
-                  display: 'block'
-                }}>
+              <div>
+                <label className={dynastyTheme.components.label}>
                   Profile Picture
                 </label>
-                <div className="dynasty-profile-picture-container" style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-                  <div className="dynasty-profile-picture-preview" style={{
-                    borderColor: dynastyColors.gold,
-                    border: `2px solid ${dynastyColors.gold}`,
-                    borderRadius: '50%',
-                    width: '100px',
-                    height: '100px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    overflow: 'hidden'
-                  }}>
+                <div className="flex items-center gap-6">
+                  <div 
+                    className={`w-24 h-24 rounded-full border-2 ${dynastyTheme.classes.border.primary} flex items-center justify-center overflow-hidden`}
+                  >
                     {profilePictureUrl ? (
                       <img 
                         src={profilePictureUrl} 
                         alt="Profile Picture" 
-                        className="dynasty-profile-image"
-                        style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+                        className="w-full h-full object-cover"
                         onError={(e) => {
                           console.error('Image failed to load:', profilePictureUrl);
                           setProfilePictureUrl(null);
                         }}
                       />
                     ) : (
-                      <div className="dynasty-profile-placeholder" style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'center',
-                        height: '100%'
-                      }}>
-                        <span style={{ color: dynastyColors.lightGray, fontSize: '0.9rem' }}>No Image</span>
-                      </div>
+                      <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>
+                        No Image
+                      </span>
                     )}
                   </div>
-                  <div className="dynasty-profile-picture-upload">
+                  <div>
                     <input
                       type="file"
                       id="profilePicture"
                       accept="image/*"
                       onChange={handleProfilePictureChange}
-                      className="dynasty-file-input"
-                      style={{ display: 'none' }}
+                      className="hidden"
                     />
                     <label
                       htmlFor="profilePicture"
-                      className="dynasty-file-upload-button"
-                      style={{
-                        backgroundColor: dynastyColors.gold,
-                        color: dynastyColors.black,
-                        padding: '0.75rem 1.5rem',
-                        borderRadius: '0.5rem',
-                        cursor: 'pointer',
-                        fontSize: '0.9rem',
-                        fontWeight: '600',
-                        border: 'none',
-                        transition: 'all 0.3s ease',
-                        display: 'inline-block'
-                      }}
+                      className={`${dynastyTheme.utils.getComponent('button', 'primary', 'md')} cursor-pointer`}
                     >
                       Choose Image
                     </label>
-                    <p className="dynasty-file-helper-text" style={{ 
-                      color: dynastyColors.lightGray,
-                      fontSize: '0.8rem',
-                      marginTop: '0.5rem'
-                    }}>
+                    <p className={`${dynastyTheme.classes.text.neutralLight} text-sm mt-2`}>
                       JPEG, PNG, or GIF. Max 10MB.
                     </p>
                   </div>
@@ -438,15 +366,9 @@ const MyAccount = () => {
               </div>
 
               {/* Name Fields */}
-              <div className="dynasty-form-row" style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1rem', marginBottom: '1.5rem' }}>
-                <div className="dynasty-form-group">
-                  <label htmlFor="firstName" className="dynasty-label" style={{ 
-                    color: dynastyColors.white,
-                    fontSize: '1rem',
-                    fontWeight: '600',
-                    marginBottom: '0.5rem',
-                    display: 'block'
-                  }}>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div>
+                  <label htmlFor="firstName" className={dynastyTheme.components.label}>
                     First Name * (1-100 characters)
                   </label>
                   <input
@@ -458,27 +380,11 @@ const MyAccount = () => {
                     required
                     minLength={1}
                     maxLength={100}
-                    className="dynasty-input"
-                    style={{
-                      borderColor: dynastyColors.gold,
-                      backgroundColor: dynastyColors.gray,
-                      color: dynastyColors.white,
-                      border: `2px solid ${dynastyColors.gold}`,
-                      borderRadius: '0.5rem',
-                      padding: '0.75rem',
-                      width: '100%',
-                      fontSize: '1rem'
-                    }}
+                    className={`${dynastyTheme.components.input} w-full`}
                   />
                 </div>
-                <div className="dynasty-form-group">
-                  <label htmlFor="lastName" className="dynasty-label" style={{ 
-                    color: dynastyColors.white,
-                    fontSize: '1rem',
-                    fontWeight: '600',
-                    marginBottom: '0.5rem',
-                    display: 'block'
-                  }}>
+                <div>
+                  <label htmlFor="lastName" className={dynastyTheme.components.label}>
                     Last Name * (1-100 characters)
                   </label>
                   <input
@@ -490,30 +396,14 @@ const MyAccount = () => {
                     required
                     minLength={1}
                     maxLength={100}
-                    className="dynasty-input"
-                    style={{
-                      borderColor: dynastyColors.gold,
-                      backgroundColor: dynastyColors.gray,
-                      color: dynastyColors.white,
-                      border: `2px solid ${dynastyColors.gold}`,
-                      borderRadius: '0.5rem',
-                      padding: '0.75rem',
-                      width: '100%',
-                      fontSize: '1rem'
-                    }}
+                    className={`${dynastyTheme.components.input} w-full`}
                   />
                 </div>
               </div>
 
               {/* Email */}
-              <div className="dynasty-form-group" style={{ marginBottom: '1.5rem' }}>
-                <label htmlFor="email" className="dynasty-label" style={{ 
-                  color: dynastyColors.white,
-                  fontSize: '1rem',
-                  fontWeight: '600',
-                  marginBottom: '0.5rem',
-                  display: 'block'
-                }}>
+              <div>
+                <label htmlFor="email" className={dynastyTheme.components.label}>
                   Email Address *
                 </label>
                 <input
@@ -523,36 +413,16 @@ const MyAccount = () => {
                   value={profileData.email}
                   onChange={handleProfileChange}
                   required
-                  className="dynasty-input"
-                  style={{
-                    borderColor: dynastyColors.gold,
-                    backgroundColor: dynastyColors.gray,
-                    color: dynastyColors.white,
-                    border: `2px solid ${dynastyColors.gold}`,
-                    borderRadius: '0.5rem',
-                    padding: '0.75rem',
-                    width: '100%',
-                    fontSize: '1rem'
-                  }}
+                  className={`${dynastyTheme.components.input} w-full`}
                 />
-                <p className="dynasty-helper-text" style={{ 
-                  color: dynastyColors.lightGray,
-                  fontSize: '0.8rem',
-                  marginTop: '0.5rem'
-                }}>
+                <p className={`${dynastyTheme.classes.text.neutralLight} text-sm mt-2`}>
                   Changing your email will require verification and audit logging
                 </p>
               </div>
 
               {/* Date of Birth */}
-              <div className="dynasty-form-group" style={{ marginBottom: '2rem' }}>
-                <label htmlFor="dateOfBirth" className="dynasty-label" style={{ 
-                  color: dynastyColors.white,
-                  fontSize: '1rem',
-                  fontWeight: '600',
-                  marginBottom: '0.5rem',
-                  display: 'block'
-                }}>
+              <div>
+                <label htmlFor="dateOfBirth" className={dynastyTheme.components.label}>
                   Date of Birth
                 </label>
                 <input
@@ -561,38 +431,16 @@ const MyAccount = () => {
                   name="dateOfBirth"
                   value={profileData.dateOfBirth}
                   onChange={handleProfileChange}
-                  className="dynasty-input"
-                  style={{
-                    borderColor: dynastyColors.gold,
-                    backgroundColor: dynastyColors.gray,
-                    color: dynastyColors.white,
-                    border: `2px solid ${dynastyColors.gold}`,
-                    borderRadius: '0.5rem',
-                    padding: '0.75rem',
-                    width: '100%',
-                    fontSize: '1rem'
-                  }}
+                  className={`${dynastyTheme.components.input} w-full`}
                 />
               </div>
 
               {/* Submit Button */}
-              <div className="dynasty-button-container">
+              <div>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="dynasty-primary-button"
-                  style={{
-                    backgroundColor: dynastyColors.gold,
-                    color: dynastyColors.black,
-                    border: 'none',
-                    borderRadius: '0.5rem',
-                    padding: '1rem 2rem',
-                    fontSize: '1rem',
-                    fontWeight: '600',
-                    cursor: loading ? 'not-allowed' : 'pointer',
-                    opacity: loading ? 0.7 : 1,
-                    transition: 'all 0.3s ease'
-                  }}
+                  className={`${dynastyTheme.utils.getComponent('button', 'primary', 'lg')} disabled:opacity-50`}
                 >
                   {loading ? 'Updating...' : 'Update Profile'}
                 </button>
@@ -603,33 +451,19 @@ const MyAccount = () => {
 
         {/* Security Tab */}
         {activeTab === 'security' && (
-          <div className="dynasty-card-container" style={{
-            backgroundColor: dynastyColors.dark,
-            padding: '2rem',
-            borderRadius: '0.5rem',
-            border: `1px solid ${dynastyColors.gray}`
-          }}>
-            <form onSubmit={handlePasswordSubmit} className="dynasty-form">
-              <div className="dynasty-section-header" style={{ marginBottom: '2rem' }}>
-                <h3 style={{ color: dynastyColors.gold, fontSize: '1.5rem', fontWeight: '600', marginBottom: '0.5rem' }}>
+          <div className={`${dynastyTheme.components.card.base} p-8`}>
+            <form onSubmit={handlePasswordSubmit} className="space-y-6">
+              <div className="mb-8">
+                <h3 className={dynastyTheme.components.heading.h3}>
                   Change Password
                 </h3>
-                <p className="dynasty-section-description" style={{ 
-                  color: dynastyColors.lightGray,
-                  fontSize: '1rem'
-                }}>
+                <p className={dynastyTheme.classes.text.neutralLight}>
                   Update your password to keep your account secure. All changes are audit logged.
                 </p>
               </div>
 
-              <div className="dynasty-form-group" style={{ marginBottom: '1.5rem' }}>
-                <label htmlFor="currentPassword" className="dynasty-label" style={{ 
-                  color: dynastyColors.white,
-                  fontSize: '1rem',
-                  fontWeight: '600',
-                  marginBottom: '0.5rem',
-                  display: 'block'
-                }}>
+              <div>
+                <label htmlFor="currentPassword" className={dynastyTheme.components.label}>
                   Current Password *
                 </label>
                 <input
@@ -639,28 +473,12 @@ const MyAccount = () => {
                   value={passwordData.currentPassword}
                   onChange={handlePasswordChange}
                   required
-                  className="dynasty-input"
-                  style={{
-                    borderColor: dynastyColors.gold,
-                    backgroundColor: dynastyColors.gray,
-                    color: dynastyColors.white,
-                    border: `2px solid ${dynastyColors.gold}`,
-                    borderRadius: '0.5rem',
-                    padding: '0.75rem',
-                    width: '100%',
-                    fontSize: '1rem'
-                  }}
+                  className={`${dynastyTheme.components.input} w-full`}
                 />
               </div>
 
-              <div className="dynasty-form-group" style={{ marginBottom: '1.5rem' }}>
-                <label htmlFor="newPassword" className="dynasty-label" style={{ 
-                  color: dynastyColors.white,
-                  fontSize: '1rem',
-                  fontWeight: '600',
-                  marginBottom: '0.5rem',
-                  display: 'block'
-                }}>
+              <div>
+                <label htmlFor="newPassword" className={dynastyTheme.components.label}>
                   New Password *
                 </label>
                 <input
@@ -671,35 +489,15 @@ const MyAccount = () => {
                   onChange={handlePasswordChange}
                   required
                   minLength="8"
-                  className="dynasty-input"
-                  style={{
-                    borderColor: dynastyColors.gold,
-                    backgroundColor: dynastyColors.gray,
-                    color: dynastyColors.white,
-                    border: `2px solid ${dynastyColors.gold}`,
-                    borderRadius: '0.5rem',
-                    padding: '0.75rem',
-                    width: '100%',
-                    fontSize: '1rem'
-                  }}
+                  className={`${dynastyTheme.components.input} w-full`}
                 />
-                <p className="dynasty-helper-text" style={{ 
-                  color: dynastyColors.lightGray,
-                  fontSize: '0.8rem',
-                  marginTop: '0.5rem'
-                }}>
+                <p className={`${dynastyTheme.classes.text.neutralLight} text-sm mt-2`}>
                   Must be at least 8 characters long and meet AWS Cognito security requirements
                 </p>
               </div>
 
-              <div className="dynasty-form-group" style={{ marginBottom: '2rem' }}>
-                <label htmlFor="confirmPassword" className="dynasty-label" style={{ 
-                  color: dynastyColors.white,
-                  fontSize: '1rem',
-                  fontWeight: '600',
-                  marginBottom: '0.5rem',
-                  display: 'block'
-                }}>
+              <div>
+                <label htmlFor="confirmPassword" className={dynastyTheme.components.label}>
                   Confirm New Password *
                 </label>
                 <input
@@ -709,37 +507,15 @@ const MyAccount = () => {
                   value={passwordData.confirmPassword}
                   onChange={handlePasswordChange}
                   required
-                  className="dynasty-input"
-                  style={{
-                    borderColor: dynastyColors.gold,
-                    backgroundColor: dynastyColors.gray,
-                    color: dynastyColors.white,
-                    border: `2px solid ${dynastyColors.gold}`,
-                    borderRadius: '0.5rem',
-                    padding: '0.75rem',
-                    width: '100%',
-                    fontSize: '1rem'
-                  }}
+                  className={`${dynastyTheme.components.input} w-full`}
                 />
               </div>
 
-              <div className="dynasty-button-container">
+              <div>
                 <button
                   type="submit"
                   disabled={loading}
-                  className="dynasty-primary-button"
-                  style={{
-                    backgroundColor: dynastyColors.gold,
-                    color: dynastyColors.black,
-                    border: 'none',
-                    borderRadius: '0.5rem',
-                    padding: '1rem 2rem',
-                    fontSize: '1rem',
-                    fontWeight: '600',
-                    cursor: loading ? 'not-allowed' : 'pointer',
-                    opacity: loading ? 0.7 : 1,
-                    transition: 'all 0.3s ease'
-                  }}
+                  className={`${dynastyTheme.utils.getComponent('button', 'primary', 'lg')} disabled:opacity-50`}
                 >
                   {loading ? 'Changing Password...' : 'Change Password'}
                 </button>
