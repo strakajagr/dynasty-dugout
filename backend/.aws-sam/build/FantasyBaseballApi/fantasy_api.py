@@ -6,10 +6,10 @@ Modular enterprise architecture with separate router modules
 
 import logging
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 
-# Import all router modules including leagues
-from routers import auth, account, players, analytics, utilities, leagues
+# Import all router modules including leagues and invitations
+from routers import auth, account, players, analytics, utilities, invitations
+from routers.leagues import router as leagues_router
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -18,8 +18,8 @@ logger = logging.getLogger(__name__)
 # Create FastAPI app
 app = FastAPI(
     title="Dynasty Dugout API", 
-    version="5.3.0",  # Bumped version for leagues integration
-    description="Complete fantasy baseball platform with league management"
+    version="6.0.0",  # Bumped version for invitation system
+    description="Complete fantasy baseball platform with league management and invitation system"
 )
 
 # Include all routers with prefixes
@@ -27,7 +27,8 @@ app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
 app.include_router(account.router, prefix="/api/auth", tags=["Account Management"]) 
 app.include_router(players.router, prefix="/api/players", tags=["Players"])
 app.include_router(analytics.router, prefix="/api", tags=["Analytics"])
-app.include_router(leagues.router, prefix="/api/leagues", tags=["League Management"])
+app.include_router(leagues_router, prefix="/api/leagues", tags=["League Management"])
+app.include_router(invitations.router, prefix="/api/leagues", tags=["League Invitations"])  # FIXED: Added prefix
 app.include_router(utilities.router, prefix="/api", tags=["Utilities"])
 
 # Root endpoint
@@ -35,7 +36,7 @@ app.include_router(utilities.router, prefix="/api", tags=["Utilities"])
 async def root():
     """Root endpoint with API information"""
     return {
-        "message": "Dynasty Dugout API v5.3 - Complete League Management",
+        "message": "Dynasty Dugout API v6.0 - Complete League Management with Invitations",
         "features": [
             "Modular Router Architecture",
             "Secure Cookie Authentication",
@@ -46,6 +47,9 @@ async def root():
             "League-Specific Player Pools",
             "Dynasty League Management",
             "Contract & Salary Systems",
+            "Secure League Invitations with JWT",
+            "Email Invitation System with AWS SES",
+            "Multi-user League Management",
             "Hot/Cold Performance Analysis",
             "Recent Performance Tracking",
             "Trending Player Detection"
@@ -56,9 +60,10 @@ async def root():
             "players": "Player data & details",
             "analytics": "Performance analytics",
             "leagues": "League creation & management",
+            "invitations": "League invitation system with email integration",
             "utilities": "Helper endpoints"
         },
-        "architecture": "League-Specific Player Pools - Enterprise Ready"
+        "architecture": "League-Specific Player Pools with Secure Invitation System - Enterprise Ready"
     }
 
 # Health check endpoint
@@ -70,9 +75,9 @@ async def health_check():
     health_status = {
         "status": "healthy",
         "service": "Dynasty Dugout API",
-        "version": "5.3.0",
+        "version": "6.0.0",
         "architecture": "modular",
-        "modules": ["auth", "account", "players", "analytics", "leagues", "utilities"],
+        "modules": ["auth", "account", "players", "analytics", "leagues", "invitations", "utilities"],
         "database": "checking..."
     }
     
