@@ -1,0 +1,27 @@
+{
+  "body": "",
+  "resource": "/{proxy+}",
+  "path": "/api/leagues/",
+  "httpMethod": "GET",
+  "isBase64Encoded": false,
+  "queryStringParameters": null,
+  "pathParameters": {
+    "proxy": "api/leagues/"
+  },
+  "headers": {
+    "Accept": "application/json",
+    "Content-Type": "application/json",
+    "Host": "localhost:3000"
+  },
+  "requestContext": {
+    "accountId": "123456789012",
+    "resourceId": "123456",
+    "stage": "test",
+    "requestId": "test-router",
+    "identity": {
+      "sourceIp": "127.0.0.1"
+    },
+    "httpMethod": "GET",
+    "path": "/api/leagues/"
+  }
+}

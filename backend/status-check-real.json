@@ -1,0 +1,28 @@
+{
+  "body": "",
+  "resource": "/{proxy+}",
+  "path": "/api/leagues/dc28a4da-4dcf-4e49-9f6b-69c65f37f5fd/creation-status",
+  "httpMethod": "GET",
+  "isBase64Encoded": false,
+  "queryStringParameters": null,
+  "pathParameters": {
+    "proxy": "api/leagues/dc28a4da-4dcf-4e49-9f6b-69c65f37f5fd/creation-status"
+  },
+  "headers": {
+    "Accept": "application/json",
+    "Authorization": "Bearer eyJraWQiOiIydmIyMTg1UHpaMDhwOVwvZ0ZGUzFqSTI0T1lGUExsK21CT0xYVVNoV1k1cz0iLCJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJlNDA4MzRhOC04MGIxLTcwMjUtZWUwOS1iNTQyYzBiOTNmY2IiLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAudXMtZWFzdC0xLmFtYXpvbmF3cy5jb21cL3VzLWVhc3QtMV9Pb29WNXU4M3ciLCJjbGllbnRfaWQiOiI1bTl0cTk3NThhZDAwdnRuam9ib2JwZmdhcSIsIm9yaWdpbl9qdGkiOiI1ODkwYTEyZi1lNGQxLTQ4NDMtODg2ZC05YzUwOTJjZWQzZmEiLCJldmVudF9pZCI6ImY0ZjZiNTUyLTY3YTgtNDI5Ny04MjE5LTEzZWExZmZlMDNlZCIsInRva2VuX3VzZSI6ImFjY2VzcyIsInNjb3BlIjoiYXdzLmNvZ25pdG8uc2lnbmluLnVzZXIuYWRtaW4iLCJhdXRoX3RpbWUiOjE3NTM2NDEwOTMsImV4cCI6MTc1MzY0NDY5MywiaWF0IjoxNzUzNjQxMDkzLCJqdGkiOiI1YWMwMDQxMC1mZDE2LTQzZjMtODRjMi1hYTk1OWQ4NzZhNDMiLCJ1c2VybmFtZSI6ImU0MDgzNGE4LTgwYjEtNzAyNS1lZTA5LWI1NDJjMGI5M2ZjYiJ9.KrzyYaqbFz7mSsQHtCaPcIO4KkNaH8yjPwDy463owFc6175ej_3cVlTNODd7lZfQJgJcePtnAN8TbhRa70WfNKA06ODK89X62kBThEAs8IjcaxRI4S8cIWHHPe5GoKf_tx-R5mxtMSYnSyL6H3fSsMKW1RF2RmeqQrHihNsfa8A-ZdiXj5_Jh3Ety2_FCC88oB1Cbz3FGf5Vf6TSs85p_pqr5u2EoDyDYVYVorDifD1mDwcpQL3i1RntGBlE1BWTmtYdRCvXdNtyL1Jmvy-ezn2oW7ELbwO3pqhKu8OsptKQaa-2_p-EzRMcMAWjavAvLhjU7hC87zCaAnq6tbz1dA",
+    "Content-Type": "application/json",
+    "Host": "localhost:3000"
+  },
+  "requestContext": {
+    "accountId": "123456789012",
+    "resourceId": "123456",
+    "stage": "test",
+    "requestId": "test-status-check-real",
+    "identity": {
+      "sourceIp": "127.0.0.1"
+    },
+    "httpMethod": "GET",
+    "path": "/api/leagues/dc28a4da-4dcf-4e49-9f6b-69c65f37f5fd/creation-status"
+  }
+}

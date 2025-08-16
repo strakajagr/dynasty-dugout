@@ -1,0 +1,9 @@
+{
+  "Variables": {
+    "SES_REGION": "us-east-1",
+    "VERIFIED_SENDER": "tonyragano@gmail.com", 
+    "JWT_SECRET_KEY": "your-super-secret-jwt-key-change-this-in-production",
+    "FRONTEND_BASE_URL": "https://d20wx6xzxkf84y.cloudfront.net",
+    "INVITATION_EXPIRY_HOURS": "72"
+  }
+}

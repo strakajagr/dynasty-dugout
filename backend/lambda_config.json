@@ -1,0 +1,56 @@
+{
+    "Configuration": {
+        "FunctionName": "fantasy-baseball-api-FantasyBaseballApi-iie0vJFVmGWa",
+        "FunctionArn": "arn:aws:lambda:us-east-1:584812014683:function:fantasy-baseball-api-FantasyBaseballApi-iie0vJFVmGWa",
+        "Runtime": "python3.12",
+        "Role": "arn:aws:iam::584812014683:role/fantasy-baseball-api-FantasyBaseballApiRole-nY2yiOCrDrdu",
+        "Handler": "lambda_handler.handler",
+        "CodeSize": 24126143,
+        "Description": "",
+        "Timeout": 200,
+        "MemorySize": 512,
+        "LastModified": "2025-07-26T14:36:27.000+0000",
+        "CodeSha256": "JSZKOFmTepxtYhIxMWNeJ7jCPm3U5s/q/8mFEtHFNBI=",
+        "Version": "$LATEST",
+        "VpcConfig": {
+            "SubnetIds": [],
+            "SecurityGroupIds": [],
+            "VpcId": "",
+            "Ipv6AllowedForDualStack": false
+        },
+        "TracingConfig": {
+            "Mode": "PassThrough"
+        },
+        "RevisionId": "97e8f740-f777-4566-90ae-2a27287f7a2a",
+        "State": "Active",
+        "LastUpdateStatus": "Successful",
+        "PackageType": "Zip",
+        "Architectures": [
+            "x86_64"
+        ],
+        "EphemeralStorage": {
+            "Size": 512
+        },
+        "SnapStart": {
+            "ApplyOn": "None",
+            "OptimizationStatus": "Off"
+        },
+        "RuntimeVersionConfig": {
+            "RuntimeVersionArn": "arn:aws:lambda:us-east-1::runtime:aa140c0e9a9c41d993cb36eaf76013968a27ec935d7665a4368d6b0ba10a0f7e"
+        },
+        "LoggingConfig": {
+            "LogFormat": "Text",
+            "LogGroup": "/aws/lambda/fantasy-baseball-api-FantasyBaseballApi-iie0vJFVmGWa"
+        }
+    },
+    "Code": {
+        "RepositoryType": "S3",
+        "Location": "https://prod-04-2014-tasks.s3.us-east-1.amazonaws.com/snapshots/584812014683/fantasy-baseball-api-FantasyBaseballApi-iie0vJFVmGWa-fa9e6856-3c8e-4a35-b7dc-4e532c8f5b74?versionId=vTbQwCj946tmEvaNb1LIO5YkqfpdvK42&X-Amz-Security-Token=IQoJb3JpZ2luX2VjEC0aCXVzLWVhc3QtMSJHMEUCIQCxw%2F57muFFAaXwllgYKjNnRs1Q5erOUNQKsUb2vKgYcwIgHDxvHU1QlEnSVoBPMuM5PlUTYWicasaBraDYDGuRo7YqiQIIVRAAGgw3NDk2Nzg5MDI4MzkiDIh5arBmtjW8SakCeCrmAdYvPKCCJJG%2BZFNNgWiLdD6%2FrPCgm%2FedwnvprJZDOKybpWVsXAlW3B5IJcj99%2Fk9vwfaPUtbAr%2Fhh8d9botdR3%2BqBMlxWn2NGB3cSxPokh%2B4JKEHtPcXf1r1%2Bey8FFDaR5E4Kx7aT8sdT%2FyI1F%2FXpfWTaVPW4qAumfMh%2B1Qz2ugP4Uh5soTcEqAxF359v0qHDat1wlqb2RzM1KGNWVbhAMlCkvPwXOM5tX2UlYlyd4P%2BMDygNzrgIqMX%2BsedPgPkNrSuP8BYBA%2FQkEkHjM7tRtEu7%2BwpjUKpgMDpsm1jCFv1rS%2FdXADvMICokcQGOo8B8tlRf%2F6KxS6isUYFR4aTWqmHwcmH%2FYiHTAc4jPDUrizNm3h5t5lAvIPpgYLbPuT8ecx4buMROAdHAbickqdHBiHqLL2JD9NGACnP%2F3le2fVqlJCqTxYaJ%2FOIkIBxWLFgX5XiC2GSTEQnxLKM7KDkIaCXJflv0aQzof0u5l8TdAL79Uu1bE%2FcOW6O9WbncIo%3D&X-Amz-Algorithm=AWS4-HMAC-SHA256&X-Amz-Date=20250726T144657Z&X-Amz-SignedHeaders=host&X-Amz-Expires=600&X-Amz-Credential=ASIA25DCYHY3756YFXHZ%2F20250726%2Fus-east-1%2Fs3%2Faws4_request&X-Amz-Signature=0286af6a083096f8a3acdc292e1ecb13557462c72c8bd8427eca189158342881"
+    },
+    "Tags": {
+        "aws:cloudformation:stack-name": "fantasy-baseball-api",
+        "lambda:createdBy": "SAM",
+        "aws:cloudformation:stack-id": "arn:aws:cloudformation:us-east-1:584812014683:stack/fantasy-baseball-api/e569fba0-635a-11f0-98ee-122ed5b5a269",
+        "aws:cloudformation:logical-id": "FantasyBaseballApi"
+    }
+}

@@ -1,0 +1,27 @@
+{
+  "body": "{\"league_name\": \"No Auth Test\", \"use_salaries\": true}",
+  "resource": "/{proxy+}",
+  "path": "/api/leagues/create",
+  "httpMethod": "POST",
+  "isBase64Encoded": false,
+  "queryStringParameters": null,
+  "pathParameters": {
+    "proxy": "api/leagues/create"
+  },
+  "headers": {
+    "Accept": "application/json",
+    "Content-Type": "application/json",
+    "Host": "localhost:3000"
+  },
+  "requestContext": {
+    "accountId": "123456789012",
+    "resourceId": "123456",
+    "stage": "test",
+    "requestId": "test-create-noauth",
+    "identity": {
+      "sourceIp": "127.0.0.1"
+    },
+    "httpMethod": "POST",
+    "path": "/api/leagues/create"
+  }
+}

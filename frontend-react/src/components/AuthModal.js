@@ -1,4 +1,3 @@
-// src/components/AuthModal.js
 import React, { useState, useEffect } from 'react';
 import { X, Eye, EyeOff, Crown, Mail, Lock, User, Heart } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
@@ -12,7 +11,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
   const [error, setError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   
-  const { signIn, signUp } = useAuth();
+  const { signIn, signUp } = useAuth(); // Destructure signIn and signUp from useAuth
 
   // Form states
   const [formData, setFormData] = useState({
@@ -21,7 +20,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
     firstName: '',
     lastName: '',
     favoriteTeam: '',
-    confirmPassword: '',
+    confirmPassword: '', // This state field needs a corresponding input
     verificationCode: '',
     resetCode: ''
   });
@@ -71,11 +70,17 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setMessage(''); 
 
     const result = await signIn(formData.email, formData.password);
     
     if (result.success) {
-      onClose();
+      onClose(); // Close modal on successful sign-in
+      // --- DIAGNOSTIC FIX APPLIED HERE ---
+      // This is a temporary measure to break the login loop by forcing a redirect.
+      // If this works, the issue is a React Router/state sync timing.
+      console.log("AuthModal: Sign-in successful, forcing redirect to dashboard.");
+      window.location.href = '/dashboard'; 
     } else {
       setError(result.error);
     }
@@ -87,80 +92,102 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setMessage(''); 
 
+    // --- FIX APPLIED HERE: Now 'confirmPassword' will be populated from the new input field ---
     if (formData.password !== formData.confirmPassword) {
       setError('Passwords do not match');
       setLoading(false);
       return;
     }
 
-    const result = await signUp(
-      formData.email,
-      formData.password,
-      formData.firstName,
-      formData.lastName,
-      formData.favoriteTeam
-    );
+    console.log("AuthModal: Submitting with formData:", formData); // Debugging log
 
-    if (result.success) {
-      setMessage('Account created! Please check your email for verification.');
-      setActiveTab('verify');
-    } else {
-      setError(result.error);
+    try {
+      const result = await signUp(formData); 
+      console.log("AuthModal: Signup result:", result);
+
+      if (result.success) {
+        setMessage('Account created! Please check your email for verification.');
+        setActiveTab('verify');
+      } else {
+        setError(result.error || 'Signup failed. Please try again.'); 
+      }
+    } catch (err) {
+      console.error("AuthModal: Error during signup API call:", err);
+      setError(err.response?.data?.detail || err.message || 'An unexpected error occurred during signup.');
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   const handleVerifyEmail = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setMessage(''); 
 
     try {
-      await authAPI.verifyEmail(formData.email, formData.verificationCode);
-      setMessage('Email verified successfully! You can now sign in.');
-      setActiveTab('signin');
-    } catch (error) {
-      setError(error.response?.data?.detail || 'Verification failed');
-    }
+      const response = await authAPI.verifyEmail(formData.email, formData.verificationCode);
+      console.log("AuthModal: Verify Email API response:", response);
 
-    setLoading(false);
+      if (response.success) {
+        setMessage('Email verified successfully! You can now sign in.');
+        setActiveTab('signin'); // Transition to signin tab after successful verification
+      } else {
+        setError(response.message || 'Verification failed');
+      }
+    } catch (error) {
+      console.error("AuthModal: Email verification error:", error);
+      setError(error.response?.data?.detail || 'Verification failed');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleResendVerification = async () => {
     setLoading(true);
     setError('');
+    setMessage(''); 
 
     try {
-      await authAPI.resendVerification(formData.email);
-      setMessage('Verification code resent to your email.');
+      const response = await authAPI.resendVerification(formData.email);
+      console.log("AuthModal: Resend verification API response:", response);
+      if (response.success) {
+        setMessage('Verification code resent to your email.');
+      } else {
+        setError(response.message || 'Failed to resend verification');
+      }
     } catch (error) {
+      console.error("AuthModal: Resend verification error:", error);
       setError(error.response?.data?.detail || 'Failed to resend verification');
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   const handleForgotPassword = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setMessage(''); 
 
     try {
       await authAPI.forgotPassword(formData.email);
       setMessage('Reset code sent to your email.');
     } catch (error) {
+      console.error("AuthModal: Forgot password error:", error);
       setError(error.response?.data?.detail || 'Failed to send reset code');
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   const handleResetPassword = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError('');
+    setMessage(''); 
 
     if (formData.password !== formData.confirmPassword) {
       setError('Passwords do not match');
@@ -173,23 +200,33 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
       setMessage('Password reset successfully! You can now sign in.');
       setActiveTab('signin');
     } catch (error) {
+      console.error("AuthModal: Password reset error:", error);
       setError(error.response?.data?.detail || 'Password reset failed');
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   if (!isOpen) return null;
 
-  // Modal styles using existing design system
+  // --- STYLING (using dynastyTheme) ---
   const modalOverlay = 'fixed inset-0 bg-black/75 backdrop-blur-sm flex items-center justify-center z-50 p-4';
   const modalContainer = `${dynastyTheme.components.card.base} w-full max-w-md max-h-[90vh] overflow-y-auto border ${dynastyTheme.classes.border.light}`;
   const tabButton = `flex-1 py-3 px-4 text-sm font-medium capitalize ${dynastyTheme.classes.transition}`;
   const inputWithIcon = `${dynastyTheme.components.input} pl-10 pr-4 py-3`;
   const inputWithIconRight = `${dynastyTheme.components.input} pl-10 pr-12 py-3`;
   const inputBasic = `${dynastyTheme.components.input} px-4 py-3`;
-  const iconLeft = `absolute left-3 top-3 w-5 h-5 ${dynastyTheme.classes.text.neutralLighter}`;
-  const iconRight = `absolute right-3 top-3 ${dynastyTheme.classes.text.neutralLighter} hover:${dynastyTheme.classes.text.white}`;
+  const iconLeft = `absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 ${dynastyTheme.classes.text.neutralLighter}`;
+  const iconRight = `absolute right-3 top-1/2 -translate-y-1/2 h-5 w-5 ${dynastyTheme.classes.text.neutralLighter} cursor-pointer hover:${dynastyTheme.classes.text.white}`;
+  const iconCenterClass = `h-12 w-12 ${dynastyTheme.classes.text.primary} mx-auto mb-4`;
+  const messageSuccessClass = `${dynastyTheme.classes.bg.success}/20 border ${dynastyTheme.classes.border.success} rounded-lg p-4 mb-6 ${dynastyTheme.classes.text.white} flex items-center`;
+  const messageErrorClass = `${dynastyTheme.classes.bg.error}/20 border ${dynastyTheme.classes.border.error} rounded-lg p-4 mb-6 ${dynastyTheme.classes.text.white} flex items-center`;
+  const messageInfoClass = `${dynastyTheme.classes.bg.info}/20 border ${dynastyTheme.classes.border.info} rounded-lg p-4 mb-6 ${dynastyTheme.classes.text.white} flex items-center`;
+  const buttonPrimaryClass = `${dynastyTheme.utils.getComponent('button', 'primary', 'lg')} w-full flex items-center justify-center`;
+  const buttonSecondaryClass = `${dynastyTheme.utils.getComponent('button', 'secondary', 'lg')} w-full flex items-center justify-center`;
+  const buttonGhostClass = `${dynastyTheme.classes.text.neutralLighter} hover:${dynastyTheme.classes.text.white} text-sm flex items-center justify-center mx-auto`;
+  const labelClass = `${dynastyTheme.components.label}`;
+
 
   return (
     <div className={modalOverlay}>
@@ -230,13 +267,13 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
 
         {/* Messages */}
         {message && (
-          <div className={`mx-6 mt-4 p-3 ${dynastyTheme.components.badge.success} rounded-lg text-sm`}>
-            {message}
+          <div className={messageInfoClass}>
+            <span className={dynastyTheme.classes.text.white}>{message}</span>
           </div>
         )}
         {error && (
-          <div className={`mx-6 mt-4 p-3 ${dynastyTheme.components.badge.error} rounded-lg text-sm`}>
-            {error}
+          <div className={messageErrorClass}>
+            <span className={dynastyTheme.classes.text.white}>{error}</span>
           </div>
         )}
 
@@ -246,7 +283,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
           {activeTab === 'signin' && (
             <form onSubmit={handleSignIn} className="space-y-4">
               <div>
-                <label className={dynastyTheme.components.label}>Email</label>
+                <label className={labelClass}>Email</label>
                 <div className="relative">
                   <Mail className={iconLeft} />
                   <input
@@ -260,7 +297,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
                 </div>
               </div>
               <div>
-                <label className={dynastyTheme.components.label}>Password</label>
+                <label className={labelClass}>Password</label>
                 <div className="relative">
                   <Lock className={iconLeft} />
                   <input
@@ -276,14 +313,14 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
                     onClick={() => setShowPassword(!showPassword)}
                     className={iconRight}
                   >
-                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye size={20} />}
                   </button>
                 </div>
               </div>
               <button
                 type="submit"
                 disabled={loading}
-                className={dynastyTheme.utils.getComponent('button', 'primary', 'lg')}
+                className={buttonPrimaryClass}
               >
                 {loading ? 'Signing In...' : 'Sign In'}
               </button>
@@ -300,9 +337,9 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
           {/* Sign Up Form */}
           {activeTab === 'signup' && (
             <form onSubmit={handleSignUp} className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className={dynastyTheme.components.label}>First Name</label>
+                  <label className={labelClass}>First Name</label>
                   <div className="relative">
                     <User className={iconLeft} />
                     <input
@@ -316,7 +353,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
                   </div>
                 </div>
                 <div>
-                  <label className={dynastyTheme.components.label}>Last Name</label>
+                  <label className={labelClass}>Last Name</label>
                   <input
                     type="text"
                     name="lastName"
@@ -329,7 +366,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
               </div>
               
               <div>
-                <label className={dynastyTheme.components.label}>Email</label>
+                <label className={labelClass}>Email</label>
                 <div className="relative">
                   <Mail className={iconLeft} />
                   <input
@@ -344,7 +381,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
               </div>
 
               <div>
-                <label className={dynastyTheme.components.label}>Favorite Team</label>
+                <label className={labelClass}>Favorite Team</label>
                 <div className="relative">
                   <Heart className={iconLeft} />
                   <select
@@ -363,7 +400,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
               </div>
 
               <div>
-                <label className={dynastyTheme.components.label}>Password</label>
+                <label className={labelClass}>Password</label>
                 <div className="relative">
                   <Lock className={iconLeft} />
                   <input
@@ -379,13 +416,14 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
                     onClick={() => setShowPassword(!showPassword)}
                     className={iconRight}
                   >
-                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                    {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                   </button>
                 </div>
               </div>
 
+              {/* --- FIX APPLIED HERE: Added Confirm Password field --- */}
               <div>
-                <label className={dynastyTheme.components.label}>Confirm Password</label>
+                <label className={labelClass}>Confirm Password</label>
                 <input
                   type="password"
                   name="confirmPassword"
@@ -399,7 +437,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
               <button
                 type="submit"
                 disabled={loading}
-                className={dynastyTheme.utils.getComponent('button', 'primary', 'lg')}
+                className={buttonPrimaryClass}
               >
                 {loading ? 'Creating Account...' : 'Create Account'}
               </button>
@@ -409,13 +447,16 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
           {/* Email Verification Form */}
           {activeTab === 'verify' && (
             <form onSubmit={handleVerifyEmail} className="space-y-4">
-              <div className={`text-center ${dynastyTheme.classes.text.neutral} mb-4`}>
-                <p>Please enter the verification code sent to your email:</p>
-                <p className={`${dynastyTheme.classes.text.primary} font-medium`}>{formData.email}</p>
+              <div className={`text-center mb-6`}>
+                <Mail className={iconCenterClass} />
+                <h2 className={dynastyTheme.components.heading.h2}>Check Your Email</h2>
+                <p className={`${dynastyTheme.classes.text.neutralLight}`}>
+                  We've sent a verification code to <strong>{formData.email}</strong>
+                </p>
               </div>
               
               <div>
-                <label className={dynastyTheme.components.label}>Verification Code</label>
+                <label className={labelClass}>Verification Code</label>
                 <input
                   type="text"
                   name="verificationCode"
@@ -431,7 +472,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
               <button
                 type="submit"
                 disabled={loading}
-                className={dynastyTheme.utils.getComponent('button', 'primary', 'lg')}
+                className={buttonPrimaryClass}
               >
                 {loading ? 'Verifying...' : 'Verify Email'}
               </button>
@@ -440,7 +481,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
                 type="button"
                 onClick={handleResendVerification}
                 disabled={loading}
-                className={`w-full text-sm ${dynastyTheme.classes.text.neutralLighter} ${dynastyTheme.classes.text.primaryHover} ${dynastyTheme.classes.transition}`}
+                className={buttonGhostClass}
               >
                 Resend verification code
               </button>
@@ -452,12 +493,12 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
             <form onSubmit={message ? handleResetPassword : handleForgotPassword} className="space-y-4">
               {!message ? (
                 <>
-                  <div className={`text-center ${dynastyTheme.classes.text.neutral} mb-4`}>
-                    <p>Enter your email address to receive a password reset code.</p>
+                  <div className={`text-center mb-4`}>
+                    <p className={`${dynastyTheme.classes.text.neutralLight}`}>Enter your email address to receive a password reset code.</p>
                   </div>
                   
                   <div>
-                    <label className={dynastyTheme.components.label}>Email</label>
+                    <label className={labelClass}>Email</label>
                     <div className="relative">
                       <Mail className={iconLeft} />
                       <input
@@ -474,7 +515,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
                   <button
                     type="submit"
                     disabled={loading}
-                    className={dynastyTheme.utils.getComponent('button', 'primary', 'lg')}
+                    className={buttonPrimaryClass}
                   >
                     {loading ? 'Sending...' : 'Send Reset Code'}
                   </button>
@@ -482,7 +523,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
               ) : (
                 <>
                   <div>
-                    <label className={dynastyTheme.components.label}>Reset Code</label>
+                    <label className={labelClass}>Reset Code</label>
                     <input
                       type="text"
                       name="resetCode"
@@ -496,7 +537,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
                   </div>
 
                   <div>
-                    <label className={dynastyTheme.components.label}>New Password</label>
+                    <label className={labelClass}>New Password</label>
                     <div className="relative">
                       <Lock className={iconLeft} />
                       <input
@@ -512,13 +553,13 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
                         onClick={() => setShowPassword(!showPassword)}
                         className={iconRight}
                       >
-                        {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                        {showPassword ? <EyeOff size={20} /> : <Eye size={20} />}
                       </button>
                     </div>
                   </div>
 
                   <div>
-                    <label className={dynastyTheme.components.label}>Confirm New Password</label>
+                    <label className={labelClass}>Confirm New Password</label>
                     <input
                       type="password"
                       name="confirmPassword"
@@ -532,7 +573,7 @@ const AuthModal = ({ isOpen, onClose, initialTab = 'signin' }) => {
                   <button
                     type="submit"
                     disabled={loading}
-                    className={dynastyTheme.utils.getComponent('button', 'primary', 'lg')}
+                    className={buttonPrimaryClass}
                   >
                     {loading ? 'Resetting...' : 'Reset Password'}
                   </button>

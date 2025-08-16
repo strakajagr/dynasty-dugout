@@ -13,7 +13,7 @@ Resources:
       CodeUri: FantasyBaseballApi
       Handler: lambda_handler.handler
       Runtime: python3.12
-      Timeout: 180
+      Timeout: 200
       Architectures:
       - x86_64
       Policies:

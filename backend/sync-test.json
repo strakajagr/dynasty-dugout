@@ -1,0 +1,8 @@
+{
+  "body": "",
+  "path": "/api/leagues/e328659f-18e8-4d5e-839f-88e5a00adbf5/sync-data",
+  "httpMethod": "POST",
+  "pathParameters": {"proxy": "api/leagues/e328659f-18e8-4d5e-839f-88e5a00adbf5/sync-data"},
+  "headers": {"Authorization": "Bearer YOUR_TOKEN"},
+  "requestContext": {"httpMethod": "POST"}
+}

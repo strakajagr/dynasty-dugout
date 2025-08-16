@@ -2,6 +2,7 @@
 Dynasty Dugout - Owner Management Module (League-Specific Admin Functions)
 HYBRID APPROACH: League admin functions only - public endpoints in separate invitations.py
 PURPOSE: Team ownership, setup, league-specific invitation management
+FIXED: JWT consistency and VARCHAR user ID handling throughout
 """
 
 import logging
@@ -11,7 +12,7 @@ import uuid
 import os
 import re
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, HTTPException, Depends, BackgroundTasks
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel, validator
 from typing import Optional
 import boto3
@@ -22,6 +23,7 @@ from core.database import execute_sql
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
+logger.info("🚨 MODULE LOADED: owners.py loaded successfully at startup")
 
 # Configuration from environment variables
 SES_REGION = os.getenv('SES_REGION', 'us-east-1')
@@ -34,8 +36,9 @@ FRONTEND_BASE_URL = os.getenv('FRONTEND_BASE_URL', 'https://d20wx6xzxkf84y.cloud
 # Initialize AWS SES client
 try:
     ses_client = boto3.client('ses', region_name=SES_REGION)
+    logger.info(f"✅ SES client initialized successfully in region: {SES_REGION}")
 except Exception as e:
-    logger.error(f"Failed to initialize SES client: {e}")
+    logger.error(f"❌ Failed to initialize SES client: {e}")
     ses_client = None
 
 # =============================================================================
@@ -206,7 +209,7 @@ async def send_invitation_email(
 ) -> bool:
     """Send invitation email using AWS SES"""
     if not ses_client:
-        logger.error("SES client not initialized")
+        logger.error("❌ SES client not initialized")
         raise HTTPException(status_code=500, detail="Email service unavailable")
     
     try:
@@ -222,7 +225,11 @@ async def send_invitation_email(
             invitation_token, personal_message, target_slot
         )
         
+        logger.info(f"📧 Sending invitation email to {recipient_email}")
+        logger.info(f"🔧 DEBUG: SES client initialized: {ses_client is not None}")
+        
         # Send email using SES
+        logger.info(f"🔧 DEBUG: About to call ses_client.send_email...")
         response = ses_client.send_email(
             Source=VERIFIED_SENDER,
             Destination={'ToAddresses': [recipient_email]},
@@ -239,12 +246,12 @@ async def send_invitation_email(
             ]
         )
         
-        logger.info(f"Invitation email sent successfully to {recipient_email}. MessageId: {response['MessageId']}")
+        logger.info(f"✅ Invitation email sent successfully to {recipient_email}. MessageId: {response['MessageId']}")
         return True
         
     except ClientError as e:
         error_code = e.response['Error']['Code']
-        logger.error(f"SES error sending invitation to {recipient_email}: {error_code}")
+        logger.error(f"❌ SES error sending invitation to {recipient_email}: {error_code}")
         
         if error_code == 'MessageRejected':
             raise HTTPException(status_code=400, detail="Email address is invalid or blocked")
@@ -254,7 +261,7 @@ async def send_invitation_email(
             raise HTTPException(status_code=500, detail="Failed to send invitation email")
     
     except Exception as e:
-        logger.error(f"Unexpected error sending invitation email: {str(e)}")
+        logger.error(f"❌ Unexpected error sending invitation email: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to send invitation email")
 
 # =============================================================================
@@ -540,16 +547,16 @@ async def setup_team(
 async def invite_owner(
     league_id: str,
     request_data: InviteOwnerRequest,
-    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user)
 ):
-    """Send an invitation to join a league as a team owner"""
+    """Send an invitation to join a league as a team owner - EMAIL-FIRST PATTERN"""
+    logger.info(f"🚨 FUNCTION START: invite_owner called for league {league_id}")
     try:
         user_id = current_user.get('sub')
         if not user_id:
             raise HTTPException(status_code=401, detail="Invalid user authentication")
         
-        logger.info(f"Sending invitation for league: {league_id}")
+        logger.info(f"📧 Sending invitation for league: {league_id}")
         
         # Verify the user is the commissioner of this league
         commissioner_check = execute_sql(
@@ -600,31 +607,10 @@ async def invite_owner(
         # Generate unique invitation ID
         invitation_id = str(uuid.uuid4())
         
-        # Store invitation in database
-        execute_sql(
-            """INSERT INTO league_invitations 
-               (invitation_id, league_id, email, owner_name, personal_message, target_slot, 
-                invitation_token, status, invited_by, invited_at, expires_at)
-               VALUES (:invitation_id::uuid, :league_id::uuid, :email, :owner_name, :personal_message, 
-                       :target_slot, :invitation_token, 'pending', :invited_by::uuid, :invited_at::timestamptz, :expires_at::timestamptz)""",
-            parameters={
-                'invitation_id': invitation_id,
-                'league_id': league_id,
-                'email': request_data.ownerEmail,
-                'owner_name': request_data.ownerName,
-                'personal_message': request_data.personalMessage,
-                'target_slot': request_data.targetSlot,
-                'invitation_token': invitation_token,
-                'invited_by': user_id,
-                'invited_at': datetime.now(timezone.utc).isoformat(),
-                'expires_at': (datetime.now(timezone.utc) + timedelta(hours=INVITATION_EXPIRY_HOURS)).isoformat()
-            },
-            database_name=database_name
-        )
-        
-        # Send invitation email in background
-        background_tasks.add_task(
-            send_invitation_email,
+        # 🎯 EMAIL-FIRST PATTERN: Send invitation email FIRST (synchronous)
+        logger.info(f"📧 EMAIL-FIRST: Sending email before database save")
+        logger.info(f"🚨 ABOUT TO CALL: send_invitation_email function")
+        await send_invitation_email(
             recipient_email=request_data.ownerEmail,
             owner_name=request_data.ownerName,
             league_name=request_data.leagueName,
@@ -634,7 +620,31 @@ async def invite_owner(
             target_slot=request_data.targetSlot
         )
         
-        logger.info(f"League invitation created: {invitation_id} for {request_data.ownerEmail} to league {league_id}")
+        # Only store invitation in database if email succeeds
+        logger.info(f"✅ Email sent successfully, now saving to database")
+        # ✅ FIXED: No UUID casting for user ID (invited_by is now VARCHAR)
+        execute_sql(
+            """INSERT INTO league_invitations 
+               (invitation_id, league_id, email, owner_name, personal_message, target_slot, 
+                invitation_token, status, invited_by, invited_at, expires_at)
+               VALUES (:invitation_id::uuid, :league_id::uuid, :email, :owner_name, :personal_message, 
+                       :target_slot, :invitation_token, 'pending', :invited_by, :invited_at::timestamptz, :expires_at::timestamptz)""",
+            parameters={
+                'invitation_id': invitation_id,
+                'league_id': league_id,
+                'email': request_data.ownerEmail,
+                'owner_name': request_data.ownerName,
+                'personal_message': request_data.personalMessage,
+                'target_slot': request_data.targetSlot,
+                'invitation_token': invitation_token,
+                'invited_by': user_id,  # ✅ FIXED: No UUID casting - user_id is VARCHAR from JWT
+                'invited_at': datetime.now(timezone.utc).isoformat(),
+                'expires_at': (datetime.now(timezone.utc) + timedelta(hours=INVITATION_EXPIRY_HOURS)).isoformat()
+            },
+            database_name=database_name
+        )
+        
+        logger.info(f"✅ League invitation created: {invitation_id} for {request_data.ownerEmail} to league {league_id}")
         
         return {
             "success": True,
@@ -645,7 +655,7 @@ async def invite_owner(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error creating invitation: {str(e)}")
+        logger.error(f"❌ Error creating invitation: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to send invitation")
 
 @router.get("/{league_id}/invitations")
@@ -718,9 +728,11 @@ async def cancel_invitation(
     invitation_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """Cancel a pending invitation (commissioner only)"""
+    """Cancel a pending invitation (commissioner only) - ENHANCED WITH DEBUGGING"""
     try:
         user_id = current_user.get('sub')
+        
+        logger.info(f"🚨 CANCEL START: cancel_invitation called for invitation {invitation_id} in league {league_id}")
         
         # Verify the user is the commissioner of this league
         commissioner_check = execute_sql(
@@ -737,9 +749,11 @@ async def cancel_invitation(
         if current_user['sub'] != actual_commissioner:
             raise HTTPException(status_code=403, detail="Only the commissioner can cancel invitations")
         
-        # Check if invitation exists and is pending
+        # Convert hyphens to underscores for database name
         database_name = f"league_{league_id.replace('-', '_')}"
+        logger.info(f"🔍 Using database: {database_name}")
         
+        # Check if invitation exists and get details
         invitation_check = execute_sql(
             "SELECT invitation_id, status, email FROM league_invitations WHERE invitation_id = :invitation_id::uuid",
             parameters={'invitation_id': invitation_id},
@@ -747,33 +761,49 @@ async def cancel_invitation(
         )
         
         if not invitation_check.get("records") or len(invitation_check["records"]) == 0:
+            logger.error(f"❌ Invitation {invitation_id} not found in database {database_name}")
             raise HTTPException(status_code=404, detail="Invitation not found")
         
         invitation_status = invitation_check["records"][0][1]["stringValue"]
         invitation_email = invitation_check["records"][0][2]["stringValue"]
         
+        logger.info(f"✅ Found invitation: {invitation_id}, status: {invitation_status}, email: {invitation_email}")
+        
         if invitation_status != 'pending':
             raise HTTPException(status_code=400, detail=f"Cannot cancel invitation with status: {invitation_status}")
         
-        # Cancel the invitation
-        execute_sql(
-            """UPDATE league_invitations 
-               SET status = 'cancelled', 
-                   cancelled_at = :cancelled_at::timestamptz,
-                   cancelled_by_user_id = :cancelled_by::uuid,
-                   updated_at = :updated_at::timestamptz
+        # Cancel the invitation with detailed debugging
+        logger.info(f"🔍 DEBUG: About to delete invitation_id: {invitation_id}")
+        logger.info(f"🔍 DEBUG: From database: {database_name}")
+        logger.info(f"🔍 DEBUG: Target email: {invitation_email}")
+        
+        delete_result = execute_sql(
+            """DELETE FROM league_invitations
                WHERE invitation_id = :invitation_id::uuid""",
             parameters={
-                'invitation_id': invitation_id,
-                'cancelled_at': datetime.now(timezone.utc).isoformat(),
-                'cancelled_by': current_user['sub'],
-                'updated_at': datetime.now(timezone.utc).isoformat()
+                'invitation_id': invitation_id
             },
             database_name=database_name
         )
         
-        logger.info(f"Invitation {invitation_id} cancelled by commissioner {current_user['sub']} for league {league_id}")
+        logger.info(f"🔍 DEBUG: Delete operation completed")
+        logger.info(f"🔍 DEBUG: Delete result: {delete_result}")
+        logger.info(f"🔍 DEBUG: Number of records updated: {delete_result.get('numberOfRecordsUpdated', 'unknown')}")
         
+        # Verify the deletion worked
+        verification_check = execute_sql(
+            "SELECT invitation_id FROM league_invitations WHERE invitation_id = :invitation_id::uuid",
+            parameters={'invitation_id': invitation_id},
+            database_name=database_name
+        )
+        
+        if verification_check.get("records") and len(verification_check["records"]) > 0:
+            logger.error(f"❌ DELETION FAILED: Invitation {invitation_id} still exists after DELETE operation")
+            raise HTTPException(status_code=500, detail="Failed to delete invitation - record still exists")
+        
+        logger.info(f"✅ DELETION VERIFIED: Invitation {invitation_id} successfully removed from database")
+        logger.info(f"✅ Invitation to {invitation_email} cancelled successfully")
+
         return {
             "success": True,
             "message": f"Invitation to {invitation_email} has been cancelled successfully"
@@ -782,17 +812,18 @@ async def cancel_invitation(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error cancelling invitation {invitation_id} for league {league_id}: {str(e)}")
+        logger.error(f"❌ Error cancelling invitation {invitation_id} for league {league_id}: {str(e)}")
+        logger.error(f"❌ Exception type: {type(e).__name__}")
+        logger.error(f"❌ Exception details: {e}")
         raise HTTPException(status_code=500, detail="Failed to cancel invitation")
 
 @router.post("/{league_id}/invitations/{invitation_id}/resend")
 async def resend_invitation(
     league_id: str,
     invitation_id: str,
-    background_tasks: BackgroundTasks,
     current_user: dict = Depends(get_current_user)
 ):
-    """Resend an invitation email (commissioner only)"""
+    """Resend an invitation email (commissioner only) - EMAIL-FIRST PATTERN"""
     try:
         user_id = current_user.get('sub')
         
@@ -814,16 +845,13 @@ async def resend_invitation(
         # Convert hyphens to underscores for database name
         database_name = f"league_{league_id.replace('-', '_')}"
         
-        # Get invitation details
+        # Get invitation details and league name
         invitation_result = execute_sql(
             """SELECT i.invitation_id, i.email, i.owner_name, i.personal_message, 
-                      i.target_slot, i.invitation_token, i.status,
-                      ul.league_name
-               FROM league_invitations i,
-                    user_leagues ul
+                      i.target_slot, i.invitation_token, i.status
+               FROM league_invitations i
                WHERE i.invitation_id = :invitation_id::uuid 
-               AND i.league_id = :league_id::uuid
-               AND ul.league_id = :league_id::uuid""",
+               AND i.league_id = :league_id::uuid""",
             parameters={'invitation_id': invitation_id, 'league_id': league_id},
             database_name=database_name
         )
@@ -837,30 +865,37 @@ async def resend_invitation(
         if invitation_status != 'pending':
             raise HTTPException(status_code=400, detail="Can only resend pending invitations")
         
-        # Get commissioner name
-        commissioner_result = execute_sql(
-            "SELECT given_name FROM users WHERE user_id = :user_id",
-            parameters={'user_id': actual_commissioner},
+        # Get league name from main database
+        league_name_result = execute_sql(
+            "SELECT league_name FROM user_leagues WHERE league_id = :league_id::uuid",
+            parameters={'league_id': league_id},
             database_name='postgres'
         )
         
-        commissioner_name = "Commissioner"
-        if commissioner_result.get("records") and len(commissioner_result["records"]) > 0:
-            commissioner_name = commissioner_result["records"][0][0]["stringValue"]
+        league_name = "Unknown League"
+        if league_name_result.get("records") and len(league_name_result["records"]) > 0:
+            league_name = league_name_result["records"][0][0]["stringValue"]
         
-        # Resend the email in background
-        background_tasks.add_task(
-            send_invitation_email,
+        # ✅ FIXED: Get commissioner name from JWT token instead of database
+        commissioner_first_name = current_user.get('given_name', 'Commissioner')
+        commissioner_last_name = current_user.get('family_name', '')
+        commissioner_name = f"{commissioner_first_name} {commissioner_last_name}".strip()
+        if not commissioner_name or commissioner_name == 'Commissioner':
+            commissioner_name = "Commissioner"
+        
+        # 🎯 EMAIL-FIRST PATTERN: Send email synchronously
+        logger.info(f"📧 EMAIL-FIRST: Resending email for invitation {invitation_id}")
+        await send_invitation_email(
             recipient_email=invitation_record[1]["stringValue"],
             owner_name=invitation_record[2]["stringValue"],
-            league_name=invitation_record[7]["stringValue"],  # league_name from user_leagues
+            league_name=league_name,
             commissioner_name=commissioner_name,
             invitation_token=invitation_record[5]["stringValue"],
             personal_message=invitation_record[3]["stringValue"] if not invitation_record[3].get('isNull') else "",
             target_slot=invitation_record[4]["longValue"] if not invitation_record[4].get('isNull') else None
         )
         
-        # Update the invitation with new resend timestamp
+        # Update the invitation with new resend timestamp only after email succeeds
         execute_sql(
             "UPDATE league_invitations SET updated_at = :updated_at::timestamptz WHERE invitation_id = :invitation_id::uuid",
             parameters={
@@ -870,7 +905,7 @@ async def resend_invitation(
             database_name=database_name
         )
         
-        logger.info(f"Invitation {invitation_id} resent to {invitation_record[1]['stringValue']}")
+        logger.info(f"✅ Invitation {invitation_id} resent to {invitation_record[1]['stringValue']}")
         
         return {
             'success': True,
@@ -880,5 +915,5 @@ async def resend_invitation(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error resending invitation: {str(e)}")
+        logger.error(f"❌ Error resending invitation: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to resend invitation")

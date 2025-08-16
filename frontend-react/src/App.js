@@ -10,7 +10,7 @@ import LeagueWelcome from './pages/LeagueWelcome';
 import LeagueDashboard from './pages/LeagueDashboard';
 import MyAccount from './pages/MyAccount';
 import PlayerProfile from './pages/PlayerProfile';
-import './index.css';
+import JoinLeague from './pages/JoinLeague';
 
 function App() {
   return (
@@ -20,6 +20,9 @@ function App() {
           <Routes>
             {/* Public Routes */}
             <Route path="/" element={<Landing />} />
+            
+            {/* Public invitation acceptance route - no authentication required initially */}
+            <Route path="/join-league" element={<JoinLeague />} />
             
             {/* Protected Routes */}
             <Route 
@@ -58,6 +61,7 @@ function App() {
               } 
             />
             
+            {/* FIXED: Changed from /league/:leagueId to /leagues/:leagueId to match navigation */}
             <Route 
               path="/leagues/:leagueId" 
               element={

@@ -1,13 +1,14 @@
-// src/pages/PlayerProfile.js - ENHANCED VERSION WITH FULL ANALYTICS DISPLAY
+// src/pages/PlayerProfile.js - ENHANCED VERSION WITH PROPER DATA ROUTING
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   ArrowLeft, User, Calendar, MapPin, Activity, TrendingUp, TrendingDown,
   BarChart3, Target, Award, Clock, Users, Star, Flame, Snowflake,
-  Zap, Eye, Gamepad2, Home, Plane
+  Zap, Eye, Gamepad2, Home, Plane, DollarSign, FileText, Brain,
+  LineChart, PieChart, Gauge, Calculator
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { playersAPI } from '../services/apiService';
+import { playersAPI, leaguesAPI } from '../services/apiService';
 import { dynastyTheme } from '../services/colorService';
 import { DynastyTable, createCareerStatsColumns, calculateCareerTotals, createGameLogsColumns } from '../services/tableService';
 
@@ -15,84 +16,142 @@ const PlayerProfile = () => {
   const { playerId } = useParams();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const [searchParams] = useSearchParams();
+  const leagueId = searchParams.get('leagueId');
   
+  // Basic player data
   const [player, setPlayer] = useState(null);
-  const [stats, setStats] = useState([]);
-  const [careerStats, setCareerStats] = useState([]);
-  const [recentPerformance, setRecentPerformance] = useState(null);
-  const [gameLogs, setGameLogs] = useState([]);
-  const [hotColdAnalysis, setHotColdAnalysis] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [activeTab, setActiveTab] = useState('recent');
+  const [activeTab, setActiveTab] = useState('overview');
+
+  // Data from MAIN DB (historical)
+  const [historicalStats, setHistoricalStats] = useState([]);
+  const [careerTotals, setCareerTotals] = useState(null);
+
+  // Data from LEAGUE DB (current season + league-specific)
+  const [leagueGameLogs, setLeagueGameLogs] = useState([]);
+  const [league2025Stats, setLeague2025Stats] = useState(null);
+  const [contractInfo, setContractInfo] = useState(null);
+  const [teamAttributionData, setTeamAttributionData] = useState(null);
+
+  // Analytics data
+  const [analytics, setAnalytics] = useState({
+    hotColdAnalysis: null,
+    performanceTrends: null,
+    splits: null,
+    advanced: null
+  });
 
   useEffect(() => {
     if (playerId) {
       loadAllPlayerData();
     }
-  }, [playerId]);
+  }, [playerId, leagueId]);
 
   const loadAllPlayerData = async () => {
     try {
       setLoading(true);
-      console.log('Loading comprehensive player data for ID:', playerId);
+      console.log('Loading player data for ID:', playerId, 'League:', leagueId);
       
-      // Load basic player data first
-      const playerResponse = await playersAPI.getPlayerDetails(playerId, true);
-      console.log('Player details response:', playerResponse);
-      
+      // Load basic player info from main DB
+      const playerResponse = await playersAPI.getPlayerById(playerId);
+      console.log('Player basic info:', playerResponse);
       setPlayer(playerResponse.player);
-      setStats(playerResponse.stats || []);
-      
-      // Load enhanced data in parallel using direct API calls
-      const axios = (await import('axios')).default;
-      const enhancedAPI = axios.create({
-        baseURL: '/api',
-        withCredentials: true,
-        headers: { 'Content-Type': 'application/json' }
-      });
-      
-      const [careerResponse, recentResponse, gameLogsResponse, hotColdResponse] = await Promise.allSettled([
-        enhancedAPI.get(`/players/${playerId}/career`),
-        enhancedAPI.get(`/players/${playerId}/recent-performance`),
-        enhancedAPI.get(`/players/${playerId}/game-logs`),
-        enhancedAPI.get(`/players/${playerId}/hot-cold-analysis`)
-      ]);
-      
-      // Set career stats
-      if (careerResponse.status === 'fulfilled' && careerResponse.value) {
-        setCareerStats(careerResponse.value.data.career_stats || []);
-        console.log('Career stats loaded:', careerResponse.value.data.career_stats?.length || 0, 'seasons');
+
+      // Load historical stats from main DB (all years except 2025)
+      await loadHistoricalData();
+
+      // If we have a league context, load league-specific data
+      if (leagueId) {
+        await loadLeagueSpecificData();
       }
-      
-      // Set recent performance
-      if (recentResponse.status === 'fulfilled' && recentResponse.value) {
-        setRecentPerformance(recentResponse.value.data);
-        console.log('Recent performance loaded:', recentResponse.value.data.total_games, 'games');
-      }
-      
-      // Set game logs
-      if (gameLogsResponse.status === 'fulfilled' && gameLogsResponse.value) {
-        setGameLogs(gameLogsResponse.value.data.game_logs || []);
-        console.log('Game logs loaded:', gameLogsResponse.value.data.game_logs?.length || 0, 'games');
-      }
-      
-      // Set hot/cold analysis
-      if (hotColdResponse.status === 'fulfilled' && hotColdResponse.value) {
-        setHotColdAnalysis(hotColdResponse.value.data.analysis);
-        console.log('Hot/cold analysis loaded:', hotColdResponse.value.data.analysis?.status);
-      }
+
+      // Load analytics data
+      await loadAnalyticsData();
       
       setError(null);
     } catch (error) {
-      console.error('Error loading comprehensive player data:', error);
-      if (error.response?.status === 401) {
-        setError('Please log in to view player data');
-      } else {
-        setError('Failed to load player data');
-      }
+      console.error('Error loading player data:', error);
+      setError('Failed to load player data');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadHistoricalData = async () => {
+    try {
+      // Get career stats from main DB (2024 and earlier)
+      const careerResponse = await playersAPI.getCareerStats(playerId);
+      if (careerResponse.success) {
+        const historicalSeasons = careerResponse.career_stats.filter(season => season.season_year < 2025);
+        setHistoricalStats(historicalSeasons);
+        setCareerTotals(calculateCareerTotals(historicalSeasons, isPitcher()));
+      }
+    } catch (error) {
+      console.error('Error loading historical data:', error);
+    }
+  };
+
+  const loadLeagueSpecificData = async () => {
+    try {
+      // Get 2025 stats from league DB
+      const league2025Response = await leaguesAPI.getLeaguePlayerStats(leagueId, playerId);
+      if (league2025Response.success) {
+        setLeague2025Stats(league2025Response.stats);
+      }
+
+      // Get game logs from league DB
+      const gameLogsResponse = await leaguesAPI.getLeaguePlayerGameLogs(leagueId, playerId);
+      if (gameLogsResponse.success) {
+        setLeagueGameLogs(gameLogsResponse.game_logs);
+      }
+
+      // Get contract/salary info from league DB
+      const contractResponse = await leaguesAPI.getPlayerContract(leagueId, playerId);
+      if (contractResponse.success) {
+        setContractInfo(contractResponse.contract);
+      }
+
+      // Get team attribution data from league DB
+      const attributionResponse = await leaguesAPI.getPlayerTeamAttribution(leagueId, playerId);
+      if (attributionResponse.success) {
+        setTeamAttributionData(attributionResponse.attribution);
+      }
+
+    } catch (error) {
+      console.error('Error loading league-specific data:', error);
+    }
+  };
+
+  const loadAnalyticsData = async () => {
+    try {
+      // Hot/Cold Analysis
+      const hotColdResponse = await playersAPI.getHotColdAnalysis(playerId);
+      if (hotColdResponse.success) {
+        setAnalytics(prev => ({ ...prev, hotColdAnalysis: hotColdResponse.analysis }));
+      }
+
+      // Performance Trends
+      const trendsResponse = await playersAPI.getPerformanceTrends(playerId);
+      if (trendsResponse.success) {
+        setAnalytics(prev => ({ ...prev, performanceTrends: trendsResponse.trends }));
+      }
+
+      // If we have league context, get league-specific analytics
+      if (leagueId) {
+        const leagueAnalyticsResponse = await leaguesAPI.getPlayerAnalytics(leagueId, playerId);
+        if (leagueAnalyticsResponse.success) {
+          setAnalytics(prev => ({ 
+            ...prev, 
+            splits: leagueAnalyticsResponse.splits,
+            advanced: leagueAnalyticsResponse.advanced
+          }));
+        }
+      }
+
+    } catch (error) {
+      console.error('Error loading analytics data:', error);
     }
   };
 
@@ -115,24 +174,15 @@ const PlayerProfile = () => {
     return `${feet}-${inches}`;
   };
 
-  const formatDate = (dateString) => {
-    if (!dateString) return 'N/A';
-    return new Date(dateString).toLocaleDateString('en-US', {
-      month: '2-digit',
-      day: '2-digit',
-      year: '2-digit'
-    });
-  };
-
   const isPitcher = () => {
     const position = player?.position?.toUpperCase();
     return position === 'P' || position === 'SP' || position === 'RP' || position === 'CL';
   };
 
   const getHotColdIcon = () => {
-    if (!hotColdAnalysis) return <Activity className={`w-5 h-5 ${dynastyTheme.classes.text.neutral}`} />;
+    if (!analytics.hotColdAnalysis) return <Activity className={`w-5 h-5 ${dynastyTheme.classes.text.neutral}`} />;
     
-    switch (hotColdAnalysis.status) {
+    switch (analytics.hotColdAnalysis.status) {
       case 'hot':
         return <Flame className="w-5 h-5 text-red-500" />;
       case 'cold':
@@ -143,9 +193,9 @@ const PlayerProfile = () => {
   };
 
   const getHotColdColor = () => {
-    if (!hotColdAnalysis) return dynastyTheme.classes.text.neutral;
+    if (!analytics.hotColdAnalysis) return dynastyTheme.classes.text.neutral;
     
-    switch (hotColdAnalysis.status) {
+    switch (analytics.hotColdAnalysis.status) {
       case 'hot':
         return 'text-red-500';
       case 'cold':
@@ -155,79 +205,13 @@ const PlayerProfile = () => {
     }
   };
 
-  const getSeasonStats = () => {
-    if (!stats.length) return null;
-    
-    const currentSeason = Math.max(...stats.map(s => s.season_year));
-    const seasonStats = stats.filter(s => s.season_year === currentSeason);
-    
-    if (seasonStats.length === 0) return null;
-    
-    if (isPitcher()) {
-      const totals = seasonStats.reduce((acc, week) => ({
-        games_played: (acc.games_played || 0) + (week.games_played || 0),
-        innings_pitched: (acc.innings_pitched || 0) + (week.innings_pitched || 0),
-        wins: (acc.wins || 0) + (week.wins || 0),
-        losses: (acc.losses || 0) + (week.losses || 0),
-        saves: (acc.saves || 0) + (week.saves || 0),
-        strikeouts_pitched: (acc.strikeouts_pitched || 0) + (week.strikeouts_pitched || week.strikeouts || 0),
-        earned_runs: (acc.earned_runs || 0) + (week.earned_runs || 0),
-        hits_allowed: (acc.hits_allowed || 0) + (week.hits_allowed || 0),
-        walks_allowed: (acc.walks_allowed || 0) + (week.walks_allowed || 0),
-      }), {});
-      
-      const era = totals.innings_pitched > 0 ? ((totals.earned_runs * 9) / totals.innings_pitched).toFixed(2) : '0.00';
-      const whip = totals.innings_pitched > 0 ? ((totals.hits_allowed + totals.walks_allowed) / totals.innings_pitched).toFixed(2) : '0.00';
-      
-      return {
-        ...totals,
-        ERA: era,
-        WHIP: whip,
-        IP: totals.innings_pitched.toFixed(1),
-        SO: totals.strikeouts_pitched,
-        isPitcher: true
-      };
-    } else {
-      const totals = seasonStats.reduce((acc, week) => ({
-        games_played: (acc.games_played || 0) + (week.games_played || 0),
-        at_bats: (acc.at_bats || 0) + (week.at_bats || 0),
-        hits: (acc.hits || 0) + (week.hits || 0),
-        runs: (acc.runs || 0) + (week.runs || 0),
-        rbis: (acc.rbis || 0) + (week.rbis || 0),
-        home_runs: (acc.home_runs || 0) + (week.home_runs || 0),
-        doubles: (acc.doubles || 0) + (week.doubles || 0),
-        triples: (acc.triples || 0) + (week.triples || 0),
-        stolen_bases: (acc.stolen_bases || 0) + (week.stolen_bases || 0),
-        walks: (acc.walks || 0) + (week.walks || 0),
-        strikeouts: (acc.strikeouts || 0) + (week.strikeouts || 0),
-      }), {});
-      
-      const avg = totals.at_bats > 0 ? (totals.hits / totals.at_bats).toFixed(3) : '.000';
-      const obp = (totals.at_bats + totals.walks) > 0 ? ((totals.hits + totals.walks) / (totals.at_bats + totals.walks)).toFixed(3) : '.000';
-      const totalBases = totals.hits + totals.doubles + (totals.triples * 2) + (totals.home_runs * 3);
-      const slg = totals.at_bats > 0 ? (totalBases / totals.at_bats).toFixed(3) : '.000';
-      const ops = (parseFloat(obp) + parseFloat(slg)).toFixed(3);
-      
-      return {
-        ...totals,
-        AVG: avg,
-        OBP: obp,
-        SLG: slg,
-        OPS: ops,
-        isPitcher: false
-      };
-    }
-  };
-
-  const seasonStats = getSeasonStats();
-
   if (loading) {
     return (
       <div className={dynastyTheme.components.page}>
         <div className="flex items-center justify-center min-h-screen">
           <div className="text-center">
             <div className={`animate-spin rounded-full h-12 w-12 border-b-2 ${dynastyTheme.classes.border.primary} mx-auto mb-4`}></div>
-            <p className={dynastyTheme.classes.text.white}>Loading comprehensive player data...</p>
+            <p className={dynastyTheme.classes.text.white}>Loading player data...</p>
           </div>
         </div>
       </div>
@@ -274,20 +258,25 @@ const PlayerProfile = () => {
                     <h1 className={`text-2xl font-bold ${dynastyTheme.classes.text.white} mr-3`}>
                       {player.first_name} {player.last_name}
                     </h1>
-                    {hotColdAnalysis && (
+                    {analytics.hotColdAnalysis && (
                       <div className={`flex items-center px-3 py-1 rounded-full ${dynastyTheme.components.card.base} ${getHotColdColor()}`}>
                         {getHotColdIcon()}
                         <span className="ml-1 text-sm font-medium capitalize">
-                          {hotColdAnalysis.status}
+                          {analytics.hotColdAnalysis.status}
                         </span>
                         <span className="ml-1 text-xs opacity-75">
-                          ({hotColdAnalysis.confidence}%)
+                          ({analytics.hotColdAnalysis.confidence}%)
                         </span>
                       </div>
                     )}
                   </div>
                   <p className={dynastyTheme.classes.text.neutralLight}>
                     {player.position} • {player.mlb_team || 'Free Agent'}
+                    {leagueId && contractInfo && (
+                      <span className={dynastyTheme.classes.text.primary}>
+                        {' '} • ${contractInfo.salary}M ({contractInfo.contract_years}yr)
+                      </span>
+                    )}
                   </p>
                 </div>
               </div>
@@ -302,10 +291,10 @@ const PlayerProfile = () => {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Player Info Card */}
         <div className={`${dynastyTheme.components.card.base} p-6 mb-8`}>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-6">
             {/* Basic Info */}
             <div className="space-y-3">
-              <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary}`}>Player Information</h3>
+              <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary}`}>Basic Info</h3>
               <div className="space-y-2">
                 <div className="flex items-center">
                   <User className={`w-4 h-4 mr-2 ${dynastyTheme.classes.text.primary}`} />
@@ -358,127 +347,150 @@ const PlayerProfile = () => {
               </div>
             </div>
 
-            {/* Status */}
-            <div className="space-y-3">
-              <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary}`}>Status</h3>
-              <div className="space-y-2">
-                <div className="flex items-center">
-                  <Activity className={`w-4 h-4 mr-2 ${dynastyTheme.classes.text.primary}`} />
-                  <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>Status:</span>
-                  <span className={`ml-1 font-medium ${player.is_active ? dynastyTheme.classes.text.success : dynastyTheme.classes.text.error}`}>
-                    {player.is_active ? 'Active' : 'Inactive'}
-                  </span>
-                </div>
-                <div className="flex items-center">
-                  <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>Injury:</span>
-                  <span className={`${dynastyTheme.classes.text.white} ml-1 font-medium`}>
-                    {player.injury_status || 'Healthy'}
-                  </span>
+            {/* Contract Info (League-specific) */}
+            {leagueId && contractInfo && (
+              <div className="space-y-3">
+                <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary}`}>Contract</h3>
+                <div className="space-y-2">
+                  <div className="flex items-center">
+                    <DollarSign className={`w-4 h-4 mr-2 ${dynastyTheme.classes.text.primary}`} />
+                    <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>Salary:</span>
+                    <span className={`${dynastyTheme.classes.text.white} ml-1 font-medium`}>
+                      ${contractInfo.salary}M
+                    </span>
+                  </div>
+                  <div className="flex items-center">
+                    <Clock className={`w-4 h-4 mr-2 ${dynastyTheme.classes.text.primary}`} />
+                    <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>Years:</span>
+                    <span className={`${dynastyTheme.classes.text.white} ml-1 font-medium`}>
+                      {contractInfo.contract_years}
+                    </span>
+                  </div>
+                  <div className="flex items-center">
+                    <FileText className={`w-4 h-4 mr-2 ${dynastyTheme.classes.text.primary}`} />
+                    <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>Status:</span>
+                    <span className={`${dynastyTheme.classes.text.white} ml-1 font-medium`}>
+                      {contractInfo.availability_status}
+                    </span>
+                  </div>
                 </div>
               </div>
-            </div>
+            )}
 
-            {/* 2025 Season Stats */}
+            {/* 2025 Season Stats (League DB) */}
             <div className="space-y-3">
               <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary}`}>2025 Season</h3>
-              {seasonStats ? (
+              {league2025Stats ? (
                 <div className="space-y-2">
-                  {seasonStats.isPitcher ? (
+                  {isPitcher() ? (
                     <>
                       <div className="flex justify-between">
                         <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>ERA:</span>
-                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>{seasonStats.ERA}</span>
+                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>{league2025Stats.era?.toFixed(2) || '0.00'}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>WHIP:</span>
-                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>{seasonStats.WHIP}</span>
+                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>{league2025Stats.whip?.toFixed(3) || '0.000'}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>W:</span>
-                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>{seasonStats.wins}</span>
+                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>{league2025Stats.wins || 0}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>SO:</span>
-                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>{seasonStats.SO}</span>
+                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>{league2025Stats.strikeouts_pitched || 0}</span>
                       </div>
                     </>
                   ) : (
                     <>
                       <div className="flex justify-between">
                         <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>AVG:</span>
-                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>{seasonStats.AVG}</span>
+                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>{league2025Stats.avg?.toFixed(3) || '.000'}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>HR:</span>
-                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>{seasonStats.home_runs}</span>
+                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>{league2025Stats.home_runs || 0}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>RBI:</span>
-                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>{seasonStats.rbis}</span>
+                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>{league2025Stats.rbis || 0}</span>
                       </div>
                       <div className="flex justify-between">
                         <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>OPS:</span>
-                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>{seasonStats.OPS}</span>
+                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>{league2025Stats.ops?.toFixed(3) || '.000'}</span>
                       </div>
                     </>
                   )}
                 </div>
               ) : (
-                <p className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>No stats available</p>
+                <p className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>No 2025 stats available</p>
               )}
             </div>
 
-            {/* Recent Performance Summary */}
-            <div className="space-y-3">
-              <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary} flex items-center`}>
-                <Zap className="w-4 h-4 mr-2" />
-                Recent Form
-              </h3>
-              {recentPerformance && recentPerformance.aggregated_stats && recentPerformance.aggregated_stats.games > 0 ? (
+            {/* Team Attribution (League-specific) */}
+            {leagueId && teamAttributionData && (
+              <div className="space-y-3">
+                <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary}`}>Team Performance</h3>
                 <div className="space-y-2">
                   <div className="flex justify-between">
                     <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>Games:</span>
-                    <span className={`${dynastyTheme.classes.text.white} font-mono`}>
-                      {recentPerformance.aggregated_stats.games}
-                    </span>
+                    <span className={`${dynastyTheme.classes.text.white} font-mono`}>{teamAttributionData.team_games || 0}</span>
                   </div>
-                  {recentPerformance.aggregated_stats.type === 'hitting' ? (
+                  {isPitcher() ? (
                     <>
                       <div className="flex justify-between">
-                        <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>AVG:</span>
-                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>
-                          {recentPerformance.aggregated_stats.avg.toFixed(3)}
-                        </span>
+                        <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>Team ERA:</span>
+                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>{teamAttributionData.team_era?.toFixed(2) || '0.00'}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>HR:</span>
-                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>
-                          {recentPerformance.aggregated_stats.home_runs}
-                        </span>
+                        <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>Team W:</span>
+                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>{teamAttributionData.team_wins || 0}</span>
                       </div>
                     </>
                   ) : (
                     <>
                       <div className="flex justify-between">
-                        <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>ERA:</span>
-                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>
-                          {recentPerformance.aggregated_stats.era}
-                        </span>
+                        <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>Team AVG:</span>
+                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>{teamAttributionData.team_avg?.toFixed(3) || '.000'}</span>
                       </div>
                       <div className="flex justify-between">
-                        <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>WHIP:</span>
-                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>
-                          {recentPerformance.aggregated_stats.whip}
-                        </span>
+                        <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>Team HR:</span>
+                        <span className={`${dynastyTheme.classes.text.white} font-mono`}>{teamAttributionData.team_home_runs || 0}</span>
                       </div>
                     </>
                   )}
                   <div className={`text-xs ${dynastyTheme.classes.text.neutral} mt-2`}>
-                    Last {recentPerformance.period_days} days
+                    Since {teamAttributionData.first_game_date}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Hot/Cold Analysis */}
+            <div className="space-y-3">
+              <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary} flex items-center`}>
+                <Zap className="w-4 h-4 mr-2" />
+                Form
+              </h3>
+              {analytics.hotColdAnalysis ? (
+                <div className="space-y-2">
+                  <div className={`flex items-center px-3 py-2 rounded-lg ${dynastyTheme.components.card.base} ${getHotColdColor()}`}>
+                    {getHotColdIcon()}
+                    <span className="ml-2 font-medium capitalize">
+                      {analytics.hotColdAnalysis.status}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>Confidence:</span>
+                    <span className={`${dynastyTheme.classes.text.white} font-mono`}>{analytics.hotColdAnalysis.confidence}%</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>Games:</span>
+                    <span className={`${dynastyTheme.classes.text.white} font-mono`}>{analytics.hotColdAnalysis.games_analyzed}</span>
                   </div>
                 </div>
               ) : (
-                <p className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>No recent games</p>
+                <p className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>Analyzing...</p>
               )}
             </div>
           </div>
@@ -490,11 +502,11 @@ const PlayerProfile = () => {
           <div className={`border-b ${dynastyTheme.classes.border.neutral} mb-6`}>
             <nav className="flex space-x-8">
               {[
-                { id: 'recent', label: 'Recent Performance', icon: TrendingUp },
-                { id: 'season', label: 'Season Stats', icon: BarChart3 },
+                { id: 'overview', label: '2025 Overview', icon: BarChart3 },
                 { id: 'games', label: 'Game Logs', icon: Gamepad2 },
-                { id: 'career', label: 'Career', icon: Award },
-                { id: 'analysis', label: 'Advanced Analysis', icon: Eye }
+                { id: 'career', label: 'Career History', icon: Award },
+                { id: 'analytics', label: 'Advanced Analytics', icon: Brain },
+                ...(leagueId ? [{ id: 'contract', label: 'Contract Details', icon: DollarSign }] : [])
               ].map(({ id, label, icon: Icon }) => (
                 <button
                   key={id}
@@ -514,201 +526,23 @@ const PlayerProfile = () => {
 
           {/* Tab Content */}
           <div className="space-y-6">
-            {activeTab === 'recent' && (
+            {activeTab === 'overview' && (
               <div>
-                <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary} mb-4 flex items-center`}>
-                  <TrendingUp className="w-5 h-5 mr-2" />
-                  Recent Performance Analysis (Last 4 Weeks)
+                <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary} mb-4`}>
+                  2025 Season Overview
                 </h3>
-                
-                {recentPerformance && recentPerformance.aggregated_stats && recentPerformance.aggregated_stats.games > 0 ? (
-                  <div className="space-y-6">
-                    {/* Performance Summary */}
-                    <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-4">
-                      {recentPerformance.aggregated_stats.type === 'hitting' ? (
-                        [
-                          { label: 'G', value: recentPerformance.aggregated_stats.games },
-                          { label: 'AVG', value: recentPerformance.aggregated_stats.avg.toFixed(3) },
-                          { label: 'HR', value: recentPerformance.aggregated_stats.home_runs },
-                          { label: 'RBI', value: recentPerformance.aggregated_stats.rbis },
-                          { label: 'R', value: recentPerformance.aggregated_stats.runs },
-                          { label: 'SB', value: recentPerformance.aggregated_stats.stolen_bases },
-                          { label: 'BB', value: recentPerformance.aggregated_stats.walks },
-                          { label: 'K', value: recentPerformance.aggregated_stats.strikeouts }
-                        ].map(({ label, value }) => (
-                          <div key={label} className="text-center">
-                            <div className={`${dynastyTheme.classes.text.primary} text-2xl font-bold`}>{value}</div>
-                            <div className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>{label}</div>
-                          </div>
-                        ))
-                      ) : (
-                        [
-                          { label: 'G', value: recentPerformance.aggregated_stats.games },
-                          { label: 'IP', value: recentPerformance.aggregated_stats.innings_pitched },
-                          { label: 'ERA', value: recentPerformance.aggregated_stats.era },
-                          { label: 'WHIP', value: recentPerformance.aggregated_stats.whip },
-                          { label: 'W', value: recentPerformance.aggregated_stats.wins },
-                          { label: 'L', value: recentPerformance.aggregated_stats.losses },
-                          { label: 'SV', value: recentPerformance.aggregated_stats.saves },
-                          { label: 'SO', value: recentPerformance.aggregated_stats.strikeouts }
-                        ].map(({ label, value }) => (
-                          <div key={label} className="text-center">
-                            <div className={`${dynastyTheme.classes.text.primary} text-2xl font-bold`}>{value}</div>
-                            <div className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>{label}</div>
-                          </div>
-                        ))
-                      )}
-                    </div>
-
-                    {/* Recent Games Table */}
-                    {recentPerformance.recent_games && recentPerformance.recent_games.length > 0 && (
-                      <div className="mt-6">
-                        <DynastyTable
-                          title={`Last ${recentPerformance.recent_games.length} Games (all 2025 games)`}
-                          data={recentPerformance.recent_games}
-                          columns={createGameLogsColumns()}
-                          initialSort={{ key: 'game_date', direction: 'desc' }}
-                          maxHeight="400px"
-                          stickyHeader={true}
-                        />
-                      </div>
-                    )}
-                  </div>
-                ) : (
-                  <p className={dynastyTheme.classes.text.neutralLight}>No recent performance data available</p>
-                )}
-              </div>
-            )}
-
-            {activeTab === 'games' && (
-              <div>
-                <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary} mb-4 flex items-center`}>
-                  <Gamepad2 className="w-5 h-5 mr-2" />
-                  Game Logs
-                </h3>
-                {gameLogs.length > 0 ? (
-                  <DynastyTable
-                    title={`Last ${gameLogs.length} Games`}
-                    data={gameLogs}
-                    columns={createGameLogsColumns()}
-                    initialSort={{ key: 'game_date', direction: 'desc' }}
-                    maxHeight="500px"
-                    stickyHeader={true}
-                  />
-                ) : (
-                  <p className={dynastyTheme.classes.text.neutralLight}>No game logs available</p>
-                )}
-              </div>
-            )}
-
-            {activeTab === 'career' && (
-              <div>
-                <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary} mb-4`}>Career Statistics</h3>
-                {careerStats.length > 0 ? (
-                  <DynastyTable
-                    title="Career Stats"
-                    data={careerStats}
-                    columns={createCareerStatsColumns(isPitcher())}
-                    initialSort={{ key: 'season_year', direction: 'desc' }}
-                    maxHeight="500px"
-                    showTotals={true}
-                    totalsRow={calculateCareerTotals(careerStats, isPitcher())}
-                    stickyHeader={true}
-                  />
-                ) : (
-                  <p className={dynastyTheme.classes.text.neutralLight}>No career statistics available</p>
-                )}
-              </div>
-            )}
-
-            {activeTab === 'analysis' && (
-              <div>
-                <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary} mb-4`}>Advanced Analysis</h3>
-                {hotColdAnalysis ? (
-                  <div className="space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                      {/* Hot/Cold Status */}
-                      <div className={`p-6 rounded-lg ${dynastyTheme.components.card.base}`}>
-                        <div className="flex items-center mb-4">
-                          {getHotColdIcon()}
-                          <h4 className={`text-lg font-semibold ml-2 ${getHotColdColor()}`}>
-                            Player is {hotColdAnalysis.status.toUpperCase()}
-                          </h4>
-                        </div>
-                        <p className={`${dynastyTheme.classes.text.neutralLight} mb-2`}>
-                          Confidence: {hotColdAnalysis.confidence}%
-                        </p>
-                        <p className={`${dynastyTheme.classes.text.white} text-sm`}>
-                          Based on {hotColdAnalysis.games_analyzed} recent games
-                        </p>
-                      </div>
-
-                      {/* Performance Comparison */}
-                      <div className={`p-6 ${dynastyTheme.components.card.base} rounded-lg`}>
-                        <h4 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary} mb-4`}>
-                          Recent vs Season
-                        </h4>
-                        <div className="space-y-3">
-                          {hotColdAnalysis.type === 'hitting' ? (
-                            <>
-                              <div className="flex justify-between">
-                                <span className={dynastyTheme.classes.text.neutralLight}>Recent AVG:</span>
-                                <span className={dynastyTheme.classes.text.white}>{hotColdAnalysis.recent_avg}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className={dynastyTheme.classes.text.neutralLight}>Season AVG:</span>
-                                <span className={dynastyTheme.classes.text.white}>{hotColdAnalysis.season_avg}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className={dynastyTheme.classes.text.neutralLight}>Difference:</span>
-                                <span className={`${hotColdAnalysis.avg_change > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                  {hotColdAnalysis.avg_change > 0 ? '+' : ''}{hotColdAnalysis.avg_change}
-                                </span>
-                              </div>
-                            </>
-                          ) : (
-                            <>
-                              <div className="flex justify-between">
-                                <span className={dynastyTheme.classes.text.neutralLight}>Recent ERA:</span>
-                                <span className={dynastyTheme.classes.text.white}>{hotColdAnalysis.recent_era}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className={dynastyTheme.classes.text.neutralLight}>Season ERA:</span>
-                                <span className={dynastyTheme.classes.text.white}>{hotColdAnalysis.season_era}</span>
-                              </div>
-                              <div className="flex justify-between">
-                                <span className={dynastyTheme.classes.text.neutralLight}>Difference:</span>
-                                <span className={`${hotColdAnalysis.era_change > 0 ? 'text-green-400' : 'text-red-400'}`}>
-                                  {hotColdAnalysis.era_change > 0 ? '+' : ''}{hotColdAnalysis.era_change}
-                                </span>
-                              </div>
-                            </>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <p className={dynastyTheme.classes.text.neutralLight}>Loading advanced analysis...</p>
-                )}
-              </div>
-            )}
-
-            {activeTab === 'season' && (
-              <div>
-                <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary} mb-4`}>2025 Season Statistics</h3>
-                {seasonStats ? (
+                {league2025Stats ? (
                   <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
-                    {seasonStats.isPitcher ? (
+                    {isPitcher() ? (
                       [
-                        { label: 'Games', value: seasonStats.games_played },
-                        { label: 'Innings', value: seasonStats.IP },
-                        { label: 'ERA', value: seasonStats.ERA },
-                        { label: 'WHIP', value: seasonStats.WHIP },
-                        { label: 'Wins', value: seasonStats.wins },
-                        { label: 'Losses', value: seasonStats.losses },
-                        { label: 'Saves', value: seasonStats.saves },
-                        { label: 'Strikeouts', value: seasonStats.SO }
+                        { label: 'Games', value: league2025Stats.games_played || 0 },
+                        { label: 'Innings', value: league2025Stats.innings_pitched?.toFixed(1) || '0.0' },
+                        { label: 'ERA', value: league2025Stats.era?.toFixed(2) || '0.00' },
+                        { label: 'WHIP', value: league2025Stats.whip?.toFixed(3) || '0.000' },
+                        { label: 'Wins', value: league2025Stats.wins || 0 },
+                        { label: 'Saves', value: league2025Stats.saves || 0 },
+                        { label: 'Strikeouts', value: league2025Stats.strikeouts_pitched || 0 },
+                        { label: 'Quality Starts', value: league2025Stats.quality_starts || 0 }
                       ].map(({ label, value }) => (
                         <div key={label} className="text-center">
                           <div className={`${dynastyTheme.classes.text.primary} text-3xl font-bold mb-2`}>{value}</div>
@@ -717,14 +551,14 @@ const PlayerProfile = () => {
                       ))
                     ) : (
                       [
-                        { label: 'Games', value: seasonStats.games_played },
-                        { label: 'AVG', value: seasonStats.AVG },
-                        { label: 'Home Runs', value: seasonStats.home_runs },
-                        { label: 'RBIs', value: seasonStats.rbis },
-                        { label: 'Runs', value: seasonStats.runs },
-                        { label: 'Stolen Bases', value: seasonStats.stolen_bases },
-                        { label: 'OBP', value: seasonStats.OBP },
-                        { label: 'OPS', value: seasonStats.OPS }
+                        { label: 'Games', value: league2025Stats.games_played || 0 },
+                        { label: 'AVG', value: league2025Stats.avg?.toFixed(3) || '.000' },
+                        { label: 'Home Runs', value: league2025Stats.home_runs || 0 },
+                        { label: 'RBIs', value: league2025Stats.rbis || 0 },
+                        { label: 'Runs', value: league2025Stats.runs || 0 },
+                        { label: 'Stolen Bases', value: league2025Stats.stolen_bases || 0 },
+                        { label: 'OBP', value: league2025Stats.obp?.toFixed(3) || '.000' },
+                        { label: 'OPS', value: league2025Stats.ops?.toFixed(3) || '.000' }
                       ].map(({ label, value }) => (
                         <div key={label} className="text-center">
                           <div className={`${dynastyTheme.classes.text.primary} text-3xl font-bold mb-2`}>{value}</div>
@@ -734,7 +568,360 @@ const PlayerProfile = () => {
                     )}
                   </div>
                 ) : (
-                  <p className={dynastyTheme.classes.text.neutralLight}>No season statistics available</p>
+                  <p className={dynastyTheme.classes.text.neutralLight}>No 2025 season statistics available</p>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'games' && (
+              <div>
+                <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary} mb-4`}>
+                  2025 Game Logs {leagueId ? '(League Database)' : ''}
+                </h3>
+                {leagueGameLogs.length > 0 ? (
+                  <DynastyTable
+                    title={`2025 Game Logs (${leagueGameLogs.length} games)`}
+                    data={leagueGameLogs}
+                    columns={createGameLogsColumns(isPitcher())}
+                    initialSort={{ key: 'game_date', direction: 'desc' }}
+                    maxHeight="500px"
+                    stickyHeader={true}
+                  />
+                ) : (
+                  <p className={dynastyTheme.classes.text.neutralLight}>No 2025 game logs available</p>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'career' && (
+              <div>
+                <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary} mb-4`}>
+                  Career Statistics (Historical - Main Database)
+                </h3>
+                {historicalStats.length > 0 ? (
+                  <DynastyTable
+                    title="Career Stats (2024 and Earlier)"
+                    data={historicalStats}
+                    columns={createCareerStatsColumns(isPitcher())}
+                    initialSort={{ key: 'season_year', direction: 'desc' }}
+                    maxHeight="500px"
+                    showTotals={true}
+                    totalsRow={careerTotals}
+                    stickyHeader={true}
+                  />
+                ) : (
+                  <p className={dynastyTheme.classes.text.neutralLight}>No historical career statistics available</p>
+                )}
+              </div>
+            )}
+
+            {activeTab === 'analytics' && (
+              <div>
+                <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary} mb-4 flex items-center`}>
+                  <Brain className="w-5 h-5 mr-2" />
+                  Advanced Analytics & Performance Intelligence
+                </h3>
+                
+                <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+                  {/* Hot/Cold Analysis */}
+                  <div className={`${dynastyTheme.components.card.base} p-6 rounded-lg`}>
+                    <h4 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary} mb-4 flex items-center`}>
+                      {getHotColdIcon()}
+                      <span className="ml-2">Performance Temperature</span>
+                    </h4>
+                    {analytics.hotColdAnalysis ? (
+                      <div className="space-y-4">
+                        <div className={`p-4 rounded-lg ${dynastyTheme.components.card.base} text-center`}>
+                          <div className={`text-3xl font-bold mb-2 ${getHotColdColor()}`}>
+                            {analytics.hotColdAnalysis.status.toUpperCase()}
+                          </div>
+                          <div className={dynastyTheme.classes.text.neutralLight}>
+                            {analytics.hotColdAnalysis.confidence}% confidence over {analytics.hotColdAnalysis.games_analyzed} games
+                          </div>
+                        </div>
+                        
+                        <div className="space-y-3">
+                          <h5 className={`font-semibold ${dynastyTheme.classes.text.white}`}>Recent vs Season Comparison:</h5>
+                          {isPitcher() ? (
+                            <>
+                              <div className="flex justify-between">
+                                <span className={dynastyTheme.classes.text.neutralLight}>Recent ERA:</span>
+                                <span className={dynastyTheme.classes.text.white}>{analytics.hotColdAnalysis.recent_era}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className={dynastyTheme.classes.text.neutralLight}>Season ERA:</span>
+                                <span className={dynastyTheme.classes.text.white}>{analytics.hotColdAnalysis.season_era}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className={dynastyTheme.classes.text.neutralLight}>Difference:</span>
+                                <span className={analytics.hotColdAnalysis.era_change > 0 ? 'text-red-400' : 'text-green-400'}>
+                                  {analytics.hotColdAnalysis.era_change > 0 ? '+' : ''}{analytics.hotColdAnalysis.era_change}
+                                </span>
+                              </div>
+                            </>
+                          ) : (
+                            <>
+                              <div className="flex justify-between">
+                                <span className={dynastyTheme.classes.text.neutralLight}>Recent AVG:</span>
+                                <span className={dynastyTheme.classes.text.white}>{analytics.hotColdAnalysis.recent_avg}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className={dynastyTheme.classes.text.neutralLight}>Season AVG:</span>
+                                <span className={dynastyTheme.classes.text.white}>{analytics.hotColdAnalysis.season_avg}</span>
+                              </div>
+                              <div className="flex justify-between">
+                                <span className={dynastyTheme.classes.text.neutralLight}>Difference:</span>
+                                <span className={analytics.hotColdAnalysis.avg_change > 0 ? 'text-green-400' : 'text-red-400'}>
+                                  {analytics.hotColdAnalysis.avg_change > 0 ? '+' : ''}{analytics.hotColdAnalysis.avg_change}
+                                </span>
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className={dynastyTheme.classes.text.neutralLight}>Analyzing recent performance...</p>
+                    )}
+                  </div>
+
+                  {/* Performance Trends */}
+                  <div className={`${dynastyTheme.components.card.base} p-6 rounded-lg`}>
+                    <h4 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary} mb-4 flex items-center`}>
+                      <LineChart className="w-5 h-5 mr-2" />
+                      Performance Trends
+                    </h4>
+                    {analytics.performanceTrends ? (
+                      <div className="space-y-4">
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="text-center">
+                            <div className={`text-2xl font-bold ${analytics.performanceTrends.direction === 'improving' ? 'text-green-400' : analytics.performanceTrends.direction === 'declining' ? 'text-red-400' : dynastyTheme.classes.text.primary}`}>
+                              {analytics.performanceTrends.direction === 'improving' ? '↗' : analytics.performanceTrends.direction === 'declining' ? '↘' : '→'}
+                            </div>
+                            <div className={dynastyTheme.classes.text.neutralLight}>Trend</div>
+                          </div>
+                          <div className="text-center">
+                            <div className={`text-2xl font-bold ${dynastyTheme.classes.text.primary}`}>
+                              {analytics.performanceTrends.strength}%
+                            </div>
+                            <div className={dynastyTheme.classes.text.neutralLight}>Strength</div>
+                          </div>
+                        </div>
+                        <div className={dynastyTheme.classes.text.neutralLight}>
+                          Based on last {analytics.performanceTrends.period_days} days of performance data
+                        </div>
+                      </div>
+                    ) : (
+                      <p className={dynastyTheme.classes.text.neutralLight}>Calculating trends...</p>
+                    )}
+                  </div>
+
+                  {/* Advanced Metrics (League-specific) */}
+                  {leagueId && analytics.advanced && (
+                    <div className={`${dynastyTheme.components.card.base} p-6 rounded-lg`}>
+                      <h4 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary} mb-4 flex items-center`}>
+                        <Calculator className="w-5 h-5 mr-2" />
+                        Advanced Metrics
+                      </h4>
+                      <div className="grid grid-cols-2 gap-4">
+                        {isPitcher() ? (
+                          <>
+                            <div className="text-center">
+                              <div className={`text-xl font-bold ${dynastyTheme.classes.text.primary}`}>
+                                {analytics.advanced.k_per_9?.toFixed(1) || '0.0'}
+                              </div>
+                              <div className={dynastyTheme.classes.text.neutralLight}>K/9</div>
+                            </div>
+                            <div className="text-center">
+                              <div className={`text-xl font-bold ${dynastyTheme.classes.text.primary}`}>
+                                {analytics.advanced.bb_per_9?.toFixed(1) || '0.0'}
+                              </div>
+                              <div className={dynastyTheme.classes.text.neutralLight}>BB/9</div>
+                            </div>
+                            <div className="text-center">
+                              <div className={`text-xl font-bold ${dynastyTheme.classes.text.primary}`}>
+                                {analytics.advanced.hr_per_9?.toFixed(1) || '0.0'}
+                              </div>
+                              <div className={dynastyTheme.classes.text.neutralLight}>HR/9</div>
+                            </div>
+                            <div className="text-center">
+                              <div className={`text-xl font-bold ${dynastyTheme.classes.text.primary}`}>
+                                {analytics.advanced.strand_rate?.toFixed(1) || '0.0'}%
+                              </div>
+                              <div className={dynastyTheme.classes.text.neutralLight}>LOB%</div>
+                            </div>
+                          </>
+                        ) : (
+                          <>
+                            <div className="text-center">
+                              <div className={`text-xl font-bold ${dynastyTheme.classes.text.primary}`}>
+                                {analytics.advanced.babip?.toFixed(3) || '.000'}
+                              </div>
+                              <div className={dynastyTheme.classes.text.neutralLight}>BABIP</div>
+                            </div>
+                            <div className="text-center">
+                              <div className={`text-xl font-bold ${dynastyTheme.classes.text.primary}`}>
+                                {analytics.advanced.k_rate?.toFixed(1) || '0.0'}%
+                              </div>
+                              <div className={dynastyTheme.classes.text.neutralLight}>K%</div>
+                            </div>
+                            <div className="text-center">
+                              <div className={`text-xl font-bold ${dynastyTheme.classes.text.primary}`}>
+                                {analytics.advanced.bb_rate?.toFixed(1) || '0.0'}%
+                              </div>
+                              <div className={dynastyTheme.classes.text.neutralLight}>BB%</div>
+                            </div>
+                            <div className="text-center">
+                              <div className={`text-xl font-bold ${dynastyTheme.classes.text.primary}`}>
+                                {analytics.advanced.iso?.toFixed(3) || '.000'}
+                              </div>
+                              <div className={dynastyTheme.classes.text.neutralLight}>ISO</div>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Performance Splits (League-specific) */}
+                  {leagueId && analytics.splits && (
+                    <div className={`${dynastyTheme.components.card.base} p-6 rounded-lg`}>
+                      <h4 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary} mb-4 flex items-center`}>
+                        <PieChart className="w-5 h-5 mr-2" />
+                        Performance Splits
+                      </h4>
+                      <div className="space-y-4">
+                        <div>
+                          <h5 className={`font-semibold ${dynastyTheme.classes.text.white} mb-2`}>Home vs Away:</h5>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <div className={dynastyTheme.classes.text.neutralLight}>Home</div>
+                              <div className={dynastyTheme.classes.text.white}>
+                                {isPitcher() ? 
+                                  `${analytics.splits.home_era?.toFixed(2) || '0.00'} ERA` :
+                                  `${analytics.splits.home_avg?.toFixed(3) || '.000'} AVG`
+                                }
+                              </div>
+                            </div>
+                            <div>
+                              <div className={dynastyTheme.classes.text.neutralLight}>Away</div>
+                              <div className={dynastyTheme.classes.text.white}>
+                                {isPitcher() ? 
+                                  `${analytics.splits.away_era?.toFixed(2) || '0.00'} ERA` :
+                                  `${analytics.splits.away_avg?.toFixed(3) || '.000'} AVG`
+                                }
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                        
+                        <div>
+                          <h5 className={`font-semibold ${dynastyTheme.classes.text.white} mb-2`}>vs Division:</h5>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div>
+                              <div className={dynastyTheme.classes.text.neutralLight}>vs Division</div>
+                              <div className={dynastyTheme.classes.text.white}>
+                                {isPitcher() ? 
+                                  `${analytics.splits.vs_division_era?.toFixed(2) || '0.00'} ERA` :
+                                  `${analytics.splits.vs_division_avg?.toFixed(3) || '.000'} AVG`
+                                }
+                              </div>
+                            </div>
+                            <div>
+                              <div className={dynastyTheme.classes.text.neutralLight}>vs Others</div>
+                              <div className={dynastyTheme.classes.text.white}>
+                                {isPitcher() ? 
+                                  `${analytics.splits.vs_others_era?.toFixed(2) || '0.00'} ERA` :
+                                  `${analytics.splits.vs_others_avg?.toFixed(3) || '.000'} AVG`
+                                }
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'contract' && leagueId && (
+              <div>
+                <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.primary} mb-4 flex items-center`}>
+                  <DollarSign className="w-5 h-5 mr-2" />
+                  Contract & League Details
+                </h3>
+                {contractInfo ? (
+                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    <div className={`${dynastyTheme.components.card.base} p-6 rounded-lg`}>
+                      <h4 className={`font-semibold ${dynastyTheme.classes.text.primary} mb-4`}>Contract Terms</h4>
+                      <div className="space-y-3">
+                        <div className="flex justify-between">
+                          <span className={dynastyTheme.classes.text.neutralLight}>Annual Salary:</span>
+                          <span className={dynastyTheme.classes.text.white}>${contractInfo.salary}M</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className={dynastyTheme.classes.text.neutralLight}>Contract Length:</span>
+                          <span className={dynastyTheme.classes.text.white}>{contractInfo.contract_years} years</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className={dynastyTheme.classes.text.neutralLight}>Total Value:</span>
+                          <span className={dynastyTheme.classes.text.white}>${(contractInfo.salary * contractInfo.contract_years).toFixed(1)}M</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className={dynastyTheme.classes.text.neutralLight}>Acquired:</span>
+                          <span className={dynastyTheme.classes.text.white}>{contractInfo.acquisition_date || 'N/A'}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className={dynastyTheme.classes.text.neutralLight}>Method:</span>
+                          <span className={dynastyTheme.classes.text.white}>{contractInfo.acquisition_method || 'N/A'}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className={`${dynastyTheme.components.card.base} p-6 rounded-lg`}>
+                      <h4 className={`font-semibold ${dynastyTheme.classes.text.primary} mb-4`}>Roster Status</h4>
+                      <div className="space-y-3">
+                        <div className="flex justify-between">
+                          <span className={dynastyTheme.classes.text.neutralLight}>Availability:</span>
+                          <span className={`font-medium ${contractInfo.availability_status === 'owned' ? dynastyTheme.classes.text.success : dynastyTheme.classes.text.warning}`}>
+                            {contractInfo.availability_status}
+                          </span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className={dynastyTheme.classes.text.neutralLight}>Roster Status:</span>
+                          <span className={dynastyTheme.classes.text.white}>{contractInfo.roster_status}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className={dynastyTheme.classes.text.neutralLight}>Active:</span>
+                          <span className={`font-medium ${contractInfo.is_active ? dynastyTheme.classes.text.success : dynastyTheme.classes.text.error}`}>
+                            {contractInfo.is_active ? 'Yes' : 'No'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {teamAttributionData && (
+                      <div className={`${dynastyTheme.components.card.base} p-6 rounded-lg`}>
+                        <h4 className={`font-semibold ${dynastyTheme.classes.text.primary} mb-4`}>Team Attribution</h4>
+                        <div className="space-y-3">
+                          <div className="flex justify-between">
+                            <span className={dynastyTheme.classes.text.neutralLight}>Games for Team:</span>
+                            <span className={dynastyTheme.classes.text.white}>{teamAttributionData.team_games}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className={dynastyTheme.classes.text.neutralLight}>First Game:</span>
+                            <span className={dynastyTheme.classes.text.white}>{teamAttributionData.first_game_date}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className={dynastyTheme.classes.text.neutralLight}>Last Updated:</span>
+                            <span className={dynastyTheme.classes.text.white}>{teamAttributionData.last_updated}</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <p className={dynastyTheme.classes.text.neutralLight}>No contract information available</p>
                 )}
               </div>
             )}

@@ -1,0 +1,32 @@
+{
+  "version": "2.0",
+  "routeKey": "POST /api/leagues/{league_id}/full-data-setup",
+  "rawPath": "/api/leagues/8b510ed4-ffd1-4798-8215-2d3372f9f345/full-data-setup",
+  "rawQueryString": "",
+  "headers": {
+    "content-type": "application/json",
+    "Authorization": "Bearer eyJraWQiOiIydmIyMTg1UHpaMDhwOVwvZ0ZGUzFqSTI0T1lGUExsK21CT0xYVVNoV1k1cz0iLCJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJlNDA4MzRhOC04MGIxLTcwMjUtZWUwOS1iNTQyYzBiOTNmY2IiLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAudXMtZWFzdC0xLmFtYXpvbmF3cy5jb21cL3VzLWVhc3QtMV9Pb29WNXU4M3ciLCJjbGllbnRfaWQiOiI1bTl0cTk3NThhZDAwdnRuam9ib2JwZmdhcSIsIm9yaWdpbl9qdGkiOiI3YWFjZTY0OC0xMjZhLTQ5YjctOWNhZS03MWIzMjE1ODc1MzMiLCJldmVudF9pZCI6ImE0MzM5MzYzLTYxZjQtNDM1Ny05NzQyLTU0MDY3Zjk4OWI4YiIsInRva2VuX3VzZSI6ImFjY2VzcyIsInNjb3BlIjoiYXdzLmNvZ25pdG8uc2lnbmluLnVzZXIuYWRtaW4iLCJhdXRoX3RpbWUiOjE3NTM2NzM3MzcsImV4cCI6MTc1MzY3NzMzNywiaWF0IjoxNzUzNjczNzM3LCJqdGkiOiJjZjA0MThhYy00OGY3LTQ5MTAtYjZkZS05ZDEwNTJkMzBiMjMiLCJ1c2VybmFtZSI6ImU0MDgzNGE4LTgwYjEtNzAyNS1lZTA5LWI1NDJjMGI5M2ZjYiJ9.Cu1vMJ-JsAQ74WLH8LGRSowXppjsH6lzJoHKzLWyLSfDYlHwXdmB0g2-RWYrLcxb_3x6RuwxFhijd66V8kLd8jlNpgE7ET4UszBfMo0kYIjJ4u4WERWMccjB0TOiiUVLxEEFfM425Y7ttz5FYdtkZdwd0yVr-tOK5uHDkFlCyWA75B8LNMXhu4p6DbRlEAWvFcoUrgFXYjojt02X43t99Xg5AKFRFeoNQo8BO0hCe2Cr4_NaMoRFQOt0FQgUwFMQ29mvStQ_0GN3afcvIkFYlp9Rt2bp91Wt1Y3Pm_PsnrOAUyZvkSDU-iPjGaqt1KJtHu7F_JPuf7s9cyQlEgqnNg"
+  },
+  "requestContext": {
+    "http": {
+      "method": "POST",
+      "path": "/api/leagues/8b510ed4-ffd1-4798-8215-2d3372f9f345/full-data-setup",
+      "sourceIp": "127.0.0.1"
+    },
+    "authorizer": {
+      "jwt": {
+        "claims": {
+          "sub": "e40834a8-80b1-7025-ee09-b542c0b93fcb",
+          "email": "localtest@example.com",
+          "given_name": "Test",
+          "family_name": "User"
+        }
+      }
+    }
+  },
+  "pathParameters": {
+    "league_id": "8b510ed4-ffd1-4798-8215-2d3372f9f345"
+  },
+  "body": "{}",
+  "isBase64Encoded": false
+}

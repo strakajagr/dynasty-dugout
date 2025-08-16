@@ -1,6 +1,6 @@
-// src/contexts/AuthContext.js
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import { authAPI } from '../services/apiService';
+import { dynastyTheme } from '../services/colorService'; // Import dynastyTheme for consistency if needed elsewhere in context
 
 const AuthContext = createContext();
 
@@ -23,48 +23,53 @@ export const AuthProvider = ({ children }) => {
   }, []);
 
   const checkAuthStatus = async () => {
+    console.log('🔍 AuthContext: checkAuthStatus initiated.'); // Added log
     try {
       setLoading(true);
       const response = await authAPI.checkAuth();
       if (response.authenticated) {
         setUser(response.user);
         setIsAuthenticated(true);
+        console.log('✅ AuthContext: checkAuthStatus completed. Authenticated: true, User:', response.user); // Added log
       } else {
         setUser(null);
         setIsAuthenticated(false);
+        console.log('❌ AuthContext: checkAuthStatus completed. Authenticated: false.'); // Added log
       }
     } catch (error) {
-      console.error('Auth check failed:', error);
+      console.error('💥 AuthContext: Auth check failed in checkAuthStatus:', error); // Added log
       setUser(null);
       setIsAuthenticated(false);
     } finally {
       setLoading(false);
+      console.log('🔄 AuthContext: checkAuthStatus finished, loading set to false.'); // Added log
     }
   };
 
   const signIn = async (email, password) => {
-    console.log('🔍 SignIn function called with:', { email, password: '***' });
+    console.log('🔍 AuthContext: SignIn function called with:', { email, password: '***' });
     
     try {
-      console.log('📡 About to call authAPI.signIn...');
+      console.log('📡 AuthContext: About to call authAPI.signIn...');
       const response = await authAPI.signIn(email, password);
-      console.log('✅ API response received:', response);
+      console.log('✅ AuthContext: API response received:', response);
       
       if (response.success && response.user) {
         setUser(response.user);
         setIsAuthenticated(true);
-        console.log('🎉 Authentication successful!');
+        console.log('🎉 AuthContext: Authentication successful!');
         
-        // Add explicit redirect to dashboard
-        window.location.href = '/dashboard';
+        // --- FIX APPLIED HERE ---
+        // REMOVED: window.location.href = '/dashboard';
+        // The calling component (e.g., AuthModal or JoinLeague) will now handle navigation.
         
-        return { success: true };
+        return { success: true, user: response.user }; // Return user data for calling component
       } else {
-        console.log('❌ Response indicates not authenticated:', response);
+        console.log('❌ AuthContext: Response indicates not authenticated:', response);
         return { success: false, error: 'Authentication failed' };
       }
     } catch (error) {
-      console.error('💥 Sign in error caught:', error);
+      console.error('💥 AuthContext: Sign in error caught:', error);
       return {
         success: false,
         error: error.response?.data?.detail || 'Sign in failed'
@@ -72,12 +77,14 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
-  const signUp = async (email, password, firstName, lastName, favoriteTeam) => {
+  const signUp = async (userData) => { // Correctly accepts userData object
+    console.log('🔍 AuthContext: SignUp function called with:', userData);
     try {
-      const response = await authAPI.signUp(email, password, firstName, lastName, favoriteTeam);
-      return { success: true, message: response.message };
+      const response = await authAPI.signUp(userData);
+      console.log('✅ AuthContext: SignUp API response received:', response);
+      return { success: true, message: response.message, requiresVerification: response.requiresVerification, userSub: response.userSub };
     } catch (error) {
-      console.error('Sign up error:', error);
+      console.error('💥 AuthContext: Sign up error caught:', error);
       return { 
         success: false, 
         error: error.response?.data?.detail || 'Sign up failed' 
@@ -86,37 +93,33 @@ export const AuthProvider = ({ children }) => {
   };
 
   const signOut = async () => {
+    console.log('🔍 AuthContext: SignOut function called.');
     try {
       await authAPI.signOut();
       setUser(null);
       setIsAuthenticated(false);
+      console.log('👋 AuthContext: SignOut successful.');
       return { success: true };
     } catch (error) {
-      console.error('Sign out error:', error);
-      // Even if API call fails, clear local state
+      console.error('💥 AuthContext: Sign out error caught:', error);
+      // Even if API call fails, clear local state to ensure logout
       setUser(null);
       setIsAuthenticated(false);
-      return { success: true };
+      return { success: true }; // Still return success if local state cleared
     }
   };
 
-  const updateProfile = async (firstName, lastName, favoriteTeam) => {
+  const updateProfile = async (profileData) => {
+    console.log('🔍 AuthContext: Update profile called with:', profileData);
     try {
-      const response = await authAPI.updateProfile(firstName, lastName, favoriteTeam);
-      // Update local user state
-      setUser(prev => ({
-        ...prev,
-        firstName,
-        lastName,
-        favoriteTeam
-      }));
+      const response = await authAPI.updateProfile(profileData);
+      if (response.success && response.profile) {
+        setUser(response.profile); // Assuming API returns updated user data
+      }
       return { success: true, message: response.message };
     } catch (error) {
-      console.error('Profile update error:', error);
-      return { 
-        success: false, 
-        error: error.response?.data?.detail || 'Profile update failed' 
-      };
+      console.error('💥 AuthContext: Profile update error:', error);
+      return { success: false, error: error.response?.data?.detail || 'Profile update failed' };
     }
   };
 

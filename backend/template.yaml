@@ -16,7 +16,7 @@ Resources:
       CodeUri: src/
       Handler: lambda_handler.handler
       Runtime: python3.12
-      Timeout: 180  # FIXED: 3 minutes for database creation (was using global 30s)
+      Timeout: 200  # FIXED: 3 minutes for database creation (was using global 30s)
       Architectures:
         - x86_64
       Policies:

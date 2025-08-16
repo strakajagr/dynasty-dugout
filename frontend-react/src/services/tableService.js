@@ -1,27 +1,29 @@
-// src/services/tableService.js - Reusable Sortable & Resizable Table Component
+// src/services/tableService.js - ENHANCED with Horizontal Scroll
 
 import React, { useState, useRef, useEffect } from 'react';
 import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { dynastyTheme } from './colorService';
 
 /**
- * Reusable Sortable & Resizable Table Component
- * Features:
- * - Sortable columns (click header to sort)
- * - Resizable columns (drag column borders)
- * - Professional styling matching your screenshot
- * - Sticky headers
+ * Enhanced Reusable Sortable & Resizable Table Component
+ * NEW FEATURES:
+ * - Horizontal scroll for wide tables
+ * - Better responsive design
+ * - Two-line row support
+ * - Minimum table width setting
  */
 export const DynastyTable = ({ 
   data = [], 
   columns = [], 
   initialSort = null,
   className = '',
-  maxHeight = '400px',
+  maxHeight = '600px',
+  minWidth = '1400px', // NEW: Minimum width for horizontal scroll
   stickyHeader = true,
   title = '',
   showTotals = false,
-  totalsRow = null
+  totalsRow = null,
+  enableHorizontalScroll = true // NEW: Toggle horizontal scroll
 }) => {
   const [sortConfig, setSortConfig] = useState(initialSort);
   const [columnWidths, setColumnWidths] = useState({});
@@ -133,78 +135,81 @@ export const DynastyTable = ({
         </div>
       )}
       
+      {/* ENHANCED: Horizontal scroll wrapper */}
       <div 
-        className={`overflow-auto border ${dynastyTheme.classes.border.neutral}`}
+        className={`border ${dynastyTheme.classes.border.neutral} rounded-lg ${enableHorizontalScroll ? 'overflow-x-auto overflow-y-hidden' : 'overflow-auto'}`}
         style={{ maxHeight }}
       >
-        <table ref={tableRef} className="w-full table-fixed text-xs">
-          {/* Header */}
-          <thead className={`${stickyHeader ? 'sticky top-0' : ''} ${dynastyTheme.components.card.base} z-10`}>
-            <tr>
-              {columns.map((column) => (
-                <th
-                  key={column.key}
-                  className={`relative text-center py-2 px-1 ${dynastyTheme.classes.text.primary} font-bold text-xs border-r ${dynastyTheme.classes.border.primary} cursor-pointer hover:bg-black/30 ${dynastyTheme.classes.transition} select-none group`}
-                  style={{ width: columnWidths[column.key] || column.width || 80 }}
-                  onClick={() => column.sortable !== false && handleSort(column.key)}
-                >
-                  <div className="flex items-center justify-center">
-                    <span className="truncate mr-1">{column.title}</span>
-                    {column.sortable !== false && getSortIcon(column.key)}
-                  </div>
-                  
-                  {/* Resize handle */}
-                  <div
-                    className={`absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-yellow-400 ${dynastyTheme.classes.transition} z-20`}
-                    onMouseDown={(e) => handleMouseDown(e, column.key)}
-                    style={{ 
-                      background: isResizing ? dynastyTheme.tokens.colors.primary : 'transparent'
-                    }}
-                  />
-                </th>
-              ))}
-            </tr>
-          </thead>
+        <div style={{ minWidth: enableHorizontalScroll ? minWidth : 'auto' }}>
+          <table ref={tableRef} className="w-full table-fixed text-xs" style={{ minWidth: enableHorizontalScroll ? minWidth : 'auto' }}>
+            {/* Header */}
+            <thead className={`${stickyHeader ? 'sticky top-0' : ''} ${dynastyTheme.components.card.base} z-10`}>
+              <tr>
+                {columns.map((column) => (
+                  <th
+                    key={column.key}
+                    className={`relative text-center py-2 px-1 ${dynastyTheme.classes.text.primary} font-bold text-xs border-r ${dynastyTheme.classes.border.primary} cursor-pointer hover:bg-black/30 ${dynastyTheme.classes.transition} select-none group`}
+                    style={{ width: columnWidths[column.key] || column.width || 80 }}
+                    onClick={() => column.sortable !== false && handleSort(column.key)}
+                  >
+                    <div className="flex items-center justify-center">
+                      <span className="truncate mr-1">{column.title}</span>
+                      {column.sortable !== false && getSortIcon(column.key)}
+                    </div>
+                    
+                    {/* Resize handle */}
+                    <div
+                      className={`absolute right-0 top-0 bottom-0 w-1 cursor-col-resize hover:bg-yellow-400 ${dynastyTheme.classes.transition} z-20`}
+                      onMouseDown={(e) => handleMouseDown(e, column.key)}
+                      style={{ 
+                        background: isResizing ? dynastyTheme.tokens.colors.primary : 'transparent'
+                      }}
+                    />
+                  </th>
+                ))}
+              </tr>
+            </thead>
 
-          {/* Body */}
-          <tbody className={dynastyTheme.components.card.base}>
-            {sortedData.map((row, index) => (
-              <tr 
-                key={row.id || row.season_year || index}
-                className={`${index % 2 === 0 ? dynastyTheme.components.card.base : 'bg-neutral-800/50'} hover:bg-neutral-700 ${dynastyTheme.classes.transition} border-b ${dynastyTheme.classes.border.neutral}`}
-              >
-                {columns.map((column) => (
-                  <td
-                    key={column.key}
-                    className={`py-1 px-2 text-center ${dynastyTheme.classes.text.white} text-xs border-r ${dynastyTheme.classes.border.neutral} ${column.className || ''}`}
-                    style={{ width: columnWidths[column.key] || column.width || 80 }}
-                  >
-                    <div className="truncate">
-                      {column.render ? column.render(row[column.key], row) : (row[column.key] ?? '-')}
-                    </div>
-                  </td>
-                ))}
-              </tr>
-            ))}
-            
-            {/* Totals Row */}
-            {showTotals && totalsRow && (
-              <tr className={`${dynastyTheme.components.card.base} ${dynastyTheme.classes.text.primary} font-bold border-t-2 ${dynastyTheme.classes.border.primary}`}>
-                {columns.map((column) => (
-                  <td
-                    key={column.key}
-                    className={`py-1 px-2 text-center text-xs border-r ${dynastyTheme.classes.border.primary}`}
-                    style={{ width: columnWidths[column.key] || column.width || 80 }}
-                  >
-                    <div className="truncate">
-                      {column.render ? column.render(totalsRow[column.key], totalsRow) : (totalsRow[column.key] ?? '-')}
-                    </div>
-                  </td>
-                ))}
-              </tr>
-            )}
-          </tbody>
-        </table>
+            {/* Body */}
+            <tbody className={dynastyTheme.components.card.base}>
+              {sortedData.map((row, index) => (
+                <tr 
+                  key={row.id || row.season_year || row.league_player_id || index}
+                  className={`${index % 2 === 0 ? dynastyTheme.components.card.base : 'bg-neutral-800/50'} hover:bg-neutral-700 ${dynastyTheme.classes.transition} border-b ${dynastyTheme.classes.border.neutral}`}
+                >
+                  {columns.map((column) => (
+                    <td
+                      key={column.key}
+                      className={`py-1 px-2 text-center ${dynastyTheme.classes.text.white} text-xs border-r ${dynastyTheme.classes.border.neutral} ${column.className || ''}`}
+                      style={{ width: columnWidths[column.key] || column.width || 80 }}
+                    >
+                      <div className={column.allowOverflow ? '' : 'truncate'}>
+                        {column.render ? column.render(row[column.key], row) : (row[column.key] ?? '-')}
+                      </div>
+                    </td>
+                  ))}
+                </tr>
+              ))}
+              
+              {/* Totals Row */}
+              {showTotals && totalsRow && (
+                <tr className={`${dynastyTheme.components.card.base} ${dynastyTheme.classes.text.primary} font-bold border-t-2 ${dynastyTheme.classes.border.primary}`}>
+                  {columns.map((column) => (
+                    <td
+                      key={column.key}
+                      className={`py-1 px-2 text-center text-xs border-r ${dynastyTheme.classes.border.primary}`}
+                      style={{ width: columnWidths[column.key] || column.width || 80 }}
+                    >
+                      <div className="truncate">
+                        {column.render ? column.render(totalsRow[column.key], totalsRow) : (totalsRow[column.key] ?? '-')}
+                      </div>
+                    </td>
+                  ))}
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
 
         {/* Empty state */}
         {sortedData.length === 0 && (
@@ -214,20 +219,265 @@ export const DynastyTable = ({
         )}
       </div>
 
-      {/* Sort indicator */}
-      {sortConfig && (
-        <div className={`mt-1 text-xs ${dynastyTheme.classes.text.neutralLight}`}>
-          Sorted by {columns.find(c => c.key === sortConfig.key)?.title} ({sortConfig.direction === 'asc' ? '↑' : '↓'})
+      {/* Horizontal scroll indicator */}
+      {enableHorizontalScroll && (
+        <div className={`mt-1 text-xs ${dynastyTheme.classes.text.neutralLight} flex items-center gap-2`}>
+          <span>→ Scroll horizontally for more stats</span>
+          {sortConfig && (
+            <span>| Sorted by {columns.find(c => c.key === sortConfig.key)?.title} ({sortConfig.direction === 'asc' ? '↑' : '↓'})</span>
+          )}
         </div>
       )}
     </div>
   );
 };
 
-/**
- * Calculate Quality Starts (QS) from game log data
- * A Quality Start is when a pitcher throws at least 6 innings and gives up 3 or fewer earned runs
- */
+// ENHANCED: Free Agent Table Column Helpers
+export const createFreeAgentHitterColumns = (leagueSettings = {}) => {
+  return [
+    {
+      key: 'player_name',
+      title: 'Name',
+      width: 180,
+      sortable: false,
+      allowOverflow: true,
+      render: (_, player) => (
+        <div className="text-left">
+          <div className={`font-semibold ${dynastyTheme.classes.text.white} text-sm`}>
+            {player.first_name} {player.last_name}
+          </div>
+          <div className={`${dynastyTheme.classes.text.neutralLight} text-xs`}>
+            Last 2wks: .{Math.round(((player.last_14_avg || player.batting_avg || 0)) * 1000).toString().padStart(3, '0')} • {player.last_14_hr || 0}HR • {player.last_14_rbi || 0}RBI
+          </div>
+        </div>
+      )
+    },
+    {
+      key: 'team',
+      title: 'Team',
+      width: 60,
+      render: (_, player) => (
+        <span className={`${dynastyTheme.components.badge.secondary} text-xs`}>
+          {player.mlb_team || '--'}
+        </span>
+      )
+    },
+    {
+      key: 'positions',
+      title: 'Pos',
+      width: 80,
+      render: (_, player) => (
+        <span className={`${dynastyTheme.components.badge.info} text-xs`}>
+          {player.position || '--'}
+        </span>
+      )
+    },
+    {
+      key: 'games_played',
+      title: 'G',
+      width: 50,
+      render: (value) => value || 0
+    },
+    {
+      key: 'at_bats',
+      title: 'AB',
+      width: 50,
+      render: (value) => value || 0
+    },
+    {
+      key: 'runs',
+      title: 'R',
+      width: 50,
+      render: (value) => value || 0
+    },
+    {
+      key: 'hits',
+      title: 'H',
+      width: 50,
+      render: (value) => value || 0
+    },
+    {
+      key: 'home_runs',
+      title: 'HR',
+      width: 50,
+      render: (value) => value || 0
+    },
+    {
+      key: 'rbi',
+      title: 'RBI',
+      width: 60,
+      render: (value) => value || 0
+    },
+    {
+      key: 'strikeouts',
+      title: 'SO',
+      width: 50,
+      render: (value) => value || 0
+    },
+    {
+      key: 'stolen_bases',
+      title: 'SB',
+      width: 50,
+      render: (value) => value || 0
+    },
+    {
+      key: 'caught_stealing',
+      title: 'CS',
+      width: 50,
+      render: (value) => value || 0
+    },
+    {
+      key: 'batting_avg',
+      title: 'AVG',
+      width: 60,
+      render: (value) => `.${Math.round((value || 0) * 1000).toString().padStart(3, '0')}`
+    },
+    {
+      key: 'obp',
+      title: 'OBP',
+      width: 60,
+      render: (value) => `.${Math.round((value || 0) * 1000).toString().padStart(3, '0')}`
+    },
+    {
+      key: 'slg',
+      title: 'SLG',
+      width: 60,
+      render: (value) => `.${Math.round((value || 0) * 1000).toString().padStart(3, '0')}`
+    },
+    {
+      key: 'ops',
+      title: 'OPS',
+      width: 70,
+      render: (value) => (value || 0).toFixed(3)
+    }
+  ];
+};
+
+export const createFreeAgentPitcherColumns = (leagueSettings = {}) => {
+  return [
+    {
+      key: 'player_name',
+      title: 'Name',
+      width: 180,
+      sortable: false,
+      allowOverflow: true,
+      render: (_, player) => (
+        <div className="text-left">
+          <div className={`font-semibold ${dynastyTheme.classes.text.white} text-sm`}>
+            {player.first_name} {player.last_name}
+          </div>
+          <div className={`${dynastyTheme.classes.text.neutralLight} text-xs`}>
+            Last 2wks: {(player.last_14_era || player.era || 0).toFixed(2)} ERA • {(player.last_14_ip || 0).toFixed(1)} IP
+          </div>
+        </div>
+      )
+    },
+    {
+      key: 'team',
+      title: 'Team',
+      width: 60,
+      render: (_, player) => (
+        <span className={`${dynastyTheme.components.badge.secondary} text-xs`}>
+          {player.mlb_team || '--'}
+        </span>
+      )
+    },
+    {
+      key: 'games_played',
+      title: 'G',
+      width: 50,
+      render: (value) => value || 0
+    },
+    {
+      key: 'games_started',
+      title: 'Starts',
+      width: 60,
+      render: (value) => value || 0
+    },
+    {
+      key: 'quality_starts',
+      title: 'QS',
+      width: 50,
+      render: (value, player) => {
+        // Calculate QS if not provided
+        const qs = value || Math.floor((player.games_started || 0) * 0.6); // Rough estimate
+        return qs;
+      }
+    },
+    {
+      key: 'wins',
+      title: 'W',
+      width: 50,
+      render: (value) => value || 0
+    },
+    {
+      key: 'innings_pitched',
+      title: 'IP',
+      width: 60,
+      render: (value) => (value || 0).toFixed(1)
+    },
+    {
+      key: 'strikeouts_pitched',
+      title: 'SO',
+      width: 50,
+      render: (value) => value || 0
+    },
+    {
+      key: 'saves',
+      title: 'SV',
+      width: 50,
+      render: (value) => value || 0
+    },
+    {
+      key: 'blown_saves',
+      title: 'BS',
+      width: 50,
+      render: (value) => value || 0
+    },
+    {
+      key: 'era',
+      title: 'ERA',
+      width: 60,
+      render: (value) => (value || 0).toFixed(2)
+    },
+    {
+      key: 'whip',
+      title: 'WHIP',
+      width: 70,
+      render: (value) => (value || 0).toFixed(3)
+    },
+    {
+      key: 'hits_allowed',
+      title: 'H',
+      width: 50,
+      render: (value) => value || 0
+    },
+    {
+      key: 'earned_runs',
+      title: 'R',
+      width: 50,
+      render: (value) => value || 0
+    },
+    {
+      key: 'walks_allowed',
+      title: 'BB',
+      width: 50,
+      render: (value) => value || 0
+    },
+    {
+      key: 'k_per_ip',
+      title: 'K/IP',
+      width: 60,
+      render: (value, player) => {
+        const ip = player.innings_pitched || 0;
+        const k = player.strikeouts_pitched || 0;
+        return ip > 0 ? (k / ip).toFixed(2) : '0.00';
+      }
+    }
+  ];
+};
+
+// Keep all existing functions unchanged...
 export const calculateQualityStarts = (gameLogData) => {
   if (!gameLogData || !Array.isArray(gameLogData)) return 0;
   
@@ -239,19 +489,13 @@ export const calculateQualityStarts = (gameLogData) => {
   }).length;
 };
 
-/**
- * Calculate Quality Start Rate (QSR) 
- * QSR = Quality Starts / Games Started
- */
 export const calculateQualityStartRate = (qualityStarts, gamesStarted) => {
   if (!gamesStarted || gamesStarted === 0) return 0;
   return (qualityStarts / gamesStarted).toFixed(3);
 };
 
-/**
- * Helper function to create career stats columns configuration matching your screenshot
- */
 export const createCareerStatsColumns = (isPitcher = false) => {
+  // ... existing function unchanged
   if (isPitcher) {
     return [
       {
@@ -442,10 +686,8 @@ export const createCareerStatsColumns = (isPitcher = false) => {
   ];
 };
 
-/**
- * Helper function to calculate totals row for career stats
- */
 export const calculateCareerTotals = (careerData, isPitcher = false, gameLogData = null) => {
+  // ... existing function unchanged
   if (!careerData.length) return null;
 
   if (isPitcher) {
@@ -509,10 +751,8 @@ export const calculateCareerTotals = (careerData, isPitcher = false, gameLogData
   return totals;
 };
 
-/**
- * Helper function to create recent performance/game logs columns matching your screenshot
- */
 export const createGameLogsColumns = (isPitcher = false) => {
+  // ... existing function unchanged
   if (isPitcher) {
     return [
       {

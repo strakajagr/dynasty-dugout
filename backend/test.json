@@ -1,0 +1,28 @@
+{
+  "body": "{\"league_name\": \"Direct Test League\", \"use_salaries\": true, \"max_teams\": 8}",
+  "resource": "/{proxy+}",
+  "path": "/api/debug/test-lifecycle",
+  "httpMethod": "POST",
+  "isBase64Encoded": false,
+  "queryStringParameters": null,
+  "pathParameters": {
+    "proxy": "api/debug/test-lifecycle"
+  },
+  "headers": {
+    "Accept": "application/json",
+    "Authorization": "Bearer eyJraWQiOiIydmIyMTg1UHpaMDhwOVwvZ0ZGUzFqSTI0T1lGUExsK21CT0xYVVNoV1k1cz0iLCJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJlNDA4MzRhOC04MGIxLTcwMjUtZWUwOS1iNTQyYzBiOTNmY2IiLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAudXMtZWFzdC0xLmFtYXpvbmF3cy5jb21cL3VzLWVhc3QtMV9Pb29WNXU4M3ciLCJjbGllbnRfaWQiOiI1bTl0cTk3NThhZDAwdnRuam9ib2JwZmdhcSIsIm9yaWdpbl9qdGkiOiIxOTBjNzY5ZS1mNWFkLTRlY2UtODgzOS1jZTYyNTEyNjRlZjEiLCJldmVudF9pZCI6IjUzZjAxZTc4LTRhNjctNGEyNi1hNTU4LTI2N2MwN2YxMGFjNSIsInRva2VuX3VzZSI6ImFjY2VzcyIsInNjb3BlIjoiYXdzLmNvZ25pdG8uc2lnbmluLnVzZXIuYWRtaW4iLCJhdXRoX3RpbWUiOjE3NTM2Mzk3NTgsImV4cCI6MTc1MzY0MzM1OCwiaWF0IjoxNzUzNjM5NzU4LCJqdGkiOiIyYjEzZWUxYS02OWVjLTQ5NTAtOWE1Yy02ZTI3YWVhNjEwZjgiLCJ1c2VybmFtZSI6ImU0MDgzNGE4LTgwYjEtNzAyNS1lZTA5LWI1NDJjMGI5M2ZjYiJ9.du9FlvH3IVyv0R6uVvKWRk0jKFAui1YK-fuvOH264Z8tD0ZKFuh5Z09IjrGzk6BJ5CIPKv67pdcI8aL7Byoz5cAiooQc0E87fx4HlzgH9WyfZh1FdUPFS0i4f0XJVO4nuOw2OMm0avQdfCpSwfbOQ-XR-0mqRL3iDJwAT48v2DpyWqlLng44z8E_tBDCm8hl-kArDQe-ZtnOfBNmEmIT2GCOXSWgi577QBkRS6s9Rhwsn76PPJo0s1qYKO2CnVpyghVOOejiJIyGiv2K4C5nEoLXQ1ABQYMpI1pozN8mEnNY4yRQgEZRLpy1Dr4tXsnyIpYm1ipLzEdHPgnXPsbfmg",
+    "Content-Type": "application/json",
+    "Host": "localhost:3000"
+  },
+  "requestContext": {
+    "accountId": "123456789012",
+    "resourceId": "123456",
+    "stage": "test",
+    "requestId": "test-direct-lifecycle",
+    "identity": {
+      "sourceIp": "127.0.0.1"
+    },
+    "httpMethod": "POST",
+    "path": "/api/debug/test-lifecycle"
+  }
+}
