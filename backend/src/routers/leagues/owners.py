@@ -1,8 +1,10 @@
+# src/routers/leagues/owners.py - SHARED DATABASE VERSION WITH S3 LOGO UPLOAD
+
 """
 Dynasty Dugout - Owner Management Module (League-Specific Admin Functions)
 HYBRID APPROACH: League admin functions only - public endpoints in separate invitations.py
 PURPOSE: Team ownership, setup, league-specific invitation management
-FIXED: JWT consistency and VARCHAR user ID handling throughout
+UPDATED: For shared database architecture with S3 logo upload
 """
 
 import logging
@@ -12,9 +14,9 @@ import uuid
 import os
 import re
 from datetime import datetime, timedelta, timezone
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Body
 from pydantic import BaseModel, validator
-from typing import Optional
+from typing import Optional, Dict, Any
 import boto3
 from botocore.exceptions import ClientError
 
@@ -30,16 +32,29 @@ SES_REGION = os.getenv('SES_REGION', 'us-east-1')
 VERIFIED_SENDER = os.getenv('VERIFIED_SENDER', 'tonyragano@gmail.com')
 JWT_SECRET_KEY = os.getenv('JWT_SECRET_KEY', 'your-super-secret-jwt-key-change-this-in-production')
 JWT_ALGORITHM = "HS256"
-INVITATION_EXPIRY_HOURS = int(os.getenv('INVITATION_EXPIRY_HOURS', '72'))  # 3 days
 FRONTEND_BASE_URL = os.getenv('FRONTEND_BASE_URL', 'https://d20wx6xzxkf84y.cloudfront.net')
 
-# Initialize AWS SES client
+# S3 Configuration for team logo uploads
+S3_REGION = os.getenv('S3_REGION', 'us-east-1')
+S3_BUCKET_NAME = os.getenv('S3_BUCKET_NAME', 'dynasty-dugout-user-assets')  # Your actual bucket
+CLOUDFRONT_DOMAIN = os.getenv('CLOUDFRONT_DOMAIN', f'{S3_BUCKET_NAME}.s3.{S3_REGION}.amazonaws.com')  # Direct S3 for now
+
+# --- BUG FIX: Safely handle environment variable conversion ---
+try:
+    INVITATION_EXPIRY_HOURS = int(float(os.getenv('INVITATION_EXPIRY_HOURS', 72)))
+except (ValueError, TypeError):
+    INVITATION_EXPIRY_HOURS = 72 # Default to a safe integer if conversion fails
+# --- END OF BUG FIX ---
+
+# Initialize AWS clients
 try:
     ses_client = boto3.client('ses', region_name=SES_REGION)
-    logger.info(f"✅ SES client initialized successfully in region: {SES_REGION}")
+    s3_client = boto3.client('s3', region_name=S3_REGION)
+    logger.info(f"✅ AWS clients initialized successfully (SES: {SES_REGION}, S3: {S3_REGION})")
 except Exception as e:
-    logger.error(f"❌ Failed to initialize SES client: {e}")
+    logger.error(f"❌ Failed to initialize AWS clients: {e}")
     ses_client = None
+    s3_client = None
 
 # =============================================================================
 # HELPER FUNCTIONS
@@ -49,6 +64,39 @@ def validate_email(email: str) -> bool:
     """Simple email validation"""
     pattern = r'^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'
     return re.match(pattern, email) is not None
+
+def is_user_commissioner(league_id: str, user_id: str) -> bool:
+    """Check if user has commissioner rights using the is_commissioner flag"""
+    try:
+        result = execute_sql(
+            """SELECT COUNT(*) FROM league_teams 
+               WHERE league_id = :league_id::uuid 
+               AND user_id = :user_id 
+               AND is_commissioner = true""",
+            {'league_id': league_id, 'user_id': user_id},
+            database_name='leagues'  # SHARED DATABASE
+        )
+        
+        if result and result.get('records'):
+            count = result['records'][0][0].get('longValue', 0)
+            return count > 0
+        return False
+    except Exception as e:
+        logger.error(f"Error checking commissioner status: {e}")
+        return False
+
+def generate_s3_key_for_logo(league_id: str, team_id: str, filename: str) -> str:
+    """Generate organized S3 key for team logo with timestamp for cache busting"""
+    # Clean filename and get extension
+    file_ext = os.path.splitext(filename)[1].lower()
+    if not file_ext:
+        file_ext = '.png'
+    
+    # Add timestamp to make each upload unique (prevents caching issues)
+    timestamp = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
+    
+    # Create organized path with timestamp
+    return f"leagues/{league_id}/teams/{team_id}/logo_{timestamp}{file_ext}"
 
 def create_invitation_token(league_id: str, email: str, owner_name: str, target_slot: Optional[int] = None) -> str:
     """Create a secure JWT invitation token with expiration"""
@@ -276,6 +324,12 @@ class TeamSetupRequest(BaseModel):
     team_colors: dict = {}
     team_motto: str = None
 
+class LogoUploadRequest(BaseModel):
+    """Logo upload request model"""
+    filename: str
+    content_type: str
+    image_type: str = "team_logo"  # team_logo, background, banner
+
 class InviteOwnerRequest(BaseModel):
     ownerName: str
     ownerEmail: str
@@ -302,6 +356,199 @@ class InviteOwnerRequest(BaseModel):
             raise ValueError('Personal message cannot exceed 1000 characters')
         return v.strip() if v else ""
 
+class CommissionerStatusUpdate(BaseModel):
+    is_commissioner: bool
+
+# =============================================================================
+# S3 LOGO UPLOAD ENDPOINTS
+# =============================================================================
+
+@router.post("/{league_id}/upload-logo-url")
+async def get_logo_upload_url(
+    league_id: str,
+    request: LogoUploadRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """Generate presigned URL for team logo upload"""
+    try:
+        user_id = current_user.get('sub')
+        
+        if not s3_client:
+            raise HTTPException(status_code=500, detail="S3 service unavailable")
+        
+        # Get user's team ID
+        team_result = execute_sql(
+            "SELECT team_id FROM league_teams WHERE league_id = :league_id::uuid AND user_id = :user_id",
+            {'league_id': league_id, 'user_id': user_id},
+            database_name='leagues'
+        )
+        
+        if not team_result.get('records'):
+            raise HTTPException(status_code=404, detail="Team not found")
+        
+        team_id = team_result['records'][0][0].get('stringValue')
+        
+        # Validate file type and size based on image type
+        allowed_types = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp', 'image/avif']
+        if request.content_type not in allowed_types:
+            raise HTTPException(status_code=400, detail="Invalid file type. Use PNG, JPG, WebP, or GIF")
+        
+        # Different size limits for different image types
+        max_size_mb = 50 if request.image_type in ['background', 'banner'] else 20  # 50MB for backgrounds, 20MB for logos
+        
+        # Note: We'll validate size on frontend since we can't check file size in presigned URL generation
+        
+        # Generate S3 key based on image type with timestamp for cache busting
+        s3_key = generate_s3_key_for_logo(league_id, team_id, request.filename)
+        
+        # Generate presigned URL for upload (valid for 10 minutes)
+        presigned_url = s3_client.generate_presigned_url(
+            'put_object',
+            Params={
+                'Bucket': S3_BUCKET_NAME,
+                'Key': s3_key,
+                'ContentType': request.content_type
+                # No ACL - bucket policy handles public access
+            },
+            ExpiresIn=600  # 10 minutes
+        )
+        
+        # Generate the public URL for accessing the uploaded image
+        public_url = f"https://{S3_BUCKET_NAME}.s3.{S3_REGION}.amazonaws.com/{s3_key}"
+        
+        logger.info(f"✅ Generated presigned URL for team {team_id} logo upload")
+        
+        return {
+            "success": True,
+            "upload_url": presigned_url,
+            "public_url": public_url,
+            "s3_key": s3_key,
+            "expires_in": 600
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating logo upload URL: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate upload URL")
+
+@router.delete("/{league_id}/team-logo")
+async def delete_team_logo(
+    league_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Delete team logo from S3"""
+    try:
+        user_id = current_user.get('sub')
+        
+        if not s3_client:
+            raise HTTPException(status_code=500, detail="S3 service unavailable")
+        
+        # Get user's team ID and current logo URL
+        team_result = execute_sql(
+            "SELECT team_id, team_logo_url FROM league_teams WHERE league_id = :league_id::uuid AND user_id = :user_id",
+            {'league_id': league_id, 'user_id': user_id},
+            database_name='leagues'
+        )
+        
+        if not team_result.get('records'):
+            raise HTTPException(status_code=404, detail="Team not found")
+        
+        record = team_result['records'][0]
+        team_id = record[0].get('stringValue')
+        current_logo_url = record[1].get('stringValue') if not record[1].get('isNull') else None
+        
+        if current_logo_url:
+            # Extract S3 key from URL
+            if CLOUDFRONT_DOMAIN in current_logo_url:
+                s3_key = current_logo_url.split(f"{CLOUDFRONT_DOMAIN}/")[1]
+                
+                # Delete from S3
+                s3_client.delete_object(Bucket=S3_BUCKET_NAME, Key=s3_key)
+                logger.info(f"✅ Deleted logo from S3: {s3_key}")
+        
+        # Clear logo URL in database
+        execute_sql(
+            "UPDATE league_teams SET team_logo_url = NULL WHERE team_id = :team_id::uuid",
+            {'team_id': team_id},
+            database_name='leagues'
+        )
+        
+        return {
+            "success": True,
+            "message": "Team logo deleted successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting team logo: {e}")
+        raise HTTPException(status_code=500, detail="Failed to delete logo")
+
+@router.post("/{league_id}/upload-banner-url")
+async def get_banner_upload_url(
+    league_id: str,
+    request: LogoUploadRequest,
+    current_user: dict = Depends(get_current_user)
+):
+    """Generate presigned URL for league banner upload"""
+    try:
+        user_id = current_user.get('sub')
+        
+        if not s3_client:
+            raise HTTPException(status_code=500, detail="S3 service unavailable")
+        
+        # Verify user is a commissioner to upload league banner
+        if not is_user_commissioner(league_id, user_id):
+            raise HTTPException(status_code=403, detail="Only commissioners can upload league banners")
+        
+        # Validate file type
+        allowed_types = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp', 'image/avif']
+        if request.content_type not in allowed_types:
+            raise HTTPException(status_code=400, detail="Invalid file type. Use PNG, JPG, WebP, or GIF")
+        
+        # 50MB limit for banners (panoramic support)
+        max_size_mb = 50
+        
+        # Generate S3 key for league banner with timestamp for cache busting
+        file_ext = os.path.splitext(request.filename)[1].lower()
+        if not file_ext:
+            file_ext = '.png'
+        
+        # Add timestamp to prevent caching issues
+        timestamp = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
+        s3_key = f"leagues/{league_id}/banner_{timestamp}{file_ext}"
+        
+        # Generate presigned URL for upload (valid for 10 minutes)
+        presigned_url = s3_client.generate_presigned_url(
+            'put_object',
+            Params={
+                'Bucket': S3_BUCKET_NAME,
+                'Key': s3_key,
+                'ContentType': request.content_type
+            },
+            ExpiresIn=600  # 10 minutes
+        )
+        
+        # Generate the public URL for accessing the uploaded image
+        public_url = f"https://{S3_BUCKET_NAME}.s3.{S3_REGION}.amazonaws.com/{s3_key}"
+        
+        logger.info(f"✅ Generated presigned URL for league {league_id} banner upload")
+        
+        return {
+            "success": True,
+            "upload_url": presigned_url,
+            "public_url": public_url,
+            "s3_key": s3_key,
+            "expires_in": 600
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating banner upload URL: {e}")
+        raise HTTPException(status_code=500, detail="Failed to generate upload URL")
+
 # =============================================================================
 # OWNER MANAGEMENT ENDPOINTS
 # =============================================================================
@@ -317,44 +564,58 @@ async def get_league_owners(league_id: str, current_user: dict = Depends(get_cur
         user_id = current_user.get('sub')
         logger.info(f"👥 Getting owner management data for league: {league_id}")
         
-        # Get league info first to verify access and get database name
+        # Get league info from main postgres database
         league_sql = """
-            SELECT ul.database_name, ul.commissioner_user_id, lm.role 
+            SELECT ul.commissioner_user_id
             FROM user_leagues ul
-            JOIN league_memberships lm ON ul.league_id = lm.league_id
-            WHERE ul.league_id = :league_id::uuid 
-            AND lm.user_id = :user_id 
-            AND lm.is_active = true
+            WHERE ul.league_id = :league_id::uuid
         """
         
         league_result = execute_sql(league_sql, {
-            'league_id': league_id,
-            'user_id': user_id
-        })
+            'league_id': league_id
+        }, database_name='postgres')
         
         if not league_result.get('records'):
-            raise HTTPException(status_code=404, detail="League not found or access denied")
+            raise HTTPException(status_code=404, detail="League not found")
         
-        database_name = league_result['records'][0][0].get('stringValue')
-        commissioner_user_id = league_result['records'][0][1].get('stringValue')
-        user_role = league_result['records'][0][2].get('stringValue')
+        commissioner_user_id = league_result['records'][0][0].get('stringValue')
         
-        if not database_name:
-            raise HTTPException(status_code=500, detail="League database not found")
+        # Check user membership from main database
+        membership_sql = """
+            SELECT role FROM league_memberships 
+            WHERE league_id = :league_id::uuid 
+            AND user_id = :user_id 
+            AND is_active = true
+        """
         
-        logger.info(f"🗄️ Fetching owner data from database: {database_name}")
+        membership_result = execute_sql(membership_sql, {
+            'league_id': league_id,
+            'user_id': user_id
+        }, database_name='postgres')
+        
+        if not membership_result.get('records'):
+            raise HTTPException(status_code=403, detail="Access denied - not a league member")
+        
+        user_role = membership_result['records'][0][0].get('stringValue')
+        
+        # Check if current user is a commissioner using multi-commissioner support
+        is_current_user_commissioner = is_user_commissioner(league_id, user_id)
+        
+        logger.info(f"🗄️ Fetching owner data from shared leagues database")
         
         # Get max teams from league settings
         max_teams = 12
         try:
             settings_sql = "SELECT setting_value FROM league_settings WHERE league_id = :league_id::uuid AND setting_name = 'max_teams'"
-            settings_result = execute_sql(settings_sql, {'league_id': league_id}, database_name=database_name)
+            settings_result = execute_sql(settings_sql, {'league_id': league_id}, database_name='leagues')
             if settings_result.get('records') and settings_result['records'][0]:
-                max_teams = int(settings_result['records'][0][0].get('stringValue', 12))
+                max_teams_value = settings_result['records'][0][0]
+                if max_teams_value and not max_teams_value.get('isNull'):
+                    max_teams = int(max_teams_value.get('stringValue', 12))
         except Exception as settings_error:
             logger.warning(f"Could not get max_teams setting: {settings_error}")
         
-        # Get active teams from league database
+        # Get active teams from shared leagues database
         teams_result = execute_sql(
             """
             SELECT 
@@ -363,14 +624,18 @@ async def get_league_owners(league_id: str, current_user: dict = Depends(get_cur
                 manager_name,
                 manager_email,
                 user_id,
-                created_at
+                created_at,
+                is_commissioner,
+                team_logo_url
             FROM league_teams 
+            WHERE league_id = :league_id::uuid
             ORDER BY created_at ASC
             """,
-            database_name=database_name
+            {'league_id': league_id},
+            database_name='leagues'  # SHARED DATABASE
         )
         
-        # Get pending invitations from league database  
+        # Get pending invitations from shared leagues database  
         invitations_result = execute_sql(
             """
             SELECT 
@@ -380,10 +645,11 @@ async def get_league_owners(league_id: str, current_user: dict = Depends(get_cur
                 target_slot,
                 invited_at
             FROM league_invitations 
-            WHERE status = 'pending'
+            WHERE league_id = :league_id::uuid AND status = 'pending'
             ORDER BY invited_at ASC
             """,
-            database_name=database_name
+            {'league_id': league_id},
+            database_name='leagues'  # SHARED DATABASE
         )
         
         logger.info(f"🔍 Found {len(teams_result.get('records', []))} active teams and {len(invitations_result.get('records', []))} pending invitations")
@@ -396,7 +662,18 @@ async def get_league_owners(league_id: str, current_user: dict = Depends(get_cur
         if teams_result.get('records'):
             for i, team_record in enumerate(teams_result['records'], 1):
                 team_user_id = team_record[4].get('stringValue') if team_record[4] and not team_record[4].get('isNull') else None
-                is_commissioner = team_user_id == commissioner_user_id
+                # Use the is_commissioner flag from database
+                team_is_commissioner = team_record[6].get('booleanValue', False) if team_record[6] and not team_record[6].get('isNull') else False
+                team_logo_url = team_record[7].get('stringValue') if team_record[7] and not team_record[7].get('isNull') else None
+                
+                # Determine actions based on current user's commissioner status
+                actions = []
+                if is_current_user_commissioner:
+                    actions.append("Edit")
+                    if not team_is_commissioner:
+                        actions.append("GrantCommissioner")
+                    elif team_user_id != user_id:  # Can't remove own commissioner status
+                        actions.append("RemoveCommissioner")
                 
                 owner = {
                     "slot": i,
@@ -404,9 +681,11 @@ async def get_league_owners(league_id: str, current_user: dict = Depends(get_cur
                     "owner_email": team_record[3].get('stringValue') if team_record[3] and not team_record[3].get('isNull') else "N/A",
                     "team_name": team_record[1].get('stringValue') if team_record[1] and not team_record[1].get('isNull') else "Unnamed Team",
                     "status": "Active",
-                    "actions": ["Edit"] if is_commissioner else [],
+                    "actions": actions,
                     "team_id": team_record[0].get('stringValue') if team_record[0] and not team_record[0].get('isNull') else None,
-                    "is_commissioner": is_commissioner
+                    "is_commissioner": team_is_commissioner,
+                    "user_id": team_user_id,
+                    "team_logo_url": team_logo_url
                 }
                 owners.append(owner)
                 used_slots.add(i)
@@ -429,9 +708,10 @@ async def get_league_owners(league_id: str, current_user: dict = Depends(get_cur
                         "owner_email": invitation_record[1].get('stringValue') if invitation_record[1] and not invitation_record[1].get('isNull') else "unknown@email.com",
                         "team_name": f"Team {next_slot} (Pending)",
                         "status": "Pending",
-                        "actions": ["Cancel"] if user_role == 'commissioner' else [],
+                        "actions": ["Cancel"] if is_current_user_commissioner else [],
                         "invitation_id": invitation_record[0].get('stringValue') if invitation_record[0] and not invitation_record[0].get('isNull') else None,
-                        "is_commissioner": False
+                        "is_commissioner": False,
+                        "team_logo_url": None
                     }
                     owners.append(owner)
         
@@ -444,9 +724,10 @@ async def get_league_owners(league_id: str, current_user: dict = Depends(get_cur
                     "owner_email": "N/A",
                     "team_name": "Awaiting New Owner",
                     "status": "Open",
-                    "actions": ["Invite"] if user_role == 'commissioner' else [],
+                    "actions": ["Invite"] if is_current_user_commissioner else [],
                     "team_id": None,
-                    "is_commissioner": False
+                    "is_commissioner": False,
+                    "team_logo_url": None
                 }
                 owners.append(owner)
         
@@ -461,7 +742,8 @@ async def get_league_owners(league_id: str, current_user: dict = Depends(get_cur
             "total_active_teams": len(teams_result.get('records', [])),
             "total_pending_invitations": len(invitations_result.get('records', [])),
             "max_teams": max_teams,
-            "user_role": user_role,
+            "user_role": "commissioner" if is_current_user_commissioner else "owner",
+            "is_commissioner": is_current_user_commissioner,
             "available_slots": max_teams - len(owners)
         }
         
@@ -469,7 +751,50 @@ async def get_league_owners(league_id: str, current_user: dict = Depends(get_cur
         raise
     except Exception as e:
         logger.error(f"❌ Error getting league owners: {str(e)}")
+        import traceback
+        logger.error(f"Full traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail=f"Failed to get owner management data: {str(e)}")
+
+@router.put("/{league_id}/teams/{team_id}/commissioner-status")
+async def toggle_commissioner_status(
+    league_id: str,
+    team_id: str,
+    request: CommissionerStatusUpdate,
+    current_user: dict = Depends(get_current_user)
+):
+    """Toggle commissioner status for a team (commissioner only)"""
+    try:
+        user_id = current_user.get('sub')
+        
+        # Verify current user is a commissioner
+        if not is_user_commissioner(league_id, user_id):
+            raise HTTPException(status_code=403, detail="Only commissioners can grant/revoke commissioner rights")
+        
+        # Toggle the status
+        is_commissioner = request.is_commissioner
+        
+        execute_sql(
+            """UPDATE league_teams 
+               SET is_commissioner = :is_commissioner 
+               WHERE league_id = :league_id::uuid AND team_id = :team_id::uuid""",
+            {'league_id': league_id, 'team_id': team_id, 'is_commissioner': is_commissioner},
+            database_name='leagues'  # SHARED DATABASE
+        )
+        
+        # Log the change
+        action = "granted" if is_commissioner else "revoked"
+        logger.info(f"Commissioner rights {action} for team {team_id} by user {user_id}")
+        
+        return {
+            "success": True,
+            "message": f"Commissioner rights {action} successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error toggling commissioner status: {e}")
+        raise HTTPException(status_code=500, detail="Failed to update commissioner status")
 
 @router.post("/{league_id}/setup-team")
 async def setup_team(
@@ -481,16 +806,7 @@ async def setup_team(
     try:
         user_id = current_user.get('sub')
         
-        # Get league database name from phone book
-        league_sql = "SELECT database_name FROM user_leagues WHERE league_id = :league_id::uuid"
-        league_response = execute_sql(league_sql, {'league_id': league_id})
-        
-        if not league_response.get('records'):
-            raise HTTPException(status_code=404, detail="League not found")
-        
-        database_name = league_response['records'][0][0].get('stringValue')
-        
-        # Verify user has a team in this league database
+        # Check if team exists in shared leagues database
         team_sql = """
             SELECT team_id FROM league_teams 
             WHERE league_id = :league_id::uuid AND user_id = :user_id
@@ -499,14 +815,14 @@ async def setup_team(
         team_response = execute_sql(team_sql, {
             'league_id': league_id,
             'user_id': user_id
-        }, database_name=database_name)
+        }, database_name='leagues')  # SHARED DATABASE
         
         if not team_response.get('records'):
             raise HTTPException(status_code=404, detail="Team not found in this league")
         
         team_id = team_response['records'][0][0].get('stringValue')
         
-        # Update team details in league database
+        # Update team details in shared leagues database
         update_sql = """
             UPDATE league_teams 
             SET 
@@ -515,17 +831,21 @@ async def setup_team(
                 team_logo_url = :team_logo_url,
                 team_colors = :team_colors::jsonb,
                 team_motto = :team_motto
-            WHERE team_id = :team_id::uuid
+            WHERE team_id = :team_id::uuid AND league_id = :league_id::uuid
         """
         
+        logger.info(f"🔍 DEBUG: About to save logo URL: {team_data.team_logo_url}")
         execute_sql(update_sql, {
             'team_id': team_id,
+            'league_id': league_id,
             'team_name': team_data.team_name,
             'manager_name': team_data.manager_name,  
             'team_logo_url': team_data.team_logo_url,
             'team_colors': json.dumps(team_data.team_colors),
             'team_motto': team_data.team_motto
-        }, database_name=database_name)
+        }, database_name='leagues')  # SHARED DATABASE
+        
+        logger.info(f"✅ Team setup updated for team {team_id}: {team_data.team_name}")
         
         return {
             "success": True,
@@ -558,29 +878,15 @@ async def invite_owner(
         
         logger.info(f"📧 Sending invitation for league: {league_id}")
         
-        # Verify the user is the commissioner of this league
-        commissioner_check = execute_sql(
-            "SELECT commissioner_user_id FROM user_leagues WHERE league_id = :league_id::uuid",
-            parameters={'league_id': league_id},
-            database_name='postgres'
-        )
-        
-        if not commissioner_check.get("records") or len(commissioner_check["records"]) == 0:
-            raise HTTPException(status_code=404, detail="League not found")
-        
-        actual_commissioner = commissioner_check["records"][0][0]["stringValue"]
-        
-        if current_user['sub'] != actual_commissioner:
-            raise HTTPException(status_code=403, detail="Only the commissioner can send invitations")
-        
-        # Convert hyphens to underscores for database name
-        database_name = f"league_{league_id.replace('-', '_')}"
+        # Verify the user is a commissioner using multi-commissioner support
+        if not is_user_commissioner(league_id, user_id):
+            raise HTTPException(status_code=403, detail="Only commissioners can send invitations")
         
         # Check if email already has a pending invitation
         existing_invitation = execute_sql(
             "SELECT invitation_id FROM league_invitations WHERE league_id = :league_id::uuid AND email = :email AND status = 'pending'",
             parameters={'league_id': league_id, 'email': request_data.ownerEmail},
-            database_name=database_name
+            database_name='leagues'  # SHARED DATABASE
         )
         
         if existing_invitation and existing_invitation.get("records") and len(existing_invitation["records"]) > 0:
@@ -590,7 +896,7 @@ async def invite_owner(
         existing_team = execute_sql(
             "SELECT team_id FROM league_teams WHERE league_id = :league_id::uuid AND manager_email = :email",
             parameters={'league_id': league_id, 'email': request_data.ownerEmail},
-            database_name=database_name
+            database_name='leagues'  # SHARED DATABASE
         )
         
         if existing_team and existing_team.get("records") and len(existing_team["records"]) > 0:
@@ -622,13 +928,12 @@ async def invite_owner(
         
         # Only store invitation in database if email succeeds
         logger.info(f"✅ Email sent successfully, now saving to database")
-        # ✅ FIXED: No UUID casting for user ID (invited_by is now VARCHAR)
         execute_sql(
             """INSERT INTO league_invitations 
                (invitation_id, league_id, email, owner_name, personal_message, target_slot, 
                 invitation_token, status, invited_by, invited_at, expires_at)
-               VALUES (:invitation_id::uuid, :league_id::uuid, :email, :owner_name, :personal_message, 
-                       :target_slot, :invitation_token, 'pending', :invited_by, :invited_at::timestamptz, :expires_at::timestamptz)""",
+                VALUES (:invitation_id::uuid, :league_id::uuid, :email, :owner_name, :personal_message, 
+                        :target_slot, :invitation_token, 'pending', :invited_by, :invited_at::timestamptz, :expires_at::timestamptz)""",
             parameters={
                 'invitation_id': invitation_id,
                 'league_id': league_id,
@@ -637,11 +942,11 @@ async def invite_owner(
                 'personal_message': request_data.personalMessage,
                 'target_slot': request_data.targetSlot,
                 'invitation_token': invitation_token,
-                'invited_by': user_id,  # ✅ FIXED: No UUID casting - user_id is VARCHAR from JWT
+                'invited_by': user_id,
                 'invited_at': datetime.now(timezone.utc).isoformat(),
                 'expires_at': (datetime.now(timezone.utc) + timedelta(hours=INVITATION_EXPIRY_HOURS)).isoformat()
             },
-            database_name=database_name
+            database_name='leagues'  # SHARED DATABASE
         )
         
         logger.info(f"✅ League invitation created: {invitation_id} for {request_data.ownerEmail} to league {league_id}")
@@ -658,7 +963,7 @@ async def invite_owner(
         logger.error(f"❌ Error creating invitation: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to send invitation")
 
-@router.get("/{league_id}/invitations")
+@router.get("/invitations")
 async def get_pending_invitations(
     league_id: str,
     current_user: dict = Depends(get_current_user)
@@ -667,33 +972,19 @@ async def get_pending_invitations(
     try:
         user_id = current_user.get('sub')
         
-        # Verify user is the commissioner
-        commissioner_check = execute_sql(
-            "SELECT commissioner_user_id FROM user_leagues WHERE league_id = :league_id::uuid",
-            parameters={'league_id': league_id},
-            database_name='postgres'
-        )
-        
-        if not commissioner_check.get("records") or len(commissioner_check["records"]) == 0:
-            raise HTTPException(status_code=404, detail="League not found")
-        
-        actual_commissioner = commissioner_check["records"][0][0]["stringValue"]
-        
-        if current_user['sub'] != actual_commissioner:
-            raise HTTPException(status_code=403, detail="Only the commissioner can view invitations")
-        
-        # Convert hyphens to underscores for database name
-        database_name = f"league_{league_id.replace('-', '_')}"
+        # Verify user is a commissioner using multi-commissioner support
+        if not is_user_commissioner(league_id, user_id):
+            raise HTTPException(status_code=403, detail="Only commissioners can view invitations")
         
         # Get pending invitations
         invitations_result = execute_sql(
             """SELECT invitation_id, email, owner_name, personal_message, target_slot, 
-                      invited_at, expires_at, status
-               FROM league_invitations 
-               WHERE league_id = :league_id::uuid AND status = 'pending'
-               ORDER BY invited_at DESC""",
+                       invited_at, expires_at, status
+                 FROM league_invitations 
+                 WHERE league_id = :league_id::uuid AND status = 'pending'
+                 ORDER BY invited_at DESC""",
             parameters={'league_id': league_id},
-            database_name=database_name
+            database_name='leagues'  # SHARED DATABASE
         )
         
         invitations = []
@@ -734,34 +1025,20 @@ async def cancel_invitation(
         
         logger.info(f"🚨 CANCEL START: cancel_invitation called for invitation {invitation_id} in league {league_id}")
         
-        # Verify the user is the commissioner of this league
-        commissioner_check = execute_sql(
-            "SELECT commissioner_user_id FROM user_leagues WHERE league_id = :league_id::uuid",
-            parameters={'league_id': league_id},
-            database_name='postgres'
-        )
-        
-        if not commissioner_check.get("records") or len(commissioner_check["records"]) == 0:
-            raise HTTPException(status_code=404, detail="League not found")
-        
-        actual_commissioner = commissioner_check["records"][0][0]["stringValue"]
-        
-        if current_user['sub'] != actual_commissioner:
-            raise HTTPException(status_code=403, detail="Only the commissioner can cancel invitations")
-        
-        # Convert hyphens to underscores for database name
-        database_name = f"league_{league_id.replace('-', '_')}"
-        logger.info(f"🔍 Using database: {database_name}")
+        # Verify the user is a commissioner using multi-commissioner support
+        if not is_user_commissioner(league_id, user_id):
+            raise HTTPException(status_code=403, detail="Only commissioners can cancel invitations")
         
         # Check if invitation exists and get details
         invitation_check = execute_sql(
-            "SELECT invitation_id, status, email FROM league_invitations WHERE invitation_id = :invitation_id::uuid",
-            parameters={'invitation_id': invitation_id},
-            database_name=database_name
+            """SELECT invitation_id, status, email FROM league_invitations 
+               WHERE invitation_id = :invitation_id::uuid AND league_id = :league_id::uuid""",
+            parameters={'invitation_id': invitation_id, 'league_id': league_id},
+            database_name='leagues'  # SHARED DATABASE
         )
         
         if not invitation_check.get("records") or len(invitation_check["records"]) == 0:
-            logger.error(f"❌ Invitation {invitation_id} not found in database {database_name}")
+            logger.error(f"❌ Invitation {invitation_id} not found in shared leagues database")
             raise HTTPException(status_code=404, detail="Invitation not found")
         
         invitation_status = invitation_check["records"][0][1]["stringValue"]
@@ -774,16 +1051,17 @@ async def cancel_invitation(
         
         # Cancel the invitation with detailed debugging
         logger.info(f"🔍 DEBUG: About to delete invitation_id: {invitation_id}")
-        logger.info(f"🔍 DEBUG: From database: {database_name}")
+        logger.info(f"🔍 DEBUG: From shared leagues database")
         logger.info(f"🔍 DEBUG: Target email: {invitation_email}")
         
         delete_result = execute_sql(
             """DELETE FROM league_invitations
-               WHERE invitation_id = :invitation_id::uuid""",
+               WHERE invitation_id = :invitation_id::uuid AND league_id = :league_id::uuid""",
             parameters={
-                'invitation_id': invitation_id
+                'invitation_id': invitation_id,
+                'league_id': league_id
             },
-            database_name=database_name
+            database_name='leagues'  # SHARED DATABASE
         )
         
         logger.info(f"🔍 DEBUG: Delete operation completed")
@@ -792,9 +1070,10 @@ async def cancel_invitation(
         
         # Verify the deletion worked
         verification_check = execute_sql(
-            "SELECT invitation_id FROM league_invitations WHERE invitation_id = :invitation_id::uuid",
-            parameters={'invitation_id': invitation_id},
-            database_name=database_name
+            """SELECT invitation_id FROM league_invitations 
+               WHERE invitation_id = :invitation_id::uuid AND league_id = :league_id::uuid""",
+            parameters={'invitation_id': invitation_id, 'league_id': league_id},
+            database_name='leagues'  # SHARED DATABASE
         )
         
         if verification_check.get("records") and len(verification_check["records"]) > 0:
@@ -827,33 +1106,19 @@ async def resend_invitation(
     try:
         user_id = current_user.get('sub')
         
-        # Verify user is the commissioner
-        commissioner_check = execute_sql(
-            "SELECT commissioner_user_id FROM user_leagues WHERE league_id = :league_id::uuid",
-            parameters={'league_id': league_id},
-            database_name='postgres'
-        )
-        
-        if not commissioner_check.get("records") or len(commissioner_check["records"]) == 0:
-            raise HTTPException(status_code=404, detail="League not found")
-        
-        actual_commissioner = commissioner_check["records"][0][0]["stringValue"]
-        
-        if current_user['sub'] != actual_commissioner:
-            raise HTTPException(status_code=403, detail="Only the commissioner can resend invitations")
-        
-        # Convert hyphens to underscores for database name
-        database_name = f"league_{league_id.replace('-', '_')}"
+        # Verify user is a commissioner using multi-commissioner support
+        if not is_user_commissioner(league_id, user_id):
+            raise HTTPException(status_code=403, detail="Only commissioners can resend invitations")
         
         # Get invitation details and league name
         invitation_result = execute_sql(
             """SELECT i.invitation_id, i.email, i.owner_name, i.personal_message, 
-                      i.target_slot, i.invitation_token, i.status
-               FROM league_invitations i
-               WHERE i.invitation_id = :invitation_id::uuid 
-               AND i.league_id = :league_id::uuid""",
+                       i.target_slot, i.invitation_token, i.status
+                 FROM league_invitations i
+                 WHERE i.invitation_id = :invitation_id::uuid 
+                 AND i.league_id = :league_id::uuid""",
             parameters={'invitation_id': invitation_id, 'league_id': league_id},
-            database_name=database_name
+            database_name='leagues'  # SHARED DATABASE
         )
         
         if not invitation_result.get("records") or len(invitation_result["records"]) == 0:
@@ -876,7 +1141,7 @@ async def resend_invitation(
         if league_name_result.get("records") and len(league_name_result["records"]) > 0:
             league_name = league_name_result["records"][0][0]["stringValue"]
         
-        # ✅ FIXED: Get commissioner name from JWT token instead of database
+        # Get commissioner name from JWT token instead of database
         commissioner_first_name = current_user.get('given_name', 'Commissioner')
         commissioner_last_name = current_user.get('family_name', '')
         commissioner_name = f"{commissioner_first_name} {commissioner_last_name}".strip()
@@ -897,12 +1162,14 @@ async def resend_invitation(
         
         # Update the invitation with new resend timestamp only after email succeeds
         execute_sql(
-            "UPDATE league_invitations SET updated_at = :updated_at::timestamptz WHERE invitation_id = :invitation_id::uuid",
+            """UPDATE league_invitations SET updated_at = :updated_at::timestamptz 
+               WHERE invitation_id = :invitation_id::uuid AND league_id = :league_id::uuid""",
             parameters={
                 'invitation_id': invitation_id,
+                'league_id': league_id,
                 'updated_at': datetime.now(timezone.utc).isoformat()
             },
-            database_name=database_name
+            database_name='leagues'  # SHARED DATABASE
         )
         
         logger.info(f"✅ Invitation {invitation_id} resent to {invitation_record[1]['stringValue']}")
@@ -917,3 +1184,83 @@ async def resend_invitation(
     except Exception as e:
         logger.error(f"❌ Error resending invitation: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to resend invitation")
+@router.get("/{league_id}/players/team-home-data")
+async def get_team_home_data(
+    league_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get comprehensive team dashboard data including roster stats"""
+    try:
+        user_id = current_user.get('sub')
+        
+        # Get user's team info
+        team_result = execute_sql(
+            """SELECT team_id, team_name, team_logo_url, team_colors, team_motto
+               FROM league_teams 
+               WHERE league_id = :league_id::uuid AND user_id = :user_id""",
+            {'league_id': league_id, 'user_id': user_id},
+            database_name='leagues'
+        )
+        
+        if not team_result.get('records'):
+            raise HTTPException(status_code=404, detail="Team not found")
+        
+        team_record = team_result['records'][0]
+        team_info = {
+            'team_id': team_record[0].get('stringValue'),
+            'team_name': team_record[1].get('stringValue') or 'My Team',
+            'team_logo_url': team_record[2].get('stringValue') if not team_record[2].get('isNull') else None,
+            'team_colors': json.loads(team_record[3].get('stringValue', '{}')) if not team_record[3].get('isNull') else {},
+            'team_motto': team_record[4].get('stringValue') if not team_record[4].get('isNull') else None
+        }
+        
+        # Get basic roster info (simplified approach - stats enhancement comes later)
+        roster_result = execute_sql(
+            """SELECT league_player_id, mlb_player_id, roster_position, salary, roster_status
+               FROM league_players 
+               WHERE team_id = :team_id::uuid AND roster_status = 'active'
+               ORDER BY roster_position""",
+            {'team_id': team_info['team_id']},
+            database_name='leagues'
+        )
+        
+        # Build basic roster structure  
+        roster_stats = []
+        if roster_result.get('records'):
+            for record in roster_result['records']:
+                player_stats = {
+                    'league_player_id': record[0].get('stringValue'),
+                    'mlb_player_id': record[1].get('longValue', 0),
+                    'player_name': f"Player {record[1].get('longValue', 0)}",
+                    'position': record[2].get('stringValue', 'UTIL'),
+                    'mlb_team': 'TBD',
+                    'salary': float(record[3].get('stringValue', '0')) if record[3] and not record[3].get('isNull') else 0.0,
+                    'roster_status': record[4].get('stringValue', 'active'),
+                    # Empty stats for now - will be enhanced with real data later
+                    'season_stats': {'games': 0, 'batting_avg': 0.0, 'home_runs': 0, 'rbi': 0, 'runs': 0, 'stolen_bases': 0, 'wins': 0, 'saves': 0, 'era': 0.0, 'whip': 0.0, 'strikeouts_pitched': 0},
+                    'last_14_days': {'games': 0, 'batting_avg': 0.0, 'home_runs': 0, 'rbi': 0, 'runs': 0, 'stolen_bases': 0, 'wins': 0, 'saves': 0, 'era': 0.0, 'whip': 0.0, 'strikeouts_pitched': 0},
+                    'team_stats': {'games': 0, 'batting_avg': 0.0, 'home_runs': 0, 'rbi': 0, 'runs': 0, 'stolen_bases': 0, 'wins': 0, 'saves': 0, 'era': 0.0, 'whip': 0.0, 'strikeouts_pitched': 0}
+                }
+                roster_stats.append(player_stats)
+        
+        logger.info(f"Found {len(roster_stats)} players on roster for team {team_info['team_id']}")
+        
+        return {
+            "success": True,
+            "team_info": team_info,
+            "roster_stats": roster_stats,
+            "starting_pitchers": [],  # Empty until game data is implemented
+            "player_notes": [],       # Empty until news data is implemented  
+            "last_night_box": {       # Empty until game log data is implemented
+                "hitters": [],
+                "pitchers": []
+            }
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting team home data: {e}")
+        import traceback
+        logger.error(f"Full traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail="Failed to get team dashboard data")

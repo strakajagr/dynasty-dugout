@@ -20,14 +20,31 @@ const LeagueWelcome = () => {
   const [error, setError] = useState('');
   const [step, setStep] = useState(1); // 1: Welcome, 2: Team Setup, 3: Success
   
+  // Helper function for safe theme access
+  const getThemeColor = (path, fallback) => {
+    const keys = path.split('.');
+    let value = dynastyTheme;
+    
+    for (const key of keys) {
+      if (value && typeof value === 'object') {
+        // Handle both dot notation and bracket notation for numbers
+        value = value[key] || value[parseInt(key)];
+      } else {
+        return fallback;
+      }
+    }
+    
+    return value || fallback;
+  };
+  
   // Team setup form data
   const [teamData, setTeamData] = useState({
     team_name: '',
     manager_name: user?.given_name || user?.firstName || '',
     team_logo_url: '',
     team_colors: {
-      primary: dynastyTheme.tokens.colors.primary,
-      secondary: dynastyTheme.tokens.colors.neutral[900]
+      primary: getThemeColor('tokens.colors.primary', '#eab308'),
+      secondary: getThemeColor('tokens.colors.neutral.900', '#1c1917')
     },
     team_motto: ''
   });
@@ -109,7 +126,7 @@ const LeagueWelcome = () => {
             <div 
               className="w-8 h-8 border-2 border-t-transparent animate-spin rounded-full"
               style={{ 
-                borderColor: dynastyTheme.tokens.colors.primary, 
+                borderColor: getThemeColor('tokens.colors.primary', '#eab308'), 
                 borderTopColor: 'transparent' 
               }}
             />
@@ -254,7 +271,7 @@ const LeagueWelcome = () => {
           </label>
           <div 
             className={`border-2 border-dashed rounded-lg p-8 text-center ${dynastyTheme.classes.transition} hover:border-yellow-400/50`}
-            style={{ borderColor: dynastyTheme.tokens.colors.neutral[600] }}
+            style={{ borderColor: getThemeColor('tokens.colors.neutral.600', '#57534e') }}
           >
             {teamData.team_logo_url ? (
               <div className="space-y-3">
@@ -490,13 +507,13 @@ const LeagueWelcome = () => {
                 className="w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold transition-colors"
                 style={{
                   backgroundColor: step === stepNum 
-                    ? dynastyTheme.tokens.colors.primary 
+                    ? getThemeColor('tokens.colors.primary', '#eab308')
                     : step > stepNum 
-                    ? dynastyTheme.tokens.colors.success 
-                    : dynastyTheme.tokens.colors.neutral[600],
+                    ? getThemeColor('tokens.colors.success', '#10b981')
+                    : getThemeColor('tokens.colors.neutral.600', '#57534e'),
                   color: step === stepNum 
-                    ? dynastyTheme.tokens.colors.neutral[900]
-                    : dynastyTheme.tokens.colors.neutral[50]
+                    ? getThemeColor('tokens.colors.neutral.900', '#1c1917')
+                    : getThemeColor('tokens.colors.neutral.50', '#fafaf9')
                 }}
               >
                 {step > stepNum ? <Check className="w-4 h-4" /> : stepNum}

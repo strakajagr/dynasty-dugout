@@ -1,35 +1,147 @@
-// src/pages/Dashboard.js
+// src/pages/Dashboard.js - With Player Search and My Account Removed
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   Crown, User, Users, Trophy, Calendar, MessageSquare, 
   Settings, BarChart3, FileText, Star, Target, TrendingUp,
   Search, ChevronRight, LogOut, Plus, Globe, UserPlus,
-  DollarSign, Clock
+  DollarSign, Clock, Activity, Newspaper, TrendingDown,
+  Flame, Snowflake, AlertCircle, ArrowUp, ArrowDown,
+  UserX, UserCheck, Sparkles, Bell, X
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
-import { playersAPI, leaguesAPI } from '../services/apiService';
+import { leaguesAPI } from '../services/apiService';
+import apiService from '../services/apiService';
 import { dynastyTheme } from '../services/colorService';
+
+// Import modular components
+import TickerBar from '../components/dashboard/TickerBar';
+import WelcomeBanner from '../components/dashboard/WelcomeBanner';
+import MyLeaguesSection from '../components/dashboard/MyLeaguesSection';
+import LeagueDiscoveryHub from '../components/dashboard/LeagueDiscoveryHub';
+import TrendingPlayersSection from '../components/dashboard/TrendingPlayersSection';
+import MLBNewsSection from '../components/dashboard/MLBNewsSection';
+import InjuryReportSection from '../components/dashboard/InjuryReportSection';
+
+// Player Search Component
+const PlayerSearchBar = () => {
+  const navigate = useNavigate();
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [showResults, setShowResults] = useState(false);
+
+  useEffect(() => {
+    const delayDebounceFn = setTimeout(() => {
+      if (searchQuery.trim().length > 1) {
+        performSearch();
+      } else {
+        setSearchResults([]);
+        setShowResults(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [searchQuery]);
+
+  const performSearch = async () => {
+    setIsSearching(true);
+    try {
+      const response = await apiService.get(`/api/players/search?query=${searchQuery}`);
+      if (response.data && response.data.players) {
+        setSearchResults(response.data.players.slice(0, 8)); // Limit to 8 results
+        setShowResults(true);
+      }
+    } catch (error) {
+      console.error('Search error:', error);
+      // Mock data fallback for now
+      setSearchResults([
+        { player_id: 1, name: 'Mike Trout', team: 'LAA', position: 'OF' },
+        { player_id: 2, name: 'Ronald Acuña Jr.', team: 'ATL', position: 'OF' },
+        { player_id: 3, name: 'Shohei Ohtani', team: 'LAD', position: 'DH' }
+      ].filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase())));
+      setShowResults(true);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handlePlayerClick = (playerId) => {
+    setShowResults(false);
+    setSearchQuery('');
+    navigate(`/player/${playerId}`);
+  };
+
+  return (
+    <div className="relative flex-1 max-w-md">
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-neutral-400" />
+        <input
+          type="text"
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          placeholder="Search players..."
+          className={`w-full pl-10 pr-4 py-2 rounded-lg ${dynastyTheme.classes.bg.darkLighter} ${dynastyTheme.classes.text.white} border ${dynastyTheme.classes.border.neutral} focus:border-yellow-400 focus:outline-none transition-colors`}
+          onFocus={() => searchQuery.length > 1 && setShowResults(true)}
+          onBlur={() => setTimeout(() => setShowResults(false), 200)}
+        />
+        {isSearching && (
+          <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
+            <div className="w-4 h-4 border-2 border-yellow-400 border-t-transparent animate-spin rounded-full" />
+          </div>
+        )}
+      </div>
+
+      {/* Search Results Dropdown */}
+      {showResults && searchResults.length > 0 && (
+        <div className={`absolute top-full left-0 right-0 mt-2 ${dynastyTheme.components.card.base} rounded-lg shadow-xl z-50 max-h-96 overflow-y-auto`}>
+          {searchResults.map((player) => (
+            <button
+              key={player.player_id}
+              onClick={() => handlePlayerClick(player.player_id)}
+              className={`w-full px-4 py-3 flex items-center justify-between hover:bg-neutral-800 transition-colors text-left border-b ${dynastyTheme.classes.border.neutral} last:border-b-0`}
+            >
+              <div>
+                <div className={`font-semibold ${dynastyTheme.classes.text.white}`}>
+                  {player.name}
+                </div>
+                <div className={`text-sm ${dynastyTheme.classes.text.neutralLight}`}>
+                  {player.position} • {player.team}
+                </div>
+              </div>
+              <ChevronRight className="w-4 h-4 text-neutral-400" />
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* No Results */}
+      {showResults && searchQuery.length > 1 && searchResults.length === 0 && !isSearching && (
+        <div className={`absolute top-full left-0 right-0 mt-2 ${dynastyTheme.components.card.base} rounded-lg shadow-xl z-50 p-4 text-center`}>
+          <p className={dynastyTheme.classes.text.neutralLight}>No players found matching "{searchQuery}"</p>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const Dashboard = () => {
   const { user, signOut } = useAuth();
   const navigate = useNavigate();
   const [activeSection, setActiveSection] = useState('dashboard');
-  const [players, setPlayers] = useState([]);
   const [leagues, setLeagues] = useState([]);
-  const [loading, setLoading] = useState(true);
   const [leaguesLoading, setLeaguesLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [positionFilter, setPositionFilter] = useState('all');
+  const [userProfile, setUserProfile] = useState(null);
 
-  // Navigation structure
+  // Enhanced navigation sections - REMOVED My Account from MY ACCOUNT section
   const navigationSections = [
     {
       title: 'MY ACCOUNT',
       items: [
         { id: 'dashboard', label: 'My Dashboard', icon: BarChart3 },
-        { id: 'account', label: 'My Account', icon: User },
-        { id: 'my-leagues', label: 'My Leagues', icon: Crown }
+        // REMOVED: { id: 'account', label: 'My Account', icon: User },
+        { id: 'my-leagues', label: 'My Leagues', icon: Crown },
+        { id: 'watchlist', label: 'My Watchlist', icon: Star }
       ]
     },
     {
@@ -41,69 +153,32 @@ const Dashboard = () => {
       ]
     },
     {
-      title: 'CURRENT LEAGUE',
+      title: 'RESEARCH HUB',
       items: [
-        { id: 'team-home', label: 'Team Home', icon: Users },
-        { id: 'league-home', label: 'League Home', icon: Crown },
-        { id: 'standings', label: 'League Standings', icon: Trophy },
-        { id: 'team-stats', label: 'Team Stats', icon: BarChart3 },
-        { id: 'last-night', label: "Last Night's Boxes", icon: Calendar },
-        { id: 'live-scoring', label: 'Live Scoring', icon: TrendingUp },
-        { id: 'transactions', label: 'Transactions', icon: FileText }
+        { id: 'injury-tracker', label: 'Injury Tracker', icon: AlertCircle },
+        { id: 'prospects', label: 'Prospect Database', icon: Sparkles },
+        { id: 'schedule', label: 'MLB Schedule', icon: Calendar },
+        { id: 'weather', label: 'Weather Tracker', icon: Activity }
       ]
     },
     {
-      title: 'PLAYERS & DATA',
+      title: 'DATA CENTER',
       items: [
-        { id: 'available-players', label: 'Available Players', icon: Star },
-        { id: 'all-players', label: 'All Players', icon: Users },
-        { id: 'player-search', label: 'Player Search', icon: Search },
-        { id: 'draft-results', label: 'Draft Results', icon: Target }
-      ]
-    },
-    {
-      title: 'COMMUNICATION',
-      items: [
-        { id: 'messages', label: 'League Messages', icon: MessageSquare },
-        { id: 'polls', label: 'Polls/Chat', icon: MessageSquare }
-      ]
-    },
-    {
-      title: 'TOOLS',
-      items: [
-        { id: 'reports', label: 'Reports', icon: FileText },
-        { id: 'settings', label: 'League Settings', icon: Settings }
+        { id: 'historical', label: 'Historical Stats', icon: FileText },
+        { id: 'exports', label: 'Export Data', icon: Target },
+        { id: 'reports', label: 'Reports', icon: FileText }
       ]
     }
   ];
 
   useEffect(() => {
-    loadPlayers();
-    loadLeagues();
-  }, [user]);
-
-  const loadPlayers = async () => {
-    try {
-      setLoading(true);
-      const response = await playersAPI.getPlayers();
-      
-      let playersData = [];
-      if (response.players) {
-        playersData = response.players;
-      } else if (response.data) {
-        playersData = response.data;
-      } else if (Array.isArray(response)) {
-        playersData = response;
-      }
-      
-      setPlayers(playersData);
-    } catch (error) {
-      console.error('Players API error:', error);
-      setPlayers([]);
-    } finally {
-      setLoading(false);
+    if (window.location.pathname === '/dashboard') {
+      setActiveSection('dashboard');
     }
-  };
+    
+    loadLeagues();
+    loadUserProfile();
+  }, [user]);
 
   const loadLeagues = async () => {
     try {
@@ -123,194 +198,123 @@ const Dashboard = () => {
     }
   };
 
+  const loadUserProfile = async () => {
+    try {
+      const response = await apiService.get('/api/account/profile');
+      if (response.data && response.data.profile) {
+        setUserProfile({
+          profilePicture: response.data.profile.picture || null,
+          firstName: response.data.profile.given_name || user?.given_name || '',
+          lastName: response.data.profile.family_name || user?.family_name || '',
+          email: response.data.profile.email || user?.email || ''
+        });
+      }
+    } catch (error) {
+      console.log('Could not load user profile picture:', error);
+      // Don't crash - just continue without profile picture
+    }
+  };
+
   const handleSignOut = async () => {
     await signOut();
   };
 
-  const handlePlayerClick = (player) => {
-    navigate(`/player/${player.player_id}`);
-  };
-
   const handleNavigation = (itemId) => {
-    if (itemId === 'account') {
-      navigate('/my-account');
-    } else if (itemId === 'create-league') {
+    if (itemId === 'create-league') {
       navigate('/create-league');
+    } else if (itemId === 'join-league') {
+      navigate('/join-league');
+    } else if (itemId === 'public-leagues') {
+      navigate('/browse-leagues');
     } else {
       setActiveSection(itemId);
     }
   };
 
-  const getScoringSystemLabel = (system) => {
-    const systemLabels = {
-      'rotisserie_ytd': 'Rotisserie (YTD)',
-      'rotisserie_weekly_accumulate': 'Rotisserie (Weekly)',
-      'total_points': 'Points-Based',
-      'h2h_category_wins': 'Head-to-Head Categories',
-      'h2h_one_win_loss': 'Head-to-Head',
+  // ========================================
+  // USER PROFILE PICTURE COMPONENT - UPDATED WITH GLOW AND LABEL
+  // ========================================
+  const UserProfilePicture = () => {
+    const handleProfileClick = () => {
+      navigate('/my-account');
     };
-    return systemLabels[system] || system.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-  };
 
-  const getLeagueStatusColor = (status) => {
-    const statusMap = {
-      'setup': dynastyTheme.classes.bg.warning,
-      'active': dynastyTheme.classes.bg.success,
-      'completed': dynastyTheme.classes.bg.neutral,
-      'draft': dynastyTheme.classes.bg.info
-    };
-    return statusMap[status] || dynastyTheme.classes.bg.neutral;
-  };
+    const profileContent = userProfile?.profilePicture ? (
+      <img 
+        src={userProfile.profilePicture}
+        alt={`${userProfile.firstName || user?.given_name || 'User'} Profile`}
+        className="w-full h-full object-cover"
+        onError={(e) => {
+          e.target.style.display = 'none';
+          const fallbackDiv = e.target.parentElement.querySelector('.initials-fallback');
+          if (fallbackDiv) {
+            fallbackDiv.style.display = 'flex';
+          }
+        }}
+      />
+    ) : null;
 
-  const formatDate = (dateString) => {
-    if (!dateString) return 'Not set';
-    try {
-      return new Date(dateString).toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric'
-      });
-    } catch {
-      return 'Invalid date';
-    }
-  };
-
-  const filteredPlayers = players.filter(player => {
-    const fullName = `${player.first_name || ''} ${player.last_name || ''}`.trim();
+    // Fallback to initials
+    const initials = `${(userProfile?.firstName || user?.given_name || 'U')[0]}${(userProfile?.lastName || user?.family_name || 'U')[0]}`.toUpperCase();
     
-    const matchesSearch = searchTerm === '' || 
-                         fullName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                         player.mlb_id?.toString().includes(searchTerm);
-    
-    const matchesPosition = positionFilter === 'all' || player.position === positionFilter;
-    
-    return matchesSearch && matchesPosition;
-  });
-
-  const positions = ['all', ...new Set(players.map(p => p.position).filter(Boolean))];
-
-  const renderMyLeagues = () => {
-    if (leaguesLoading) {
-      return (
-        <div className="flex justify-center items-center py-12">
-          <div className="flex items-center space-x-3">
-            <div 
-              className={`w-6 h-6 border-2 border-t-transparent rounded-full animate-spin ${dynastyTheme.classes.border.primary}`}
-            />
-            <span className={dynastyTheme.classes.text.white}>Loading your leagues...</span>
-          </div>
-        </div>
-      );
-    }
-
-    if (leagues.length === 0) {
-      return (
-        <div className={`${dynastyTheme.components.card.base} text-center py-12`}>
-          <Crown className={`w-16 h-16 mx-auto mb-4 opacity-50 ${dynastyTheme.classes.text.primary}`} />
-          <h3 className={`${dynastyTheme.components.heading.h3} ${dynastyTheme.classes.text.white} mb-2`}>No Leagues Yet</h3>
-          <p className={`${dynastyTheme.classes.text.neutralLight} mb-6`}>
-            Create your first fantasy baseball league to get started with Dynasty Dugout
-          </p>
-          <div className="flex justify-center gap-4">
-            <button
-              onClick={() => navigate('/create-league')}
-              className={`${dynastyTheme.utils.getComponent('button', 'primary', 'md')} flex items-center space-x-2`}
-            >
-              <Plus className="w-4 h-4" />
-              <span>Create League</span>
-            </button>
-            <button
-              onClick={() => setActiveSection('public-leagues')}
-              className={`${dynastyTheme.utils.getComponent('button', 'secondary', 'md')} flex items-center space-x-2`}
-            >
-              <Globe className="w-4 h-4" />
-              <span>Browse Public Leagues</span>
-            </button>
-          </div>
-        </div>
-      );
-    }
-
     return (
-      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-6">
-        {leagues.map((league) => (
-          <div
-            key={league.league_id}
-            className={`${dynastyTheme.components.card.interactive} group`}
-            onClick={() => navigate(`/leagues/${league.league_id}`)}
-          >
-            {/* League Header */}
-            <div className="flex items-start justify-between mb-4">
-              <div className="flex-1">
-                <h3 className={`text-lg font-bold ${dynastyTheme.classes.text.white} group-hover:text-yellow-400 ${dynastyTheme.classes.transition}`}>
-                  {league.league_name}
-                </h3>
-                <div className="flex items-center space-x-2 mt-1">
-                  <span
-                    className={`px-2 py-1 rounded text-xs font-semibold ${getLeagueStatusColor(league.status || 'setup')} ${dynastyTheme.classes.text.white}`}
-                  >
-                    {(league.status || 'setup').toUpperCase()}
-                  </span>
-                  <span
-                    className={`px-2 py-1 rounded text-xs font-medium ${dynastyTheme.classes.bg.darkLighter} ${dynastyTheme.classes.text.primary}`}
-                  >
-                    {league.role?.toUpperCase() || 'MEMBER'}
-                  </span>
-                </div>
-              </div>
-              <ChevronRight 
-                className={`w-5 h-5 opacity-50 group-hover:opacity-100 group-hover:translate-x-1 ${dynastyTheme.classes.transition} ${dynastyTheme.classes.text.primary}`}
-              />
-            </div>
-
-            {/* League Details */}
-            <div className="space-y-3">
-              <div className="flex items-center space-x-2">
-                <Trophy className={`w-4 h-4 ${dynastyTheme.classes.text.primary}`} />
-                <span className={`text-sm ${dynastyTheme.classes.text.neutralLight}`}>
-                  {getScoringSystemLabel(league.scoring_system)}
-                </span>
-              </div>
-
-              <div className="flex items-center space-x-2">
-                <Users className={`w-4 h-4 ${dynastyTheme.classes.text.primary}`} />
-                <span className={`text-sm ${dynastyTheme.classes.text.neutralLight}`}>
-                  {league.max_teams || 12} teams max
-                </span>
-              </div>
-
-              {league.salary_cap && (
-                <div className="flex items-center space-x-2">
-                  <DollarSign className={`w-4 h-4 ${dynastyTheme.classes.text.primary}`} />
-                  <span className={`text-sm ${dynastyTheme.classes.text.neutralLight}`}>
-                    ${league.salary_cap} salary cap
-                  </span>
-                </div>
-              )}
-
-              <div className="flex items-center space-x-2">
-                <Calendar className={`w-4 h-4 ${dynastyTheme.classes.text.primary}`} />
-                <span className={`text-sm ${dynastyTheme.classes.text.neutralLight}`}>
-                  Created {formatDate(league.created_at)}
-                </span>
-              </div>
-            </div>
-
-            {/* League Actions */}
-            <div className={`flex items-center justify-between mt-4 pt-4 border-t ${dynastyTheme.classes.border.neutral}`}>
-              <div className="flex items-center space-x-1">
-                <Settings className={`w-4 h-4 ${dynastyTheme.classes.text.neutralLighter}`} />
-                <span className={`text-xs ${dynastyTheme.classes.text.neutralLight}`}>
-                  {league.player_pool?.replace(/_/g, ' ') || 'All MLB'}
-                </span>
-              </div>
-              
-              {league.role === 'commissioner' && (
-                <Star className={`w-4 h-4 ${dynastyTheme.classes.text.primary}`} title="Commissioner" />
-              )}
+      <button 
+        onClick={handleProfileClick}
+        className="flex items-center gap-2 group"
+        title="Go to My Account"
+      >
+        <div className="relative">
+          <div className="w-16 h-16 rounded-xl overflow-hidden border-2 border-yellow-400/50 shadow-xl transition-all duration-300 group-hover:border-yellow-400 group-hover:scale-105 group-hover:shadow-[0_0_20px_rgba(250,204,21,0.6)]">
+            {profileContent}
+            <div 
+              className="initials-fallback w-full h-full flex items-center justify-center text-xl font-bold bg-gradient-to-br from-yellow-400 to-yellow-500 text-black"
+              style={{ display: userProfile?.profilePicture ? 'none' : 'flex' }}
+            >
+              {initials}
             </div>
           </div>
-        ))}
+        </div>
+        <div className="flex flex-col items-start">
+          <span className="text-xs text-yellow-400 font-semibold group-hover:text-yellow-300 transition-colors">
+            My Account
+          </span>
+          <span className="text-[10px] text-neutral-400 group-hover:text-neutral-300 transition-colors">
+            {userProfile?.firstName || user?.given_name || 'Profile'} {userProfile?.lastName?.[0] || user?.family_name?.[0] || ''}.
+          </span>
+        </div>
+      </button>
+    );
+  };
+
+  const renderDashboardContent = () => {
+    return (
+      <div className="space-y-6">
+        {/* Welcome Banner */}
+        <WelcomeBanner user={user} />
+
+        {/* My Leagues Section */}
+        <MyLeaguesSection leagues={leagues} leaguesLoading={leaguesLoading} />
+
+        {/* Main Content Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          {/* Left Column */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* League Discovery Hub */}
+            <LeagueDiscoveryHub />
+
+            {/* Trending Players Section */}
+            <TrendingPlayersSection />
+          </div>
+
+          {/* Right Column */}
+          <div className="space-y-6">
+            {/* MLB News Section */}
+            <MLBNewsSection />
+
+            {/* Injury Report Section */}
+            <InjuryReportSection />
+          </div>
+        </div>
       </div>
     );
   };
@@ -318,284 +322,18 @@ const Dashboard = () => {
   const renderContent = () => {
     switch (activeSection) {
       case 'dashboard':
-        return (
-          <div className="space-y-6">
-            {/* Welcome Section */}
-            <div className={`${dynastyTheme.components.card.base} p-6`}>
-              <h2 className={`${dynastyTheme.components.heading.h2} ${dynastyTheme.classes.text.white} mb-2`}>
-                Welcome back, {user?.given_name || user?.firstName}!
-              </h2>
-              <p className={dynastyTheme.classes.text.neutralLight}>
-                Your dynasty awaits. Manage your leagues and build your empire.
-              </p>
-            </div>
-
-            {/* Stats Overview */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <div className={`${dynastyTheme.components.card.base} p-6`}>
-                <div className="flex items-center space-x-3">
-                  <Crown className={`w-8 h-8 ${dynastyTheme.classes.text.primary}`} />
-                  <div>
-                    <div className={`text-2xl font-bold ${dynastyTheme.classes.text.white}`}>{leagues.length}</div>
-                    <div className={dynastyTheme.classes.text.neutralLight}>Leagues Joined</div>
-                  </div>
-                </div>
-              </div>
-              
-              <div className={`${dynastyTheme.components.card.base} p-6`}>
-                <div className="flex items-center space-x-3">
-                  <Trophy className={`w-8 h-8 ${dynastyTheme.classes.text.primary}`} />
-                  <div>
-                    <div className={`text-2xl font-bold ${dynastyTheme.classes.text.white}`}>0</div>
-                    <div className={dynastyTheme.classes.text.neutralLight}>Championships</div>
-                  </div>
-                </div>
-              </div>
-
-              <div className={`${dynastyTheme.components.card.base} p-6`}>
-                <div className="flex items-center space-x-3">
-                  <Users className={`w-8 h-8 ${dynastyTheme.classes.text.primary}`} />
-                  <div>
-                    <div className={`text-2xl font-bold ${dynastyTheme.classes.text.white}`}>0</div>
-                    <div className={dynastyTheme.classes.text.neutralLight}>Active Teams</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* My Leagues Section */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center space-x-3">
-                  <Crown className={`w-8 h-8 ${dynastyTheme.classes.text.primary}`} />
-                  <div>
-                    <h3 className={`${dynastyTheme.components.heading.h2} ${dynastyTheme.classes.text.white}`}>My Leagues</h3>
-                    <p className={dynastyTheme.classes.text.neutralLight}>
-                      {leagues.length === 0 ? 'No leagues yet' : `${leagues.length} league${leagues.length === 1 ? '' : 's'}`}
-                    </p>
-                  </div>
-                </div>
-                
-                <button
-                  onClick={() => navigate('/create-league')}
-                  className={`${dynastyTheme.utils.getComponent('button', 'primary', 'md')} flex items-center space-x-2`}
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>Create League</span>
-                </button>
-              </div>
-
-              {renderMyLeagues()}
-            </div>
-
-            {/* Quick Actions */}
-            {leagues.length > 0 && (
-              <div className={`${dynastyTheme.components.card.base} p-6`}>
-                <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.white} mb-4`}>Quick Actions</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <button
-                    onClick={() => navigate('/create-league')}
-                    className={`${dynastyTheme.utils.getComponent('button', 'secondary', 'md')} flex items-center justify-center space-x-2 py-3`}
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Create New League</span>
-                  </button>
-                  
-                  <button
-                    onClick={() => setActiveSection('available-players')}
-                    className={`${dynastyTheme.utils.getComponent('button', 'secondary', 'md')} flex items-center justify-center space-x-2 py-3`}
-                  >
-                    <Users className="w-4 h-4" />
-                    <span>Browse Players</span>
-                  </button>
-                  
-                  <button
-                    className={`${dynastyTheme.utils.getComponent('button', 'secondary', 'md')} flex items-center justify-center space-x-2 py-3 opacity-50 cursor-not-allowed`}
-                    disabled
-                  >
-                    <Clock className="w-4 h-4" />
-                    <span>Recent Activity</span>
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        );
+        return renderDashboardContent();
 
       case 'my-leagues':
-        return (
-          <div className="space-y-6">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-3">
-                <Crown className={`w-8 h-8 ${dynastyTheme.classes.text.primary}`} />
-                <div>
-                  <h2 className={`${dynastyTheme.components.heading.h2} ${dynastyTheme.classes.text.white}`}>My Leagues</h2>
-                  <p className={dynastyTheme.classes.text.neutralLight}>
-                    {leagues.length === 0 ? 'No leagues yet' : `${leagues.length} league${leagues.length === 1 ? '' : 's'}`}
-                  </p>
-                </div>
-              </div>
-              
-              <button
-                onClick={() => navigate('/create-league')}
-                className={`${dynastyTheme.utils.getComponent('button', 'primary', 'md')} flex items-center space-x-2`}
-              >
-                <Plus className="w-4 h-4" />
-                <span>Create League</span>
-              </button>
-            </div>
+        return <MyLeaguesSection leagues={leagues} leaguesLoading={leaguesLoading} />;
 
-            {renderMyLeagues()}
-
-            {/* Quick Actions for My Leagues */}
-            {leagues.length > 0 && (
-              <div className={`${dynastyTheme.components.card.base} p-6`}>
-                <h3 className={`text-lg font-semibold ${dynastyTheme.classes.text.white} mb-4`}>Quick Actions</h3>
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <button
-                    onClick={() => navigate('/create-league')}
-                    className={`${dynastyTheme.utils.getComponent('button', 'secondary', 'md')} flex items-center justify-center space-x-2 py-3`}
-                  >
-                    <Plus className="w-4 h-4" />
-                    <span>Create New League</span>
-                  </button>
-                  
-                  <button
-                    className={`${dynastyTheme.utils.getComponent('button', 'secondary', 'md')} flex items-center justify-center space-x-2 py-3 opacity-50 cursor-not-allowed`}
-                    disabled
-                  >
-                    <Users className="w-4 h-4" />
-                    <span>Join League</span>
-                  </button>
-                  
-                  <button
-                    className={`${dynastyTheme.utils.getComponent('button', 'secondary', 'md')} flex items-center justify-center space-x-2 py-3 opacity-50 cursor-not-allowed`}
-                    disabled
-                  >
-                    <Clock className="w-4 h-4" />
-                    <span>Recent Activity</span>
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-        );
-
-      case 'available-players':
-        return (
-          <div className="space-y-6">
-            <div className={`${dynastyTheme.components.card.base} p-6`}>
-              <div className="flex items-center justify-between mb-4">
-                <h2 className={`${dynastyTheme.components.heading.h2} ${dynastyTheme.classes.text.white}`}>Available Players</h2>
-                <div className={`text-sm ${dynastyTheme.classes.text.neutralLight}`}>
-                  Free agents and waiver wire players
-                </div>
-              </div>
-
-              <div className="flex flex-col md:flex-row gap-4 mb-6">
-                <div className="flex-1">
-                  <div className="relative">
-                    <Search className={`absolute left-3 top-3 w-5 h-5 ${dynastyTheme.classes.text.neutralLight}`} />
-                    <input
-                      type="text"
-                      placeholder="Search players, teams, positions..."
-                      value={searchTerm}
-                      onChange={(e) => setSearchTerm(e.target.value)}
-                      className={`${dynastyTheme.components.input} w-full pl-10`}
-                    />
-                  </div>
-                </div>
-                <div className="flex gap-4">
-                  <select
-                    value={positionFilter}
-                    onChange={(e) => setPositionFilter(e.target.value)}
-                    className={dynastyTheme.components.input}
-                  >
-                    {positions.map(pos => (
-                      <option key={pos} value={pos}>
-                        {pos === 'all' ? 'All Positions' : pos}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full">
-                  <thead>
-                    <tr className={`border-b ${dynastyTheme.classes.border.neutral}`}>
-                      <th className={`text-left py-3 px-4 font-semibold ${dynastyTheme.classes.text.white}`}>PLAYER</th>
-                      <th className={`text-left py-3 px-4 font-semibold ${dynastyTheme.classes.text.white}`}>TEAM</th>
-                      <th className={`text-left py-3 px-4 font-semibold ${dynastyTheme.classes.text.white}`}>POSITION</th>
-                      <th className={`text-left py-3 px-4 font-semibold ${dynastyTheme.classes.text.white}`}>STATUS</th>
-                      <th className={`text-left py-3 px-4 font-semibold ${dynastyTheme.classes.text.white}`}>ACTION</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {loading ? (
-                      <tr>
-                        <td colSpan="5" className={`text-center py-8 ${dynastyTheme.classes.text.neutralLight}`}>
-                          Loading players...
-                        </td>
-                      </tr>
-                    ) : filteredPlayers.length === 0 ? (
-                      <tr>
-                        <td colSpan="5" className={`text-center py-8 ${dynastyTheme.classes.text.neutralLight}`}>
-                          No players found matching your criteria
-                        </td>
-                      </tr>
-                    ) : (
-                      filteredPlayers.slice(0, 50).map((player, index) => (
-                        <tr key={player.mlb_id || player.player_id || index} className={`border-b hover:bg-black/20 ${dynastyTheme.classes.transition} ${dynastyTheme.classes.border.neutral}`}>
-                          <td className="py-3 px-4">
-                            <button
-                              onClick={() => handlePlayerClick(player)}
-                              className={`${dynastyTheme.classes.text.white} hover:text-yellow-400 ${dynastyTheme.classes.transition} font-medium text-left hover:underline`}
-                            >
-                              {`${player.first_name || ''} ${player.last_name || ''}`.trim() || `Player #${player.mlb_id || index + 1}`}
-                            </button>
-                          </td>
-                          <td className={`py-3 px-4 ${dynastyTheme.classes.text.neutralLight}`}>
-                            {player.mlb_team || player.team || player.team_name || 'Free Agent'}
-                          </td>
-                          <td className="py-3 px-4">
-                            <span 
-                              className={`px-2 py-1 rounded text-xs font-semibold ${dynastyTheme.classes.bg.darkLighter} ${dynastyTheme.classes.text.primary}`}
-                            >
-                              {player.position || 'N/A'}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4">
-                            <span 
-                              className={`px-2 py-1 rounded text-xs font-semibold ${dynastyTheme.classes.text.white} ${
-                                player.is_active ? dynastyTheme.classes.bg.success : dynastyTheme.classes.bg.warning
-                              }`}
-                            >
-                              {player.is_active ? 'Available' : 'Inactive'}
-                            </span>
-                          </td>
-                          <td className="py-3 px-4">
-                            <button 
-                              className={`${dynastyTheme.utils.getComponent('button', 'secondary', 'xs')} px-3 py-1`}
-                              onClick={() => console.log('Add to team:', player)}
-                            >
-                              Add to Team
-                            </button>
-                          </td>
-                        </tr>
-                      ))
-                    )}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
-        );
+      case 'injury-tracker':
+        return <InjuryReportSection />;
 
       default:
         return (
           <div className={`${dynastyTheme.components.card.base} p-6 text-center`}>
-            <h2 className={`${dynastyTheme.components.heading.h2} ${dynastyTheme.classes.text.white} mb-4`}>
+            <h2 className={`${dynastyTheme.components.heading.h2} mb-4`}>
               {navigationSections.find(section => 
                 section.items.find(item => item.id === activeSection)
               )?.items.find(item => item.id === activeSection)?.label || 'Feature'}
@@ -612,18 +350,29 @@ const Dashboard = () => {
 
   return (
     <div className={dynastyTheme.components.page}>
-      {/* Header */}
+      {/* Ticker Bar */}
+      <TickerBar leagues={leagues} />
+      
       <header 
-        className={`px-6 py-4 border-b ${dynastyTheme.components.card.base} ${dynastyTheme.classes.border.light}`}
+        className={`px-6 py-4 border-b ${dynastyTheme.components.card.base} ${dynastyTheme.classes.border.neutral}`}
       >
         <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-3">
-            <Crown className={`w-8 h-8 ${dynastyTheme.classes.text.primary}`} />
-            <h1 className={`text-2xl font-bold ${dynastyTheme.classes.text.white}`}>Dynasty Dugout</h1>
+          <div className="flex items-center space-x-4">
+            {/* CLICKABLE USER PROFILE PICTURE - TOP LEFT */}
+            <UserProfilePicture />
+            
+            <div className="flex items-center space-x-3">
+              <Crown className={`w-8 h-8 ${dynastyTheme.classes.text.primary}`} />
+              <h1 className={`text-2xl font-bold ${dynastyTheme.classes.text.white}`}>Dynasty Dugout</h1>
+            </div>
           </div>
+          
+          {/* NEW PLAYER SEARCH BAR IN CENTER */}
+          <PlayerSearchBar />
+          
           <div className="flex items-center space-x-4">
             <span className={dynastyTheme.classes.text.neutralLight}>
-              Welcome, {user?.given_name || user?.firstName}
+              Welcome, {userProfile?.firstName || user?.given_name || user?.firstName || 'User'}
             </span>
             <button
               onClick={handleSignOut}
@@ -637,16 +386,13 @@ const Dashboard = () => {
       </header>
 
       <div className="flex">
-        {/* Left Sidebar */}
         <aside 
-          className={`w-64 min-h-screen border-r ${dynastyTheme.components.card.base} ${dynastyTheme.classes.border.light}`}
+          className={`w-64 min-h-screen ${dynastyTheme.components.sidebar.container}`}
         >
           <div className="p-4">
             {navigationSections.map((section, sectionIndex) => (
               <div key={sectionIndex} className="mb-6">
-                <h3 
-                  className={`text-xs font-semibold uppercase tracking-wider mb-2 ${dynastyTheme.classes.text.primary}`}
-                >
+                <h3 className={dynastyTheme.components.sidebar.sectionHeader}>
                   {section.title}
                 </h3>
                 <nav className="space-y-1">
@@ -657,10 +403,10 @@ const Dashboard = () => {
                       <button
                         key={item.id}
                         onClick={() => handleNavigation(item.id)}
-                        className={`w-full flex items-center space-x-3 px-3 py-2 rounded-lg text-sm font-semibold ${dynastyTheme.classes.transition} ${
+                        className={`${dynastyTheme.components.sidebar.navItem.base} ${
                           isActive
-                            ? `${dynastyTheme.classes.bg.primary} ${dynastyTheme.classes.text.black}`
-                            : `${dynastyTheme.classes.text.white} hover:text-white hover:bg-neutral-800`
+                            ? dynastyTheme.components.sidebar.navItem.active
+                            : dynastyTheme.components.sidebar.navItem.inactive
                         }`}
                       >
                         <Icon className="w-4 h-4" />
@@ -675,7 +421,6 @@ const Dashboard = () => {
           </div>
         </aside>
 
-        {/* Main Content */}
         <main className="flex-1 p-6">
           {renderContent()}
         </main>

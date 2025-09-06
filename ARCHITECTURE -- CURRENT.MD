@@ -4,10 +4,6 @@
 
 Dynasty Dugout is a production-ready fantasy baseball platform built with React frontend, FastAPI backend, and PostgreSQL database. The system uses a sophisticated league-per-database architecture with team attribution for advanced analytics.
 
-**Current Status**: Core infrastructure complete, league lifecycle optimized (18x performance improvement), ready for free agent system testing.
-
----
-
 ## 🏗️ **System Architecture & Design Philosophy**
 
 ### **High-Level Architecture**
@@ -24,7 +20,8 @@ User Actions → API Gateway → Lambda (FastAPI) → PostgreSQL (Backend)
 1. **Single Source of Truth**: 
    - All styling flows through `dynastyTheme` design system
    - All API calls centralized in `apiService.js`
-   - MLB data stored once in main database, referenced by all leagues
+   - MLB HISTORICAL data stored once in main database, referenced by all leagues
+   - MLB DAILY GAME LOGS downloaded daily and stored in MAIN DB
 
 2. **Separation of Concerns**: 
    - Frontend: Pure React components using design system
@@ -35,10 +32,13 @@ User Actions → API Gateway → Lambda (FastAPI) → PostgreSQL (Backend)
    - Main database: Shared MLB data and league registry ("phone book")
    - League databases: One isolated database per league for scalability
    - No data duplication: League DBs reference main DB via foreign keys
+   - League DBs download CURRENT SEASON (2025) game logs as needed to track stats for ROSTERED players IN starting lineups – ROSTERED players NOT in starting lineup accrue no stats so game log data is not needed – Game log stats used to CALCUATE ACCRUED STARTING LINEUP statistics
+   - All over data to be stored in and requested from MAIN DB.
 
 4. **Team Attribution System**:
-   - Track player performance while on specific teams
-   - Enable "two-line" display: season stats vs team-specific stats
+   - Track player performance while on specific teams (for analytics purposes) BUT CALCULATE and add to fantasy totals when player is IN the starting lineup for that fantasy team.
+   - Enable "two-line" display: season stats vs team-specific stats vs. stats for the last two weeks (to be calculated upon gamelog downloads from MAIN DB on the fly) for table on “MyRoster.js”
+   - Enable “two-line” display season stats vs team-specific stats vs. stats for the last two weeks (to be calculated upon gamelog downloads from MAIN DB on the fly) for all over tables.
    - Support trade analysis and contract evaluation
 
 ---
@@ -204,6 +204,7 @@ CREATE TABLE player_stats (
     whip DECIMAL(4,3) DEFAULT 0.000, -- Walks + hits per inning pitched
     k9 DECIMAL(4,2) DEFAULT 0.00, -- Strikeouts per 9 innings
     bb9 DECIMAL(4,2) DEFAULT 0.00, -- Walks per 9 innings
+   quality starts INTEGER DEFAULT 0, (******* Quality starts (QS) are calculated as 6 or more IP AND 3 or fewer ER)
     
     -- Meta data
     last_updated TIMESTAMP DEFAULT NOW(),
@@ -540,6 +541,7 @@ CREATE TABLE player_team_accumulated_stats (
     team_whip DECIMAL(4,3) DEFAULT 0.000,
     team_k9 DECIMAL(4,2) DEFAULT 0.00, -- Ks per 9 innings
     team_bb9 DECIMAL(4,2) DEFAULT 0.00, -- Walks per 9 innings
+quality starts INTEGER DEFAULT 0, (******* Quality starts (QS) are calculated as 6 or more IP AND 3 or fewer ER)
     
     -- Performance metrics
     fantasy_points_for_team DECIMAL(8,2) DEFAULT 0,
@@ -552,39 +554,6 @@ CREATE TABLE player_team_accumulated_stats (
 -- =================================
 -- ENHANCED DATA PIPELINE (NEW)
 -- =================================
-
--- League-specific copy of game logs (synced from main DB)
-CREATE TABLE player_game_logs (
-    log_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    player_id INTEGER NOT NULL, -- FK to main postgres.mlb_players
-    game_date DATE NOT NULL,
-    opponent VARCHAR(10),
-    home_away VARCHAR(1),
-    
-    -- Same structure as main DB - copied during sync
-    at_bats INTEGER DEFAULT 0,
-    hits INTEGER DEFAULT 0,
-    doubles INTEGER DEFAULT 0,
-    triples INTEGER DEFAULT 0,
-    home_runs INTEGER DEFAULT 0,
-    rbi INTEGER DEFAULT 0,
-    runs INTEGER DEFAULT 0,
-    walks INTEGER DEFAULT 0,
-    strikeouts INTEGER DEFAULT 0,
-    stolen_bases INTEGER DEFAULT 0,
-    
-    innings_pitched DECIMAL(4,1) DEFAULT 0,
-    wins INTEGER DEFAULT 0,
-    losses INTEGER DEFAULT 0,
-    saves INTEGER DEFAULT 0,
-    earned_runs INTEGER DEFAULT 0,
-    hits_allowed INTEGER DEFAULT 0,
-    walks_allowed INTEGER DEFAULT 0,
-    strikeouts_pitched INTEGER DEFAULT 0,
-    
-    synced_at TIMESTAMP DEFAULT NOW(),
-    CONSTRAINT unique_player_game_date UNIQUE(player_id, game_date)
-);
 
 -- League-specific season stats (calculated from league game logs)
 CREATE TABLE player_season_stats (
@@ -627,6 +596,7 @@ CREATE TABLE player_season_stats (
     era DECIMAL(4,2) DEFAULT 0.00,
     whip DECIMAL(4,3) DEFAULT 0.000,
     k9 DECIMAL(4,2) DEFAULT 0.00,
+quality starts INTEGER DEFAULT 0, (******* Quality starts (QS) are calculated as 6 or more IP AND 3 or fewer ER)
     
     last_updated TIMESTAMP DEFAULT NOW(),
     CONSTRAINT unique_player_season UNIQUE(player_id, season_year)
@@ -1286,6 +1256,47 @@ cd ~/fantasy-baseball-central-clean/backend/events/
 - **Owner Management**: Teams + invitations + empty slots
 - **Team Attribution**: Database schema ready for analytics
 - **Design System**: 100% unified styling via dynastyTheme
+
+
+Daily Attribution Process:
+
+Python
+
+# Daily background job (06:00 AM)
+1. Get yesterday's game logs from main MLB database
+2. Check team ownership for each player on that date
+3. Attribute daily performance to correct team
+4. Update player_daily_team_stats table
+5. Recalculate accumulated stats for affected players
+6. Update player_team_accumulated_stats table
+7. Update current year (2025) player stats to be stored in the MAIN DB and used in all table queries for 2025 stats (reduce the need for data duplication)
+🆕 PostgreSQL Attribution Functions (Auto-Created):
+
+SQL
+
+-- Functions created in each league database
+calculate_team_batting_avg(player_id, team_id) → DECIMAL(4,3)
+calculate_team_era(player_id, team_id) → DECIMAL(4,2)  
+calculate_team_whip(player_id, team_id) → DECIMAL(4,3)
+Why This Architecture
+✅ Benefits:
+
+Data Consistency: Single source of truth for MLB data
+Storage Efficiency: No duplication of MLB statistics (99% storage reduction)
+Update Performance: Daily updates happen once, not 1000+ times
+Scalability: Linear scaling (1000 leagues = 1000 small databases + 1 MLB database)
+Cost Optimization: Dramatic reduction in storage and compute costs
+Perfect Isolation: League configurations completely independent
+✅ Player Attribution: Sophisticated tracking of player performance per team (OPERATIONAL)
+✅ Two-Line Analytics: Season totals vs team-specific performance comparison (READY)
+
+❌ Rejected Approach (Full Database Replication):
+Main MLB DB → Copy to League DB #1 (full replica)
+→ Copy to League DB #2 (full replica)
+
+→ ... (1000+ full replicas)
+This would result in 1000x storage costs and massive daily update operations.
+
 
 ### **🎯 Immediate Next Steps**
 

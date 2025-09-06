@@ -1,0 +1,23 @@
+{
+  "body": "",
+  "resource": "/{proxy+}",
+  "path": "/api/leagues/f94379ce-142a-4034-9f04-c7025a4883d3/free-agents",
+  "httpMethod": "GET",
+  "isBase64Encoded": false,
+  "queryStringParameters": {
+    "limit": "25",
+    "offset": "0"
+  },
+  "pathParameters": {
+    "proxy": "api/leagues/f94379ce-142a-4034-9f04-c7025a4883d3/free-agents"
+  },
+  "headers": {
+    "Accept": "application/json",
+    "Authorization": "Bearer eyJraWQiOiIydmIyMTg1UHpaMDhwOVwvZ0ZGUzFqSTI0T1lGUExsK21CT0xYVVNoV1k1cz0iLCJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJlNDA4MzRhOC04MGIxLTcwMjUtZWUwOS1iNTQyYzBiOTNmY2IiLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAudXMtZWFzdC0xLmFtYXpvbmF3cy5jb21cL3VzLWVhc3QtMV9Pb29WNXU4M3ciLCJjbGllbnRfaWQiOiI1bTl0cTk3NThhZDAwdnRuam9ib2JwZmdhcSIsIm9yaWdpbl9qdGkiOiI3N2JhNTYyZS0wNjc0LTQzMjctOGEyZC04NDAwMTdkNDhlN2MiLCJldmVudF9pZCI6ImUxYzVkNTVlLTk0ZDAtNGI2MS1iZTQyLWE3YjRlYjg1YWQ2ZCIsInRva2VuX3VzZSI6ImFjY2VzcyIsInNjb3BlIjoiYXdzLmNvZ25pdG8uc2lnbmluLnVzZXIuYWRtaW4iLCJhdXRoX3RpbWUiOjE3NTU3NDU3NDYsImV4cCI6MTc1NTc0OTM0NiwiaWF0IjoxNzU1NzQ1NzQ2LCJqdGkiOiI4YzA1MjAyNS1jMDlmLTQxOTUtYjNhMC02ZjAxNGQxZjFjY2IiLCJ1c2VybmFtZSI6ImU0MDgzNGE4LTgwYjEtNzAyNS1lZTA5LWI1NDJjMGI5M2ZjYiJ9.Ru5Xwqjg_dmyRherclW0zMXjjNvsKUAfTuWv_iRsGK1Fs8jN_Oc4Tksu8djh8fH2nAmZXChgD1iDMiDUytBuLsuSEY4OCS9l0kmfgvlCG6wu7zpJivaczRjt52lEENbMLS_egSVw9BG7fQ4RyQYNGVCIaYFkkpPmqoIeHM1_6Bw5ALU6cImlquXHbHZcDpMUvWGBLzUWIFyq2A2b8QdOHosLmmEQ5i-GCn1FF383-KdCJF4QnEcBsjCWGxx7c4n31kJa3KMhSxWHKSCD6vZDQ-QOaHHQjnbmnHQSyUZILu9-FLkMzMjRNxbboPWMfJ8BEdzpvkANTDBRpl2_vFFhsA",
+    "Content-Type": "application/json"
+  },
+  "requestContext": {
+    "httpMethod": "GET",
+    "path": "/api/leagues/f94379ce-142a-4034-9f04-c7025a4883d3/free-agents"
+  }
+}

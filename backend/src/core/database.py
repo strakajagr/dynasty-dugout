@@ -1,12 +1,31 @@
 """
 Dynasty Dugout - Database Operations
-Centralized database connection and query execution with PostgreSQL database-per-league support
-UPDATED: Uses RDS API for database creation, RDS Data API for all queries
-ARCHITECTURE: Database-per-league for maximum scalability with MLB/League data separation (NO psycopg2, NO direct connections)
+Centralized database connection and query execution with PostgreSQL shared database architecture
+UPDATED: Added batch operations for performance optimization
 """
 import logging
+import os
 import boto3
 from fastapi import HTTPException
+from pathlib import Path
+
+# Auto-load .env file if it exists (for local development)
+try:
+    from dotenv import load_dotenv
+    # Try to load .env from multiple possible locations
+    env_paths = [
+        Path(__file__).parent.parent.parent / '.env',  # backend/.env
+        Path(__file__).parent.parent / '.env',          # src/.env
+        Path('.env')                                    # current directory
+    ]
+    
+    for env_path in env_paths:
+        if env_path.exists():
+            load_dotenv(env_path)
+            break
+except ImportError:
+    pass  # dotenv not installed, likely running in Lambda
+
 from .aws_clients import get_rds_client
 from .config import DATABASE_CONFIG
 
@@ -14,9 +33,11 @@ logger = logging.getLogger(__name__)
 
 def execute_sql(sql: str, parameters=None, database_name=None):
     """
-    Execute SQL query using RDS Data API with PostgreSQL database switching support
-    UPDATED: Added database_name parameter for league database switching
+    Execute SQL query using RDS Data API with PostgreSQL database switching support.
     """
+    # 🐛 DEBUG: This is the only line we are adding to test the logs.
+    print('!!!!!! ENTERING EXECUTE_SQL IN DATABASE.PY !!!!!!')
+    
     rds_client = get_rds_client()
     
     if not rds_client:
@@ -31,7 +52,7 @@ def execute_sql(sql: str, parameters=None, database_name=None):
         params = {
             'resourceArn': DATABASE_CONFIG['resourceArn'],
             'secretArn': DATABASE_CONFIG['secretArn'],
-            'database': target_database,  # Dynamic database selection
+            'database': target_database,
             'sql': sql,
             'includeResultMetadata': True
         }
@@ -77,6 +98,158 @@ def execute_sql(sql: str, parameters=None, database_name=None):
         logger.error(f"SQL: {sql}")
         logger.error(f"Parameters: {parameters}")
         raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+def batch_execute_sql(sql: str, parameter_sets: list, database_name=None):
+    """
+    Execute SQL in batch using RDS Data API batch_execute_statement
+    Much faster for multiple inserts/updates with same SQL structure
+    
+    Args:
+        sql: SQL statement with parameter placeholders
+        parameter_sets: List of dicts, each dict is one set of parameters
+        database_name: Target database (defaults to main)
+    
+    Returns:
+        RDS batch response
+    """
+    rds_client = get_rds_client()
+    
+    if not rds_client:
+        raise HTTPException(status_code=500, detail="Database client not initialized")
+    
+    try:
+        target_database = database_name or DATABASE_CONFIG['database']
+        
+        logger.info(f"Batch executing SQL on database '{target_database}' with {len(parameter_sets)} parameter sets")
+        
+        # Convert parameter sets to RDS format
+        rds_parameter_sets = []
+        for params in parameter_sets:
+            rds_params = []
+            for key, value in params.items():
+                param = {'name': key}
+                
+                if value is None:
+                    param['value'] = {'isNull': True}
+                elif isinstance(value, bool):
+                    param['value'] = {'booleanValue': value}
+                elif isinstance(value, int):
+                    param['value'] = {'longValue': value}
+                elif isinstance(value, float):
+                    param['value'] = {'doubleValue': value}
+                elif isinstance(value, str):
+                    param['value'] = {'stringValue': value}
+                else:
+                    param['value'] = {'stringValue': str(value)}
+                
+                rds_params.append(param)
+            rds_parameter_sets.append(rds_params)
+        
+        response = rds_client.batch_execute_statement(
+            resourceArn=DATABASE_CONFIG['resourceArn'],
+            secretArn=DATABASE_CONFIG['secretArn'],
+            database=target_database,
+            sql=sql,
+            parameterSets=rds_parameter_sets
+        )
+        
+        logger.info(f"Batch SQL executed successfully, processed {len(response.get('updateResults', []))} records")
+        return response
+        
+    except Exception as e:
+        logger.error(f"Batch database error on '{target_database}': {str(e)}")
+        logger.error(f"SQL: {sql}")
+        logger.error(f"Number of parameter sets: {len(parameter_sets)}")
+        raise HTTPException(status_code=500, detail=f"Batch database error: {str(e)}")
+
+def execute_transaction(sql_statements: list, database_name=None):
+    """
+    Execute multiple SQL statements in a transaction
+    
+    Args:
+        sql_statements: List of {'sql': str, 'parameters': dict} objects
+        database_name: Target database
+    
+    Returns:
+        Transaction response
+    """
+    rds_client = get_rds_client()
+    
+    if not rds_client:
+        raise HTTPException(status_code=500, detail="Database client not initialized")
+    
+    try:
+        target_database = database_name or DATABASE_CONFIG['database']
+        
+        logger.info(f"Starting transaction on database '{target_database}' with {len(sql_statements)} statements")
+        
+        # Begin transaction
+        transaction_response = rds_client.begin_transaction(
+            resourceArn=DATABASE_CONFIG['resourceArn'],
+            secretArn=DATABASE_CONFIG['secretArn'],
+            database=target_database
+        )
+        
+        transaction_id = transaction_response['transactionId']
+        
+        try:
+            # Execute each statement in the transaction
+            for stmt in sql_statements:
+                params = {
+                    'resourceArn': DATABASE_CONFIG['resourceArn'],
+                    'secretArn': DATABASE_CONFIG['secretArn'],
+                    'database': target_database,
+                    'sql': stmt['sql'],
+                    'transactionId': transaction_id
+                }
+                
+                # Add parameters if provided
+                if stmt.get('parameters'):
+                    rds_params = []
+                    for key, value in stmt['parameters'].items():
+                        param = {'name': key}
+                        
+                        if value is None:
+                            param['value'] = {'isNull': True}
+                        elif isinstance(value, bool):
+                            param['value'] = {'booleanValue': value}
+                        elif isinstance(value, int):
+                            param['value'] = {'longValue': value}
+                        elif isinstance(value, float):
+                            param['value'] = {'doubleValue': value}
+                        elif isinstance(value, str):
+                            param['value'] = {'stringValue': value}
+                        else:
+                            param['value'] = {'stringValue': str(value)}
+                        
+                        rds_params.append(param)
+                    params['parameters'] = rds_params
+                
+                rds_client.execute_statement(**params)
+            
+            # Commit transaction
+            commit_response = rds_client.commit_transaction(
+                resourceArn=DATABASE_CONFIG['resourceArn'],
+                secretArn=DATABASE_CONFIG['secretArn'],
+                transactionId=transaction_id
+            )
+            
+            logger.info(f"Transaction committed successfully on '{target_database}'")
+            return commit_response
+            
+        except Exception as e:
+            # Rollback on error
+            logger.error(f"Transaction failed, rolling back: {str(e)}")
+            rds_client.rollback_transaction(
+                resourceArn=DATABASE_CONFIG['resourceArn'],
+                secretArn=DATABASE_CONFIG['secretArn'],
+                transactionId=transaction_id
+            )
+            raise
+            
+    except Exception as e:
+        logger.error(f"Transaction error on '{target_database}': {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Transaction error: {str(e)}")
 
 def execute_sql_on_database(sql: str, parameters=None, database_name=None):
     """
@@ -130,7 +303,7 @@ def setup_league_database_schema(league_id: str) -> dict:
             CREATE TABLE IF NOT EXISTS league_players (
                 league_player_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 mlb_player_id INTEGER NOT NULL,  -- Foreign key to postgres.mlb_players.player_id
-                team_id UUID,                    -- Which fantasy team owns this player
+                team_id UUID,                      -- Which fantasy team owns this player
                 salary DECIMAL(8,2) DEFAULT 1.0,
                 contract_years INTEGER DEFAULT 1,
                 roster_status VARCHAR(20) DEFAULT 'available',
@@ -264,8 +437,6 @@ def setup_league_database_schema(league_id: str) -> dict:
     except Exception as e:
         logger.error(f"Error setting up league database schema: {str(e)}")
         raise
-
-# NEW FUNCTIONS: Data joining between MLB and League databases
 
 def get_league_player_with_mlb_stats(league_id: str, mlb_player_id: int) -> dict:
     """
@@ -452,23 +623,15 @@ def add_player_to_league(league_id: str, mlb_player_id: int, team_id: str = None
         logger.error(f"Error adding player to league: {str(e)}")
         raise
 
-# Rest of the existing functions remain the same...
-
 def drop_league_database(league_id: str) -> dict:
     """
     Drop a PostgreSQL database for a league using RDS Data API on postgres system database
     """
     try:
-        # Generate database name from league ID
         db_name = f"league_{league_id.replace('-', '_')}"
-        
         logger.info(f"Dropping database: {db_name}")
         
-        # Get database size before deletion (execute on postgres system db)
-        size_sql = f"""
-            SELECT pg_database_size('{db_name}') / 1024.0 / 1024.0 as size_mb
-        """
-        
+        size_sql = f"SELECT pg_database_size('{db_name}') / 1024.0 / 1024.0 as size_mb"
         database_size_mb = 0
         try:
             size_response = execute_sql(size_sql, database_name='postgres')
@@ -479,20 +642,16 @@ def drop_league_database(league_id: str) -> dict:
         except Exception as size_error:
             logger.warning(f"Could not get database size: {size_error}")
         
-        # Terminate all connections to the database (execute on postgres system db)
         terminate_sql = f"""
             SELECT pg_terminate_backend(pid)
             FROM pg_stat_activity
-            WHERE datname = '{db_name}'
-            AND pid <> pg_backend_pid()
+            WHERE datname = '{db_name}' AND pid <> pg_backend_pid()
         """
-        
         try:
             execute_sql(terminate_sql, database_name='postgres')
         except Exception as terminate_error:
             logger.warning(f"Could not terminate connections: {terminate_error}")
         
-        # Drop the database (execute on postgres system db)
         drop_db_sql = f'DROP DATABASE IF EXISTS "{db_name}"'
         execute_sql(drop_db_sql, database_name='postgres')
         
@@ -504,21 +663,15 @@ def drop_league_database(league_id: str) -> dict:
             'league_id': league_id,
             'database_size_freed_mb': database_size_mb
         }
-        
     except Exception as e:
         logger.error(f"Error dropping database for league {league_id}: {str(e)}")
-        return {
-            'success': False,
-            'error': str(e),
-            'league_id': league_id
-        }
+        return {'success': False, 'error': str(e), 'league_id': league_id}
 
 def get_database_info(database_name: str) -> dict:
     """
     Get information about a specific database (execute on postgres system db)
     """
     try:
-        # Check if database exists and get stats (execute on postgres system db)
         info_sql = f"""
             SELECT 
                 datname,
@@ -528,17 +681,12 @@ def get_database_info(database_name: str) -> dict:
             FROM pg_database 
             WHERE datname = '{database_name}'
         """
-        
         response = execute_sql(info_sql, database_name='postgres')
         
         if not response.get('records'):
-            return {
-                'exists': False,
-                'database_name': database_name
-            }
+            return {'exists': False, 'database_name': database_name}
         
         record = response['records'][0]
-        
         return {
             'exists': True,
             'database_name': record[0].get('stringValue'),
@@ -546,14 +694,9 @@ def get_database_info(database_name: str) -> dict:
             'size_mb': record[2].get('doubleValue'),
             'active_connections': record[3].get('longValue')
         }
-        
     except Exception as e:
         logger.error(f"Error getting database info for {database_name}: {str(e)}")
-        return {
-            'exists': False,
-            'error': str(e),
-            'database_name': database_name
-        }
+        return {'exists': False, 'error': str(e), 'database_name': database_name}
 
 def list_league_databases() -> dict:
     """
@@ -561,8 +704,6 @@ def list_league_databases() -> dict:
     """
     try:
         logger.info("Listing all league databases for cleanup check")
-        
-        # Get all databases that match league naming pattern
         list_sql = """
             SELECT datname, pg_size_pretty(pg_database_size(datname)) as size_pretty,
                    pg_database_size(datname) / 1024.0 / 1024.0 as size_mb
@@ -570,7 +711,6 @@ def list_league_databases() -> dict:
             WHERE datname LIKE 'league_%'
             ORDER BY datname
         """
-        
         response = execute_sql(list_sql, database_name='postgres')
         
         databases = []
@@ -594,14 +734,9 @@ def list_league_databases() -> dict:
             'total_count': len(databases),
             'total_size_mb': total_size_mb
         }
-        
     except Exception as e:
         logger.error(f"Error listing league databases: {str(e)}")
-        return {
-            'success': False,
-            'error': str(e),
-            'databases': []
-        }
+        return {'success': False, 'error': str(e), 'databases': []}
 
 def cleanup_all_league_databases() -> dict:
     """
@@ -611,9 +746,7 @@ def cleanup_all_league_databases() -> dict:
     try:
         logger.warning("CLEANUP: Starting emergency cleanup of all league databases")
         
-        # First, list all league databases
         list_result = list_league_databases()
-        
         if not list_result['success']:
             return list_result
         
@@ -625,34 +758,19 @@ def cleanup_all_league_databases() -> dict:
         for db_info in databases:
             db_name = db_info['database_name']
             try:
-                # Extract league_id from database name
                 league_id = db_name.replace('league_', '').replace('_', '-')
-                
                 logger.info(f"CLEANUP: Dropping database {db_name} (league: {league_id})")
-                
-                # Drop the database
                 cleanup_result = drop_league_database(league_id)
                 
                 if cleanup_result['success']:
-                    cleaned_up.append({
-                        'database_name': db_name,
-                        'league_id': league_id,
-                        'size_freed_mb': cleanup_result.get('database_size_freed_mb', 0)
-                    })
-                    total_freed_mb += cleanup_result.get('database_size_freed_mb', 0)
+                    freed_mb = cleanup_result.get('database_size_freed_mb', 0)
+                    cleaned_up.append({'database_name': db_name, 'league_id': league_id, 'size_freed_mb': freed_mb})
+                    total_freed_mb += freed_mb
                 else:
-                    failed.append({
-                        'database_name': db_name,
-                        'league_id': league_id,
-                        'error': cleanup_result.get('error')
-                    })
-                    
+                    failed.append({'database_name': db_name, 'league_id': league_id, 'error': cleanup_result.get('error')})
             except Exception as cleanup_error:
                 logger.error(f"CLEANUP: Failed to drop {db_name}: {cleanup_error}")
-                failed.append({
-                    'database_name': db_name,
-                    'error': str(cleanup_error)
-                })
+                failed.append({'database_name': db_name, 'error': str(cleanup_error)})
         
         logger.warning(f"CLEANUP COMPLETE: {len(cleaned_up)} databases dropped, {len(failed)} failed, {total_freed_mb:.2f} MB freed")
         
@@ -664,13 +782,9 @@ def cleanup_all_league_databases() -> dict:
             'total_failed': len(failed),
             'total_freed_mb': total_freed_mb
         }
-        
     except Exception as e:
         logger.error(f"Error during emergency cleanup: {str(e)}")
-        return {
-            'success': False,
-            'error': str(e)
-        }
+        return {'success': False, 'error': str(e)}
 
 def get_league_database_name(league_id: str) -> str:
     """
@@ -683,7 +797,6 @@ def format_single_record(record, response):
     if not record or not response:
         return {}
     
-    # Get column metadata
     columns = []
     if 'columnMetadata' in response:
         columns = [col['name'] for col in response['columnMetadata']]
@@ -724,7 +837,6 @@ def format_player_data(records, response):
     if not records or not response:
         return []
     
-    # Get column metadata
     columns = []
     if 'columnMetadata' in response:
         columns = [col['name'] for col in response['columnMetadata']]
@@ -774,8 +886,6 @@ def test_database_connection(database_name=None):
         logger.error(f"Database health check failed for '{database_name or 'default'}': {str(e)}")
         return False
 
-# User Profile Database Functions - These remain on main database
-
 def get_user_profile(user_id: str):
     """Get user profile from main database"""
     try:
@@ -784,20 +894,19 @@ def get_user_profile(user_id: str):
             FROM user_profiles 
             WHERE user_id = :user_id
         """
-        response = execute_sql(sql, {'user_id': user_id})  # Main database
+        response = execute_sql(sql, {'user_id': user_id})
         
         if response.get('records'):
             record = response['records'][0]
             return {
-                'user_id': record[0].get('stringValue') if record[0] and not record[0].get('isNull') else None,
-                'date_of_birth': record[1].get('stringValue') if record[1] and not record[1].get('isNull') else None,
-                'profile_picture_url': record[2].get('stringValue') if record[2] and not record[2].get('isNull') else None,
-                'preferences': record[3].get('stringValue', '{}') if record[3] and not record[3].get('isNull') else '{}',
-                'created_at': record[4].get('stringValue') if record[4] and not record[4].get('isNull') else None,
-                'updated_at': record[5].get('stringValue') if record[5] and not record[5].get('isNull') else None
+                'user_id': record[0].get('stringValue'),
+                'date_of_birth': record[1].get('stringValue'),
+                'profile_picture_url': record[2].get('stringValue'),
+                'preferences': record[3].get('stringValue', '{}'),
+                'created_at': record[4].get('stringValue'),
+                'updated_at': record[5].get('stringValue')
             }
         return None
-        
     except Exception as e:
         logger.error(f"Error getting user profile: {str(e)}")
         return None
@@ -820,9 +929,8 @@ def create_user_profile(user_id: str, date_of_birth: str = None, profile_picture
             """
             parameters = {'user_id': user_id}
             
-        execute_sql(sql, parameters)  # Main database
+        execute_sql(sql, parameters)
         return True
-        
     except Exception as e:
         logger.error(f"Error creating user profile: {str(e)}")
         return False
@@ -868,10 +976,9 @@ def update_user_profile(user_id: str, date_of_birth: str = None, profile_picture
             return True  # Nothing to update
             
         logger.info(f"Executing SQL: {sql}")
-        response = execute_sql(sql, parameters)  # Main database
+        response = execute_sql(sql, parameters)
         logger.info(f"SQL response: {response}")
         return True
-        
     except Exception as e:
         logger.error(f"Error updating user profile: {str(e)}")
         import traceback

@@ -4,13 +4,15 @@ Profile updates, password changes, and account settings
 """
 
 import logging
-from datetime import datetime
+import base64
+from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException, Depends, File, UploadFile
 from botocore.exceptions import ClientError
 
 from core.auth_utils import get_current_user
 from core.aws_clients import get_cognito_client, get_s3_client
 from core.config import COGNITO_CONFIG, ACCOUNT_CONFIG
+from core.database import execute_sql
 
 logger = logging.getLogger(__name__)
 router = APIRouter()
@@ -159,8 +161,76 @@ async def update_user_profile_simple(
         print(f"DEBUG: Full traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=500, detail="Internal server error")
 
+@router.post("/get-profile-picture-upload-url")
+async def get_profile_picture_upload_url(
+    request_data: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """Generate presigned URL for profile picture upload - same pattern as team logos"""
+    try:
+        user_id = current_user.get('sub')
+        filename = request_data.get('filename', 'profile.jpg')
+        content_type = request_data.get('content_type', 'image/jpeg')
+        
+        print(f"DEBUG: Generating presigned URL for user: {user_id}, file: {filename}")
+        
+        # Validate content type
+        if not content_type.startswith('image/'):
+            raise HTTPException(status_code=400, detail="File must be an image")
+        
+        # Generate S3 key with timestamp for cache busting
+        file_extension = filename.split('.')[-1].lower() if '.' in filename else 'jpg'
+        timestamp = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
+        s3_key = f"profile-pictures/{user_id}_{timestamp}.{file_extension}"
+        
+        # Generate presigned URL
+        s3_client = get_s3_client()
+        if not s3_client:
+            raise HTTPException(status_code=500, detail="S3 service unavailable")
+        
+        presigned_url = s3_client.generate_presigned_url(
+            'put_object',
+            Params={
+                'Bucket': ACCOUNT_CONFIG['S3_BUCKET_NAME'],
+                'Key': s3_key,
+                'ContentType': content_type,
+                'Metadata': {'user_id': user_id}
+            },
+            ExpiresIn=3600  # URL valid for 1 hour
+        )
+        
+        # Generate public URL
+        public_url = f"https://{ACCOUNT_CONFIG['S3_BUCKET_NAME']}.s3.amazonaws.com/{s3_key}"
+        
+        # Update database with the new URL
+        from core.database import update_user_profile
+        db_success = update_user_profile(
+            user_id=user_id,
+            profile_picture_url=public_url
+        )
+        
+        if not db_success:
+            print(f"WARNING: Database update failed for user {user_id}")
+        
+        return {
+            "success": True,
+            "upload_url": presigned_url,
+            "public_url": public_url,
+            "s3_key": s3_key,
+            "message": "Upload URL generated successfully"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"DEBUG: Error generating upload URL: {e}")
+        import traceback
+        print(f"DEBUG: Full traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail="Failed to generate upload URL")
+
+# Keep the old endpoint for backwards compatibility but mark as deprecated
 @router.post("/upload-profile-picture")
-async def upload_profile_picture(
+async def upload_profile_picture_deprecated(
     file: UploadFile = File(...),
     current_user: dict = Depends(get_current_user)
 ):
@@ -176,9 +246,10 @@ async def upload_profile_picture(
         if file.size and file.size > 10 * 1024 * 1024:  # 10MB limit
             raise HTTPException(status_code=400, detail="File size must be less than 10MB")
         
-        # Generate unique filename
-        file_extension = file.filename.split('.')[-1] if file.filename and '.' in file.filename else 'jpg'
-        s3_key = f"profile-pictures/{user_id}.{file_extension}"
+        # Generate unique filename with timestamp for cache busting
+        file_extension = file.filename.split('.')[-1].lower() if file.filename and '.' in file.filename else 'jpg'
+        timestamp = datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')
+        s3_key = f"profile-pictures/{user_id}_{timestamp}.{file_extension}"
         
         print(f"DEBUG: Uploading to S3 key: {s3_key}")
         
@@ -190,13 +261,30 @@ async def upload_profile_picture(
         # Read file content
         file_content = await file.read()
         
+        # CRITICAL FIX: Check if content is base64 encoded (from API Gateway)
+        # API Gateway base64 encodes binary data when sending to Lambda
+        try:
+            # Try to decode as base64 - if it works, use decoded content
+            # If it fails, it's already binary and we use it as-is
+            decoded_content = base64.b64decode(file_content)
+            # Verify it's a valid image by checking magic bytes
+            if decoded_content[:2] in [b'\xff\xd8', b'\x89\x50', b'GI', b'BM']:  # JPEG, PNG, GIF, BMP
+                print("DEBUG: Content was base64 encoded, using decoded version")
+                file_content = decoded_content
+            else:
+                print("DEBUG: Content not base64 encoded or not valid image after decode")
+        except Exception as e:
+            print(f"DEBUG: Content is not base64 encoded or decode failed: {e}")
+            # Content is already binary, use as-is
+            pass
+        
         # Upload to S3
         s3_client.put_object(
             Bucket=ACCOUNT_CONFIG['S3_BUCKET_NAME'],
             Key=s3_key,
             Body=file_content,
             ContentType=file.content_type,
-            Metadata={'user_id': user_id}
+            Metadata={'user_id': user_id},
         )
         
         # Generate S3 URL
@@ -350,3 +438,104 @@ async def test_database():
         import traceback
         print(f"DEBUG: Traceback: {traceback.format_exc()}")
         return {"status": "failed", "error": str(e)}
+
+# Welcome Banner Settings Endpoints
+@router.get("/welcome-settings")
+async def get_welcome_settings(current_user: dict = Depends(get_current_user)):
+    """Get user's welcome banner settings"""
+    try:
+        result = execute_sql(
+            """
+            SELECT welcome_message, background_type, background_value, 
+                   text_color, show_stats, show_news
+            FROM user_welcome_settings 
+            WHERE user_id = :user_id
+            """,
+            {"user_id": current_user.get("sub")},
+            database_name='postgres'
+        )
+        
+        if result and result.get("records"):
+            record = result["records"][0]
+            return {
+                "success": True,
+                "settings": {
+                    "welcomeMessage": record[0].get("stringValue", ""),
+                    "backgroundType": record[1].get("stringValue", "gradient"),
+                    "backgroundValue": record[2].get("stringValue", ""),
+                    "textColor": record[3].get("stringValue", "#FFFFFF"),
+                    "showStats": record[4].get("booleanValue", True),
+                    "showNews": record[5].get("booleanValue", True)
+                }
+            }
+        else:
+            return {
+                "success": True,
+                "settings": {
+                    "welcomeMessage": "",
+                    "backgroundType": "gradient",
+                    "backgroundValue": "",
+                    "textColor": "#FFFFFF",
+                    "showStats": True,
+                    "showNews": True
+                }
+            }
+    except Exception as e:
+        logger.error(f"Error getting welcome settings: {e}")
+        return {"success": False, "error": str(e)}
+
+@router.put("/welcome-settings")
+async def update_welcome_settings(
+    settings: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """Update user's welcome banner settings"""
+    try:
+        # Create table if it doesn't exist
+        execute_sql("""
+            CREATE TABLE IF NOT EXISTS user_welcome_settings (
+                user_id VARCHAR(255) PRIMARY KEY,
+                welcome_message TEXT,
+                background_type VARCHAR(50) DEFAULT 'gradient',
+                background_value TEXT,
+                text_color VARCHAR(20) DEFAULT '#FFFFFF',
+                show_stats BOOLEAN DEFAULT true,
+                show_news BOOLEAN DEFAULT true,
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            )
+        """, database_name='postgres')
+        
+        # Upsert the settings
+        execute_sql(
+            """
+            INSERT INTO user_welcome_settings 
+            (user_id, welcome_message, background_type, background_value, 
+             text_color, show_stats, show_news, updated_at)
+            VALUES (:user_id, :welcome_message, :background_type, :background_value,
+                    :text_color, :show_stats, :show_news, NOW())
+            ON CONFLICT (user_id) DO UPDATE SET
+                welcome_message = EXCLUDED.welcome_message,
+                background_type = EXCLUDED.background_type,
+                background_value = EXCLUDED.background_value,
+                text_color = EXCLUDED.text_color,
+                show_stats = EXCLUDED.show_stats,
+                show_news = EXCLUDED.show_news,
+                updated_at = NOW()
+            """,
+            {
+                "user_id": current_user.get("sub"),
+                "welcome_message": settings.get("welcomeMessage", ""),
+                "background_type": settings.get("backgroundType", "gradient"),
+                "background_value": settings.get("backgroundValue", ""),
+                "text_color": settings.get("textColor", "#FFFFFF"),
+                "show_stats": settings.get("showStats", True),
+                "show_news": settings.get("showNews", True)
+            },
+            database_name='postgres'
+        )
+        
+        return {"success": True, "message": "Settings updated successfully"}
+    except Exception as e:
+        logger.error(f"Error updating welcome settings: {e}")
+        raise HTTPException(status_code=500, detail=str(e))

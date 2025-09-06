@@ -1,0 +1,61 @@
+{
+    "records": [
+        [
+            {
+                "stringValue": "bf75530c-1a9a-4028-83fa-53917e6c695a"
+            },
+            {
+                "stringValue": "706191b5-9854-47b0-95b6-0245028cec0f"
+            },
+            {
+                "longValue": 592450
+            },
+            {
+                "stringValue": "dec7ee3b-3373-4648-91e0-ba79c578e0f7"
+            },
+            {
+                "stringValue": "1.00"
+            },
+            {
+                "stringValue": "0"
+            },
+            {
+                "stringValue": "0"
+            },
+            {
+                "longValue": 2
+            },
+            {
+                "stringValue": "owned"
+            },
+            {
+                "stringValue": "active"
+            },
+            {
+                "stringValue": "2025-09-06 04:43:00.940175"
+            },
+            {
+                "stringValue": "free_agent"
+            },
+            {
+                "stringValue": "2025-09-03 21:54:22.743287"
+            },
+            {
+                "isNull": true
+            },
+            {
+                "stringValue": "Aaron Judge"
+            },
+            {
+                "stringValue": "RF"
+            },
+            {
+                "stringValue": "NYY"
+            },
+            {
+                "stringValue": "Team Golden Pee"
+            }
+        ]
+    ],
+    "numberOfRecordsUpdated": 0
+}

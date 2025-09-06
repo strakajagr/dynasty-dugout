@@ -2,6 +2,7 @@
 Dynasty Dugout - Centralized Configuration
 All configuration settings in one place
 """
+import os
 
 # Cognito Configuration
 COGNITO_CONFIG = {
@@ -21,14 +22,15 @@ COOKIE_CONFIG = {
     "path": "/"
 }
 
-# Database configuration - RDS Data API (Updated to use RDS-managed secret)
+# FIXED: Database configuration now reads from environment variables
+# These are set in the template.yaml for each Lambda function
 DATABASE_CONFIG = {
-    'resourceArn': 'arn:aws:rds:us-east-1:584812014683:cluster:fantasy-baseball',
-    'secretArn': 'arn:aws:secretsmanager:us-east-1:584812014683:secret:rds!cluster-a4ca625a-7cb4-484a-8707-80f27e403c70-pwORGg',
-    'database': 'postgres'
+    'resourceArn': os.environ.get('DB_CLUSTER_ARN'),
+    'secretArn': os.environ.get('DB_SECRET_ARN'),
+    'database': 'postgres' # The default database to connect to
 }
 
-# Account Management Configuration
+# Account Management Configuration - Using EXISTING S3 bucket
 ACCOUNT_CONFIG = {
     'S3_BUCKET_NAME': 'dynasty-dugout-profile-pictures',
     'CLOUDFRONT_DOMAIN': 'https://d20wx6xzxkf84y.cloudfront.net'

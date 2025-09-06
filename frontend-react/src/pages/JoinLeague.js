@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
-import { Crown, Users, Mail, Clock, AlertCircle, CheckCircle, Shield, ArrowRight, User, Lock, Eye, EyeOff, ArrowLeft, RotateCcw } from 'lucide-react';
+import { Crown, Users, Mail, Clock, AlertCircle, CheckCircle, Shield, ArrowRight, User, Lock, Eye, EyeOff, ArrowLeft, RotateCcw, LogIn } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { authAPI, leaguesAPI } from '../services/apiService';
 import { dynastyTheme } from '../services/colorService';
@@ -18,8 +18,9 @@ const JoinLeague = () => {
     const [success, setSuccess] = useState('');
     const [message, setMessage] = useState('');
     const [step, setStep] = useState('verification'); // Initial step
+    const [accountExists, setAccountExists] = useState(false);
 
-    // Form states for signup/verification
+    // Form states for signup/signin/verification
     const [signupData, setSignupData] = useState({
         firstName: '',
         lastName: '',
@@ -28,8 +29,15 @@ const JoinLeague = () => {
         confirmPassword: '',
         favoriteTeam: ''
     });
+    
+    const [signinData, setSigninData] = useState({
+        email: '',
+        password: ''
+    });
+    
     const [showPassword, setShowPassword] = useState(false);
     const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+    const [showSigninPassword, setShowSigninPassword] = useState(false);
     const [verificationCode, setVerificationCode] = useState('');
     const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -48,7 +56,30 @@ const JoinLeague = () => {
         'Toronto Blue Jays', 'Washington Nationals'
     ];
 
-    // ✅ NEW: Properly validate authentication status with backend
+    // Check if an account exists for the invited email
+    const checkAccountExists = async (email) => {
+        try {
+            console.log("JoinLeague: Checking if account exists for:", email);
+            // Try to call the forgot password endpoint - if it succeeds, account exists
+            // This is a workaround since we don't have a dedicated endpoint
+            const response = await authAPI.forgotPassword(email);
+            console.log("JoinLeague: Account check response:", response);
+            
+            // If we get here without error, account exists
+            return true;
+        } catch (error) {
+            console.log("JoinLeague: Account check error:", error);
+            // Check the error message - some backends return specific messages
+            if (error.response?.data?.detail?.includes('not found') || 
+                error.response?.data?.message?.includes('not found')) {
+                return false;
+            }
+            // If it's another error, assume account exists to be safe
+            return true;
+        }
+    };
+
+    // Validate authentication status with backend
     const validateAuthStatus = async () => {
         console.log("JoinLeague: Validating authentication status with backend...");
         try {
@@ -60,21 +91,15 @@ const JoinLeague = () => {
                 return true;
             } else {
                 console.log("JoinLeague: User is NOT authenticated with backend, clearing auth state");
-                // Safe logout call - only if logout is a function
                 if (typeof logout === 'function') {
                     logout();
-                } else {
-                    console.warn("JoinLeague: logout is not a function, skipping logout call");
                 }
                 return false;
             }
         } catch (error) {
             console.log("JoinLeague: Auth status check failed, assuming not authenticated:", error);
-            // Safe logout call - only if logout is a function
             if (typeof logout === 'function') {
                 logout();
-            } else {
-                console.warn("JoinLeague: logout is not a function, skipping logout call");
             }
             return false;
         }
@@ -126,18 +151,32 @@ const JoinLeague = () => {
                     firstName: prefillFirstName,
                     lastName: prefillLastName
                 }));
+                
+                setSigninData(prev => ({
+                    ...prev,
+                    email: invitedEmail
+                }));
 
-                // STEP 2: Validate authentication status with backend
-                console.log("JoinLeague: Step 2 - Validating authentication status");
+                // STEP 2: Check if the invited email has an account
+                console.log("JoinLeague: Step 2 - Checking if account exists for invited email");
+                const hasAccount = await checkAccountExists(invitedEmail);
+                setAccountExists(hasAccount);
+                console.log("JoinLeague: Account exists for invited email?", hasAccount);
+
+                // STEP 3: Validate current authentication status
+                console.log("JoinLeague: Step 3 - Validating authentication status");
                 const isAuthenticated = await validateAuthStatus();
                 setAuthValidated(true);
 
-                // STEP 3: Determine next step based on VALIDATED auth status
+                // STEP 4: Determine next step based on account existence and auth status
                 if (isAuthenticated) {
                     console.log("JoinLeague: User is authenticated, showing join screen");
                     setStep('authenticated');
+                } else if (hasAccount) {
+                    console.log("JoinLeague: Account exists but not authenticated, showing signin screen");
+                    setStep('signin');
                 } else {
-                    console.log("JoinLeague: User is not authenticated, showing signup screen");
+                    console.log("JoinLeague: No account exists, showing signup screen");
                     setStep('signup');
                 }
 
@@ -155,7 +194,7 @@ const JoinLeague = () => {
         }
     }, [token, authValidated]);
 
-    // ✅ FIXED: Listen to user changes after auth validation
+    // Listen to user changes after auth validation
     useEffect(() => {
         // Only respond to user changes after we've validated auth status
         if (authValidated && invitation) {
@@ -163,11 +202,38 @@ const JoinLeague = () => {
                 console.log("JoinLeague: User logged in after initial load, updating step to authenticated");
                 setStep('authenticated');
             } else if (!user && step === 'authenticated') {
-                console.log("JoinLeague: User logged out, updating step to signup");
-                setStep('signup');
+                console.log("JoinLeague: User logged out, updating step based on account existence");
+                setStep(accountExists ? 'signin' : 'signup');
             }
         }
-    }, [user, authValidated, invitation, step]);
+    }, [user, authValidated, invitation, step, accountExists]);
+
+    // Handle signin form submission
+    const handleSignin = async (e) => {
+        e.preventDefault();
+        setIsSubmitting(true);
+        setError('');
+        setSuccess('');
+        console.log("JoinLeague: Attempting signin for:", signinData.email);
+
+        try {
+            const result = await signIn(signinData.email, signinData.password);
+            console.log("JoinLeague: Signin result:", result);
+
+            if (result.success) {
+                setSuccess('Successfully signed in! You can now join the league.');
+                console.log("JoinLeague: Sign-in successful. User is now authenticated.");
+                // The useEffect will detect the user change and update step to 'authenticated'
+            } else {
+                setError(result.error || 'Sign in failed. Please check your credentials.');
+            }
+        } catch (err) {
+            console.error('JoinLeague: Signin error:', err);
+            setError(err.response?.data?.detail || 'Sign in failed. Please try again.');
+        } finally {
+            setIsSubmitting(false);
+        }
+    };
 
     // Handle signup form submission
     const handleSignup = async (e) => {
@@ -278,13 +344,13 @@ const JoinLeague = () => {
         setMessage('');
         console.log("JoinLeague: Attempting to accept invitation for token:", token);
 
-        // ✅ ADDED: Re-validate auth before accepting invitation
+        // Re-validate auth before accepting invitation
         console.log("JoinLeague: Re-validating authentication before accepting...");
         const isStillAuthenticated = await validateAuthStatus();
         
         if (!isStillAuthenticated) {
             setError('Your session has expired. Please log in again to join the league.');
-            setStep('signup');
+            setStep(accountExists ? 'signin' : 'signup');
             setIsSubmitting(false);
             return;
         }
@@ -310,13 +376,10 @@ const JoinLeague = () => {
             // Check if it's an authentication error
             if (err.response?.status === 401 || err.response?.status === 403) {
                 setError('Your session has expired. Please log in again to join the league.');
-                // Safe logout call - only if logout is a function
                 if (typeof logout === 'function') {
                     logout();
-                } else {
-                    console.warn("JoinLeague: logout is not a function, skipping logout call");
                 }
-                setStep('signup');
+                setStep(accountExists ? 'signin' : 'signup');
             } else {
                 setError(err.response?.data?.detail || err.message || 'An unexpected error occurred during joining the league.');
             }
@@ -329,6 +392,11 @@ const JoinLeague = () => {
     const handleInputChange = (e) => {
         const { name, value } = e.target;
         setSignupData(prev => ({ ...prev, [name]: value }));
+    };
+
+    const handleSigninInputChange = (e) => {
+        const { name, value } = e.target;
+        setSigninData(prev => ({ ...prev, [name]: value }));
     };
 
     // Styling classes
@@ -444,6 +512,83 @@ const JoinLeague = () => {
                 )}
 
                 {/* Step Content */}
+                {step === 'signin' && (
+                    <div>
+                        <h2 className={subHeadingClass}>
+                            Welcome back! Sign in to join {invitation?.league_name}
+                        </h2>
+                        <div className={`${dynastyTheme.classes.bg.warning}/20 border ${dynastyTheme.classes.border.warning} rounded-lg p-4 mb-6 ${dynastyTheme.classes.text.white}`}>
+                            <AlertCircle className={`h-5 w-5 ${dynastyTheme.classes.text.warning} inline mr-2`} />
+                            An account with this email already exists and is verified
+                        </div>
+                        <p className={paragraphClass}>Please sign in to continue:</p>
+                        <form onSubmit={handleSignin} className="space-y-4">
+                            <div>
+                                <label className={labelClass}>
+                                    Email Address
+                                </label>
+                                <input
+                                    type="email"
+                                    name="email"
+                                    value={signinData.email}
+                                    onChange={handleSigninInputChange}
+                                    className={inputClass}
+                                    required
+                                    readOnly
+                                />
+                            </div>
+                            <div>
+                                <label className={labelClass}>
+                                    Password
+                                </label>
+                                <div className="relative">
+                                    <input
+                                        type={showSigninPassword ? 'text' : 'password'}
+                                        name="password"
+                                        value={signinData.password}
+                                        onChange={handleSigninInputChange}
+                                        className={`${inputClass} pr-10`}
+                                        required
+                                        autoFocus
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={() => setShowSigninPassword(!showSigninPassword)}
+                                        className={iconInputRight}
+                                    >
+                                        {showSigninPassword ? <EyeOff size={20} /> : <Eye size={20} />}
+                                    </button>
+                                </div>
+                            </div>
+                            <button
+                                type="submit"
+                                disabled={isSubmitting}
+                                className={buttonPrimaryClass}
+                            >
+                                {isSubmitting ? (
+                                    <>
+                                        <div className={spinnerClass}></div>
+                                        Signing In...
+                                    </>
+                                ) : (
+                                    <>
+                                        <LogIn className={iconClass} />
+                                        Sign In & Join League
+                                    </>
+                                )}
+                            </button>
+                        </form>
+                        <div className="text-center mt-6">
+                            <button
+                                onClick={() => navigate('/signin')}
+                                className={buttonGhostClass}
+                            >
+                                Need help signing in?
+                            </button>
+                        </div>
+                    </div>
+                )}
+
                 {step === 'signup' && (
                     <div>
                         <h2 className={subHeadingClass}>

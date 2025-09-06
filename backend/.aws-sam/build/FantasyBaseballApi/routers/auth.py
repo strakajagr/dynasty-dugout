@@ -1,56 +1,54 @@
+# backend/src/routers/auth.py - COMPLETE FILE (STABLE VERSION)
 import logging
 import sys
 from fastapi import APIRouter, HTTPException, Depends, Request, Response
 import boto3
 from botocore.exceptions import ClientError
-from pydantic import BaseModel # Import BaseModel
-from datetime import datetime, timezone # Added for timestamp handling in logout if needed
+from pydantic import BaseModel
+from datetime import datetime, timezone
 
-# Corrected Imports:
-# get_cognito_client comes from core.aws_clients
-# verify_cognito_token and get_current_user come from core.auth_utils
-# COGNITO_CONFIG and COOKIE_CONFIG come from core.config
 from core.aws_clients import get_cognito_client
-from core.auth_utils import verify_cognito_token, get_current_user, get_user_from_access_token # ADDED get_user_from_access_token
+from core.auth_utils import verify_cognito_token, get_current_user, get_user_from_access_token
 from core.config import COGNITO_CONFIG, COOKIE_CONFIG
 
 # Configure logging for this module
-logging.basicConfig(level=logging.INFO, stream=sys.stdout) # Ensure stream=sys.stdout for CloudWatch
+logging.basicConfig(level=logging.INFO, stream=sys.stdout)
 logger = logging.getLogger(__name__)
 
-# Add print statement for auth.py startup
-print("--- auth.py: Module Start (Full Version) ---") # Updated message for clarity
+print("--- auth.py: Module Start (Full Version with Email Check) ---")
 logger.info("--- auth.py: Logger configured, full module start ---")
 
 router = APIRouter()
 
-# Define a Pydantic model for the signup request body
+# Define Pydantic models for request bodies
 class SignupRequest(BaseModel):
     email: str
     password: str
     firstName: str
     lastName: str
-    favoriteTeam: str = None # Make optional with a default None
+    favoriteTeam: str = None
 
-# Define Pydantic models for other endpoints where dict was used, for clarity and validation
 class EmailRequest(BaseModel):
+    email: str
+
+class EmailCheckRequest(BaseModel):
     email: str
 
 class VerificationRequest(BaseModel):
     email: str
-    code: str = None # Support both 'code' and 'verification_code' via logic
+    code: str = None
     verification_code: str = None
 
 class PasswordResetRequest(BaseModel):
     email: str
     code: str
-    password: str # New password
+    password: str
 
 class LoginRequest(BaseModel):
     email: str
     password: str
 
-# Minimal SES check for debugging, or comment out if it's causing issues
+# Minimal SES check for debugging
 def verify_ses_configuration():
     logger.info("--- auth.py: Checking SES configuration ---")
     try:
@@ -65,9 +63,68 @@ def verify_ses_configuration():
         logger.error(f"--- auth.py: SES configuration check FAILED: {e}", exc_info=True)
         return False
 
+@router.post("/check-email")
+async def check_email_exists(email_data: EmailCheckRequest):
+    """Check if an email already has an account"""
+    logger.info(f"--- auth.py: /check-email endpoint HIT. Checking: {email_data.email} ---")
+    
+    try:
+        email = email_data.email.lower().strip()
+        
+        if not email or '@' not in email:
+            logger.warning(f"--- auth.py: Invalid email format for check: {email} ---")
+            return {"exists": False, "message": "Invalid email format"}
+        
+        cognito_client = get_cognito_client()
+        if not cognito_client:
+            logger.error("--- auth.py: Cognito client not available for email check ---")
+            return {"exists": False, "message": "Unable to verify email"}
+        
+        try:
+            # Check if user exists in Cognito
+            response = cognito_client.admin_get_user(
+                UserPoolId=COGNITO_CONFIG['user_pool_id'],
+                Username=email
+            )
+            
+            # Get user status
+            user_status = response.get('UserStatus', 'UNKNOWN')
+            email_verified = False
+            
+            # Check if email is verified from attributes
+            for attr in response.get('UserAttributes', []):
+                if attr['Name'] == 'email_verified':
+                    email_verified = attr['Value'] == 'true'
+                    break
+            
+            logger.info(f"--- auth.py: Email {email} exists with status: {user_status}, verified: {email_verified} ---")
+            
+            return {
+                "exists": True,
+                "email_verified": email_verified,
+                "user_status": user_status,
+                "message": "Account exists"
+            }
+            
+        except ClientError as e:
+            error_code = e.response['Error']['Code']
+            if error_code == 'UserNotFoundException':
+                logger.info(f"--- auth.py: Email {email} not found in user pool ---")
+                return {
+                    "exists": False,
+                    "message": "No account found"
+                }
+            else:
+                logger.error(f"--- auth.py: Cognito error checking email {email}: {error_code} ---", exc_info=True)
+                return {"exists": False, "message": "Unable to verify email"}
+                
+    except Exception as e:
+        logger.error(f"--- auth.py: Unexpected error checking email existence: {e} ---", exc_info=True)
+        return {"exists": False, "message": "Error checking email"}
+
 @router.post("/signup")
-async def signup(user_data: SignupRequest): # Changed 'dict' to 'SignupRequest'
-    logger.info(f"--- auth.py: /signup endpoint HIT. Received data: {user_data.model_dump()} ---") # Use .model_dump() for logging Pydantic object
+async def signup(user_data: SignupRequest):
+    logger.info(f"--- auth.py: /signup endpoint HIT. Received data: {user_data.model_dump()} ---")
     
     cognito_client = None
     try:
@@ -80,13 +137,11 @@ async def signup(user_data: SignupRequest): # Changed 'dict' to 'SignupRequest'
         logger.critical(f"--- auth.py: ERROR getting Cognito client: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail="Authentication service unavailable due to client error.")
 
-    # Check SES configuration before attempting signup
     ses_configured = verify_ses_configuration()
     if not ses_configured:
         logger.warning("--- auth.py: SES not configured. Signup will attempt but email verification may fail. ---")
 
     try:
-        # Pydantic handles basic validation; additional checks can be here
         email = user_data.email.lower().strip()
         password = user_data.password
         firstName = user_data.firstName.strip()
@@ -97,7 +152,7 @@ async def signup(user_data: SignupRequest): # Changed 'dict' to 'SignupRequest'
             logger.error(f"--- auth.py: Invalid email format: {email} ---")
             raise HTTPException(status_code=400, detail="Invalid email format")
         
-        # Check if user with this email already exists (Cognito user pool filter)
+        # Check if user already exists
         try:
             response_list_users = cognito_client.list_users(
                 UserPoolId=COGNITO_CONFIG['user_pool_id'],
@@ -123,7 +178,7 @@ async def signup(user_data: SignupRequest): # Changed 'dict' to 'SignupRequest'
                         logger.error(f"--- auth.py: Failed to resend verification: {resend_error}", exc_info=True)
                         raise HTTPException(status_code=500, detail="Failed to resend verification email. Please contact support.")
         except HTTPException:
-            raise # Re-raise if it's our own HTTPException
+            raise
         except Exception as filter_error:
             logger.warning(f"--- auth.py: Could not check for existing user: {filter_error}", exc_info=True)
         
@@ -134,10 +189,9 @@ async def signup(user_data: SignupRequest): # Changed 'dict' to 'SignupRequest'
             {'Name': 'given_name', 'Value': firstName},
             {'Name': 'family_name', 'Value': lastName},
         ]
-        if favoriteTeam: # Conditionally add custom attribute
+        if favoriteTeam:
             user_attributes.append({'Name': 'custom:favorite_team', 'Value': favoriteTeam})
         
-        # Use standard sign_up method
         logger.info(f"--- auth.py: Creating Cognito user for {email} with attributes: {user_attributes} ---")
         response = cognito_client.sign_up(
             ClientId=COGNITO_CONFIG['client_id'],
@@ -180,7 +234,7 @@ async def signup(user_data: SignupRequest): # Changed 'dict' to 'SignupRequest'
         raise HTTPException(status_code=500, detail=f"Registration failed: {str(e)}")
 
 @router.post("/verify-email")
-async def verify_email(verification_data: VerificationRequest): # Changed to use Pydantic model
+async def verify_email(verification_data: VerificationRequest):
     logger.info(f"--- auth.py: /verify-email endpoint HIT. Received data: {verification_data.model_dump()} ---")
     cognito_client = None
     try:
@@ -193,13 +247,13 @@ async def verify_email(verification_data: VerificationRequest): # Changed to use
         raise HTTPException(status_code=500, detail="Authentication service unavailable due to client error.")
     
     email = verification_data.email.lower().strip()
-    code = verification_data.code or verification_data.verification_code # Support both 'code' and 'verification_code'
+    code = verification_data.code or verification_data.verification_code
 
-    if not email or not code: # This check is now redundant if fields are required in BaseModel
+    if not email or not code:
         raise HTTPException(status_code=400, detail="Email and verification code are required")
 
     try:
-        logger.info(f"--- auth.py: Email verification attempt for: {email} with code: {code[:3]}... ---") # Log code partially for security
+        logger.info(f"--- auth.py: Email verification attempt for: {email} with code: {code[:3]}... ---")
         response = cognito_client.confirm_sign_up(
             ClientId=COGNITO_CONFIG['client_id'],
             Username=email,
@@ -226,14 +280,13 @@ async def verify_email(verification_data: VerificationRequest): # Changed to use
         raise HTTPException(status_code=500, detail="Email verification failed. Please try again or contact support.")
 
 @router.post("/resend-verification")
-async def resend_verification(email_data: EmailRequest): # Changed to use Pydantic model
+async def resend_verification(email_data: EmailRequest):
     """Resend email verification code using standard method"""
     logger.info(f"--- auth.py: /resend-verification endpoint HIT. Received data: {email_data.model_dump()} ---")
     cognito_client = get_cognito_client()
     if not cognito_client:
         raise HTTPException(status_code=500, detail="Authentication service unavailable")
     
-    # Check SES configuration
     ses_configured = verify_ses_configuration()
     
     try:
@@ -241,7 +294,6 @@ async def resend_verification(email_data: EmailRequest): # Changed to use Pydant
         
         logger.info(f"--- auth.py: Resend verification request for: {email} ---")
         
-        # Check if user exists and is unconfirmed
         try:
             response_list_users = cognito_client.list_users(
                 UserPoolId=COGNITO_CONFIG['user_pool_id'],
@@ -256,11 +308,10 @@ async def resend_verification(email_data: EmailRequest): # Changed to use Pydant
                 raise HTTPException(status_code=400, detail="This email is already verified")
                 
         except HTTPException:
-            raise # Re-raise our own HTTPExceptions
+            raise
         except Exception as e:
             logger.warning(f"--- auth.py: Could not check user status for {email}: {e}", exc_info=True)
         
-        # Use standard resend_confirmation_code method
         cognito_client.resend_confirmation_code(
             ClientId=COGNITO_CONFIG['client_id'],
             Username=email
@@ -291,7 +342,7 @@ async def resend_verification(email_data: EmailRequest): # Changed to use Pydant
         raise HTTPException(status_code=500, detail="Failed to resend verification email")
 
 @router.post("/forgot-password")
-async def forgot_password(email_data: EmailRequest): # Changed to use Pydantic model
+async def forgot_password(email_data: EmailRequest):
     """Send password reset email"""
     logger.info(f"--- auth.py: /forgot-password endpoint HIT. Received data: {email_data.model_dump()} ---")
     cognito_client = get_cognito_client()
@@ -303,7 +354,6 @@ async def forgot_password(email_data: EmailRequest): # Changed to use Pydantic m
         
         logger.info(f"--- auth.py: Password reset request for: {email} ---")
         
-        # Use the standard forgot_password method instead of admin methods
         try:
             cognito_client.forgot_password(
                 ClientId=COGNITO_CONFIG['client_id'],
@@ -316,24 +366,20 @@ async def forgot_password(email_data: EmailRequest): # Changed to use Pydantic m
             logger.error(f"--- auth.py: Forgot password ClientError for {email}: {error_code} - {error_message} ---", exc_info=True)
             if error_code == 'UserNotFoundException':
                 logger.info(f"--- auth.py: Password reset requested for non-existent user: {email} ---")
-                # Still return success for security
             else:
                 logger.error(f"--- auth.py: Password reset error for {email}: {e} ---", exc_info=True)
-                # Still return success for security
         except Exception as e:
             logger.error(f"--- auth.py: Password reset error for {email}: {e} ---", exc_info=True)
-            # Still return success for security
         
         # Always return success for security (don't reveal if user exists)
         return {"success": True, "message": "If an account exists with this email, password reset instructions have been sent."}
         
     except Exception as e:
         logger.critical(f"--- auth.py: UNEXPECTED ERROR during password reset: {e}", exc_info=True)
-        # Return success even on error for security
         return {"success": True, "message": "If an account exists with this email, password reset instructions have been sent."}
 
 @router.post("/reset-password")
-async def reset_password(reset_data: PasswordResetRequest): # Changed to use Pydantic model
+async def reset_password(reset_data: PasswordResetRequest):
     """Confirm password reset with code"""
     logger.info(f"--- auth.py: /reset-password endpoint HIT. Received data: {reset_data.model_dump()} ---")
     cognito_client = get_cognito_client()
@@ -343,7 +389,7 @@ async def reset_password(reset_data: PasswordResetRequest): # Changed to use Pyd
     try:
         email = reset_data.email.lower().strip()
         code = reset_data.code.strip()
-        new_password = reset_data.password # Renamed from new_password to password in model
+        new_password = reset_data.password
 
         logger.info(f"--- auth.py: Password reset confirmation for: {email} ---")
         
@@ -374,14 +420,14 @@ async def reset_password(reset_data: PasswordResetRequest): # Changed to use Pyd
         raise HTTPException(status_code=500, detail="Password reset failed")
         
 @router.post("/login")
-async def login(credentials: LoginRequest, response: Response): # Changed to use Pydantic model
+async def login(credentials: LoginRequest, response: Response):
     """Authenticate user with Cognito and set secure cookie"""
     logger.info(f"--- auth.py: /login endpoint HIT for {credentials.email} ---")
     cognito_client = get_cognito_client()
     if not cognito_client:
         raise HTTPException(status_code=500, detail="Authentication service unavailable")
     
-    email = "" # Define email here to be available in the final exception block
+    email = ""
     try:
         email = credentials.email.lower().strip()
         password = credentials.password
@@ -400,13 +446,11 @@ async def login(credentials: LoginRequest, response: Response): # Changed to use
         
         auth_result = auth_response['AuthenticationResult']
         
-        # --- START OF THE FIX ---
-        
-        # Get BOTH tokens from the response
+        # Get both tokens
         access_token = auth_result['AccessToken']
         id_token = auth_result['IdToken']
         
-        # 1. Use the Access Token for the cookie (the "key card")
+        # Use Access Token for cookie
         response.set_cookie(
             key=COOKIE_CONFIG["name"],
             value=access_token,
@@ -417,10 +461,8 @@ async def login(credentials: LoginRequest, response: Response): # Changed to use
             path=COOKIE_CONFIG["path"]
         )
         
-        # 2. Use the ID Token to get user details for the immediate response (the "driver's license")
+        # Use ID Token for immediate user details
         user_claims = verify_cognito_token(id_token)
-        
-        # --- END OF THE FIX ---
         
         logger.info(f"--- auth.py: Login successful for: {email} ---")
         return {
@@ -479,33 +521,42 @@ async def get_user_profile(current_user: dict = Depends(get_current_user)):
 
 @router.get("/status")
 async def auth_status(request: Request):
-    """Check authentication status using the Access Token."""
+    """Checks authentication status using the access token from the cookie"""
     logger.info("--- auth.py: /status endpoint HIT ---")
-    token = request.cookies.get(COOKIE_CONFIG["name"])
     
-    if not token:
-        logger.info("--- auth.py: Auth status check: Not authenticated (no token) ---")
-        return {"authenticated": False}
-        
     try:
-        # Use the new, correct validation function for the Access Token
+        token = request.cookies.get(COOKIE_CONFIG["name"])
+        
+        if not token:
+            logger.info("--- auth.py: Auth status check: Not authenticated (no token) ---")
+            return {"authenticated": False, "user": None}
+            
         user_claims = get_user_from_access_token(token)
-        logger.info(f"--- auth.py: Auth status check: Authenticated as {user_claims.get('email')} ---")
+        
+        if not user_claims:
+            logger.warning("--- auth.py: Auth status check failed (token was invalid) ---")
+            return {"authenticated": False, "user": None}
+
+        email = user_claims.get("email")
+        logger.info(f"--- auth.py: Auth status check: Authenticated as {email} ---")
+        
         return {
             "authenticated": True,
             "user": {
-                "email": user_claims.get("email"),
+                "email": email,
                 "given_name": user_claims.get("given_name"),
                 "family_name": user_claims.get("family_name"),
                 "user_id": user_claims.get("sub")
             }
         }
-    except Exception:
-        # If the token is invalid for any reason, the user is not authenticated
-        logger.warning(f"--- auth.py: Auth status check failed (invalid token) ---")
-        return {"authenticated": False}
+        
+    except HTTPException as e:
+        logger.warning(f"--- auth.py: Auth status check failed (HTTPException): {e.detail} ---")
+        return {"authenticated": False, "user": None}
+    except Exception as e:
+        logger.error(f"--- auth.py: Auth status check failed with an unexpected exception: {e} ---", exc_info=True)
+        return {"authenticated": False, "user": None}
 
-# Debug endpoint to check email configuration
 @router.get("/debug/email-config")
 async def debug_email_config():
     """Debug endpoint to check email configuration (remove in production)"""
@@ -527,5 +578,5 @@ async def debug_email_config():
         logger.critical(f"--- auth.py: DEBUG EMAIL CONFIG FAILED: {e}", exc_info=True)
         return {"error": str(e), "ses_configured": False}
 
-print("--- auth.py: Module End (Full Version) ---")
+print("--- auth.py: Module End (Full Version with Email Check) ---")
 logger.info("--- auth.py: Full Module End logging ---")

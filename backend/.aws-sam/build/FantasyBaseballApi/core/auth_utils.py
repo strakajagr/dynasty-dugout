@@ -28,7 +28,7 @@ def get_user_from_access_token(token: str) -> Dict[str, Any]:
         # Cognito returns attributes as a list of dicts, parse them into a single dict
         user_attrs = {attr['Name']: attr['Value'] for attr in user_info['UserAttributes']}
         user_attrs['sub'] = user_info['Username'] # Add the user's unique ID
-        
+        # user_attrs['sub'] = user_info['Username']  # Don't overwrite sub - it already has the UUID
         return user_attrs
     except ClientError as e:
         if e.response['Error']['Code'] in ['NotAuthorizedException', 'ResourceNotFoundException']:

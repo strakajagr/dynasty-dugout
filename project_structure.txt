@@ -1,0 +1,708 @@
+.
+├── .aws-sam
+├── backend
+│   ├── .aws-sam
+│   │   └── build.toml
+│   ├── backend
+│   │   └── src
+│   │       └── routers
+│   │           └── leagues
+│   ├── bin
+│   │   └── normalizer
+│   ├── certifi
+│   │   ├── __init__.py
+│   │   ├── __main__.py
+│   │   ├── cacert.pem
+│   │   ├── core.py
+│   │   └── py.typed
+│   ├── certifi-2025.8.3.dist-info
+│   │   ├── licenses
+│   │   │   └── LICENSE
+│   │   ├── INSTALLER
+│   │   ├── METADATA
+│   │   ├── RECORD
+│   │   ├── WHEEL
+│   │   └── top_level.txt
+│   ├── charset_normalizer
+│   │   ├── cli
+│   │   │   ├── __init__.py
+│   │   │   └── __main__.py
+│   │   ├── __init__.py
+│   │   ├── __main__.py
+│   │   ├── api.py
+│   │   ├── cd.py
+│   │   ├── constant.py
+│   │   ├── legacy.py
+│   │   ├── md.cpython-312-x86_64-linux-gnu.so
+│   │   ├── md.py
+│   │   ├── md__mypyc.cpython-312-x86_64-linux-gnu.so
+│   │   ├── models.py
+│   │   ├── py.typed
+│   │   ├── utils.py
+│   │   └── version.py
+│   ├── charset_normalizer-3.4.3.dist-info
+│   │   ├── licenses
+│   │   │   └── LICENSE
+│   │   ├── INSTALLER
+│   │   ├── METADATA
+│   │   ├── RECORD
+│   │   ├── WHEEL
+│   │   ├── entry_points.txt
+│   │   └── top_level.txt
+│   ├── events
+│   │   ├── sync-test.json
+│   │   ├── test-free-agents.json
+│   │   └── test-league-create.json
+│   ├── fantasy-baseball-env
+│   │   ├── bin
+│   │   │   ├── Activate.ps1
+│   │   │   ├── activate
+│   │   │   ├── activate.csh
+│   │   │   ├── activate.fish
+│   │   │   ├── jp.py
+│   │   │   ├── normalizer
+│   │   │   ├── pip
+│   │   │   ├── pip3
+│   │   │   ├── pip3.12
+│   │   │   ├── python -> python3
+│   │   │   ├── python3 -> /usr/bin/python3
+│   │   │   ├── python3.12 -> python3
+│   │   │   └── uvicorn
+│   │   ├── include
+│   │   │   └── python3.12
+│   │   ├── lib
+│   │   │   └── python3.12
+│   │   │       └── site-packages
+│   │   ├── lib64 -> lib
+│   │   └── pyvenv.cfg
+│   ├── idna
+│   │   ├── __init__.py
+│   │   ├── codec.py
+│   │   ├── compat.py
+│   │   ├── core.py
+│   │   ├── idnadata.py
+│   │   ├── intranges.py
+│   │   ├── package_data.py
+│   │   ├── py.typed
+│   │   └── uts46data.py
+│   ├── idna-3.10.dist-info
+│   │   ├── INSTALLER
+│   │   ├── LICENSE.md
+│   │   ├── METADATA
+│   │   ├── RECORD
+│   │   └── WHEEL
+│   ├── lambda_worker_package
+│   │   ├── bin
+│   │   │   └── normalizer
+│   │   ├── certifi
+│   │   │   ├── __init__.py
+│   │   │   ├── __main__.py
+│   │   │   ├── cacert.pem
+│   │   │   ├── core.py
+│   │   │   └── py.typed
+│   │   ├── certifi-2025.8.3.dist-info
+│   │   │   ├── licenses
+│   │   │   │   └── LICENSE
+│   │   │   ├── INSTALLER
+│   │   │   ├── METADATA
+│   │   │   ├── RECORD
+│   │   │   ├── WHEEL
+│   │   │   └── top_level.txt
+│   │   ├── charset_normalizer
+│   │   │   ├── cli
+│   │   │   │   ├── __init__.py
+│   │   │   │   └── __main__.py
+│   │   │   ├── __init__.py
+│   │   │   ├── __main__.py
+│   │   │   ├── api.py
+│   │   │   ├── cd.py
+│   │   │   ├── constant.py
+│   │   │   ├── legacy.py
+│   │   │   ├── md.cpython-312-x86_64-linux-gnu.so
+│   │   │   ├── md.py
+│   │   │   ├── md__mypyc.cpython-312-x86_64-linux-gnu.so
+│   │   │   ├── models.py
+│   │   │   ├── py.typed
+│   │   │   ├── utils.py
+│   │   │   └── version.py
+│   │   ├── charset_normalizer-3.4.3.dist-info
+│   │   │   ├── licenses
+│   │   │   │   └── LICENSE
+│   │   │   ├── INSTALLER
+│   │   │   ├── METADATA
+│   │   │   ├── RECORD
+│   │   │   ├── WHEEL
+│   │   │   ├── entry_points.txt
+│   │   │   └── top_level.txt
+│   │   ├── core
+│   │   │   ├── __init__.py
+│   │   │   ├── auth_utils.py
+│   │   │   ├── aws_clients.py
+│   │   │   ├── config.py
+│   │   │   ├── database.py
+│   │   │   ├── league_database_router.py
+│   │   │   └── season_utils.py
+│   │   ├── idna
+│   │   │   ├── __init__.py
+│   │   │   ├── codec.py
+│   │   │   ├── compat.py
+│   │   │   ├── core.py
+│   │   │   ├── idnadata.py
+│   │   │   ├── intranges.py
+│   │   │   ├── package_data.py
+│   │   │   ├── py.typed
+│   │   │   └── uts46data.py
+│   │   ├── idna-3.10.dist-info
+│   │   │   ├── INSTALLER
+│   │   │   ├── LICENSE.md
+│   │   │   ├── METADATA
+│   │   │   ├── RECORD
+│   │   │   └── WHEEL
+│   │   ├── requests
+│   │   │   ├── __init__.py
+│   │   │   ├── __version__.py
+│   │   │   ├── _internal_utils.py
+│   │   │   ├── adapters.py
+│   │   │   ├── api.py
+│   │   │   ├── auth.py
+│   │   │   ├── certs.py
+│   │   │   ├── compat.py
+│   │   │   ├── cookies.py
+│   │   │   ├── exceptions.py
+│   │   │   ├── help.py
+│   │   │   ├── hooks.py
+│   │   │   ├── models.py
+│   │   │   ├── packages.py
+│   │   │   ├── sessions.py
+│   │   │   ├── status_codes.py
+│   │   │   ├── structures.py
+│   │   │   └── utils.py
+│   │   ├── requests-2.32.5.dist-info
+│   │   │   ├── licenses
+│   │   │   │   └── LICENSE
+│   │   │   ├── INSTALLER
+│   │   │   ├── METADATA
+│   │   │   ├── RECORD
+│   │   │   ├── REQUESTED
+│   │   │   ├── WHEEL
+│   │   │   └── top_level.txt
+│   │   ├── urllib3
+│   │   │   ├── contrib
+│   │   │   │   ├── emscripten
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── pyopenssl.py
+│   │   │   │   └── socks.py
+│   │   │   ├── http2
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── connection.py
+│   │   │   │   └── probe.py
+│   │   │   ├── util
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── connection.py
+│   │   │   │   ├── proxy.py
+│   │   │   │   ├── request.py
+│   │   │   │   ├── response.py
+│   │   │   │   ├── retry.py
+│   │   │   │   ├── ssl_.py
+│   │   │   │   ├── ssl_match_hostname.py
+│   │   │   │   ├── ssltransport.py
+│   │   │   │   ├── timeout.py
+│   │   │   │   ├── url.py
+│   │   │   │   ├── util.py
+│   │   │   │   └── wait.py
+│   │   │   ├── __init__.py
+│   │   │   ├── _base_connection.py
+│   │   │   ├── _collections.py
+│   │   │   ├── _request_methods.py
+│   │   │   ├── _version.py
+│   │   │   ├── connection.py
+│   │   │   ├── connectionpool.py
+│   │   │   ├── exceptions.py
+│   │   │   ├── fields.py
+│   │   │   ├── filepost.py
+│   │   │   ├── poolmanager.py
+│   │   │   ├── py.typed
+│   │   │   └── response.py
+│   │   ├── urllib3-2.5.0.dist-info
+│   │   │   ├── licenses
+│   │   │   │   └── LICENSE.txt
+│   │   │   ├── INSTALLER
+│   │   │   ├── METADATA
+│   │   │   ├── RECORD
+│   │   │   └── WHEEL
+│   │   ├── calculate_rolling_stats.py
+│   │   ├── master_daily_updater.py
+│   │   ├── requirements.txt
+│   │   ├── update_active_accrued_stats.py
+│   │   └── worker_function.py
+│   ├── requests
+│   │   ├── __init__.py
+│   │   ├── __version__.py
+│   │   ├── _internal_utils.py
+│   │   ├── adapters.py
+│   │   ├── api.py
+│   │   ├── auth.py
+│   │   ├── certs.py
+│   │   ├── compat.py
+│   │   ├── cookies.py
+│   │   ├── exceptions.py
+│   │   ├── help.py
+│   │   ├── hooks.py
+│   │   ├── models.py
+│   │   ├── packages.py
+│   │   ├── sessions.py
+│   │   ├── status_codes.py
+│   │   ├── structures.py
+│   │   └── utils.py
+│   ├── requests-2.32.5.dist-info
+│   │   ├── licenses
+│   │   │   └── LICENSE
+│   │   ├── INSTALLER
+│   │   ├── METADATA
+│   │   ├── RECORD
+│   │   ├── REQUESTED
+│   │   ├── WHEEL
+│   │   └── top_level.txt
+│   ├── scripts
+│   │   ├── add_player_bio_data.py
+│   │   └── load_historical_stats.py
+│   ├── src
+│   │   ├── analytics
+│   │   │   └── player_analytics.py
+│   │   ├── core
+│   │   │   ├── auth_utils.py
+│   │   │   ├── aws_clients.py
+│   │   │   ├── config.py
+│   │   │   ├── database.py
+│   │   │   └── season_utils.py
+│   │   ├── routers
+│   │   │   ├── leagues
+│   │   │   │   ├── salaries
+│   │   │   │   ├── transactions
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── check_schema.py
+│   │   │   │   ├── fix_owners.py
+│   │   │   │   ├── lifecycle.py
+│   │   │   │   ├── management.py
+│   │   │   │   ├── owners.py
+│   │   │   │   ├── owners.py.backup
+│   │   │   │   ├── players.py
+│   │   │   │   ├── salaries.py
+│   │   │   │   ├── standings.py
+│   │   │   │   ├── status.py
+│   │   │   │   └── transactions.OLD.py
+│   │   │   ├── account.py
+│   │   │   ├── analytics.py
+│   │   │   ├── auth.py
+│   │   │   ├── invitations.py
+│   │   │   └── utilities.py
+│   │   ├── dist-config.json
+│   │   ├── fantasy_api.py
+│   │   ├── fantasy_api.py.backup
+│   │   └── requirements.txt
+│   ├── src_backup
+│   │   ├── core
+│   │   │   ├── __init__.py
+│   │   │   ├── auth_utils.py
+│   │   │   ├── aws_clients.py
+│   │   │   ├── config.py
+│   │   │   ├── database.py
+│   │   │   └── league_database_router.py
+│   │   ├── routers
+│   │   │   ├── leagues
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── lifecycle.py
+│   │   │   │   ├── management.py
+│   │   │   │   ├── owners.py
+│   │   │   │   ├── players.py
+│   │   │   │   ├── standings.py
+│   │   │   │   └── transactions.py
+│   │   │   ├── account.py
+│   │   │   ├── analytics.py
+│   │   │   ├── auth.py
+│   │   │   ├── invitations.py
+│   │   │   └── utilities.py
+│   │   ├── daily_update_lambda.py
+│   │   └── fantasy_api.py
+│   ├── urllib3
+│   │   ├── contrib
+│   │   │   ├── emscripten
+│   │   │   │   ├── __init__.py
+│   │   │   │   ├── connection.py
+│   │   │   │   ├── emscripten_fetch_worker.js
+│   │   │   │   ├── fetch.py
+│   │   │   │   ├── request.py
+│   │   │   │   └── response.py
+│   │   │   ├── __init__.py
+│   │   │   ├── pyopenssl.py
+│   │   │   └── socks.py
+│   │   ├── http2
+│   │   │   ├── __init__.py
+│   │   │   ├── connection.py
+│   │   │   └── probe.py
+│   │   ├── util
+│   │   │   ├── __init__.py
+│   │   │   ├── connection.py
+│   │   │   ├── proxy.py
+│   │   │   ├── request.py
+│   │   │   ├── response.py
+│   │   │   ├── retry.py
+│   │   │   ├── ssl_.py
+│   │   │   ├── ssl_match_hostname.py
+│   │   │   ├── ssltransport.py
+│   │   │   ├── timeout.py
+│   │   │   ├── url.py
+│   │   │   ├── util.py
+│   │   │   └── wait.py
+│   │   ├── __init__.py
+│   │   ├── _base_connection.py
+│   │   ├── _collections.py
+│   │   ├── _request_methods.py
+│   │   ├── _version.py
+│   │   ├── connection.py
+│   │   ├── connectionpool.py
+│   │   ├── exceptions.py
+│   │   ├── fields.py
+│   │   ├── filepost.py
+│   │   ├── poolmanager.py
+│   │   ├── py.typed
+│   │   └── response.py
+│   ├── urllib3-2.5.0.dist-info
+│   │   ├── licenses
+│   │   │   └── LICENSE.txt
+│   │   ├── INSTALLER
+│   │   ├── METADATA
+│   │   ├── RECORD
+│   │   └── WHEEL
+│   ├── utils
+│   ├── StepNavigation.js
+│   ├── bucket-policy.json
+│   ├── calculate_2025_stats.py
+│   ├── check_tables.py
+│   ├── cleanup_leagues.py
+│   ├── cors-config.json
+│   ├── dist-config.json
+│   ├── dist.json
+│   ├── event.json
+│   ├── fix-config-clean.json
+│   ├── fix-config.json
+│   ├── full-config.json
+│   ├── invoke-policy.json
+│   ├── lambda-package.zip
+│   ├── lambda_config.json
+│   ├── payload.json
+│   ├── quick_populate_rolling_stats.py
+│   ├── rds-data-policy.json
+│   ├── response.json
+│   ├── rolling_response.json
+│   ├── router-test.json
+│   ├── samconfig.toml
+│   ├── search-test.json
+│   ├── status-check-real.json
+│   ├── status.json
+│   ├── sync-test.json
+│   ├── te
+│   ├── template.yaml
+│   ├── template.yaml.backup
+│   ├── test-health.json
+│   ├── test-noauth.json
+│   ├── test-payload.json
+│   ├── test-root.json
+│   ├── test.b64
+│   ├── test.json
+│   ├── test_imports.py
+│   └── worker_deployment.zip
+├── bin
+│   └── normalizer
+├── certifi
+│   ├── __init__.py
+│   ├── __main__.py
+│   ├── cacert.pem
+│   ├── core.py
+│   └── py.typed
+├── certifi-2025.8.3.dist-info
+│   ├── licenses
+│   │   └── LICENSE
+│   ├── INSTALLER
+│   ├── METADATA
+│   ├── RECORD
+│   ├── WHEEL
+│   └── top_level.txt
+├── charset_normalizer
+│   ├── cli
+│   │   ├── __init__.py
+│   │   └── __main__.py
+│   ├── __init__.py
+│   ├── __main__.py
+│   ├── api.py
+│   ├── cd.py
+│   ├── constant.py
+│   ├── legacy.py
+│   ├── md.cpython-312-x86_64-linux-gnu.so
+│   ├── md.py
+│   ├── md__mypyc.cpython-312-x86_64-linux-gnu.so
+│   ├── models.py
+│   ├── py.typed
+│   ├── utils.py
+│   └── version.py
+├── charset_normalizer-3.4.3.dist-info
+│   ├── licenses
+│   │   └── LICENSE
+│   ├── INSTALLER
+│   ├── METADATA
+│   ├── RECORD
+│   ├── WHEEL
+│   ├── entry_points.txt
+│   └── top_level.txt
+├── data
+│   ├── response_final.json
+│   ├── response_teams_final.json
+│   └── response_teams_fixed.json
+├── frontend-react
+│   ├── public
+│   │   ├── favicon.ico
+│   │   ├── index.html
+│   │   ├── logo192.png
+│   │   ├── logo512.png
+│   │   ├── manifest.json
+│   │   └── robots.txt
+│   ├── src
+│   │   ├── components
+│   │   │   ├── commissioner
+│   │   │   │   ├── CommissionerModeBar.js
+│   │   │   │   └── CommissionerToggle.js
+│   │   │   ├── dashboard
+│   │   │   │   ├── InjuryReportSection.js
+│   │   │   │   ├── LeagueDiscoveryHub.js
+│   │   │   │   ├── MLBNewsSection.js
+│   │   │   │   ├── MyLeaguesSection.js
+│   │   │   │   ├── TickerBar.js
+│   │   │   │   ├── TrendingPlayersSection.js
+│   │   │   │   └── WelcomeBanner.js
+│   │   │   ├── league-creation
+│   │   │   │   ├── dialogs
+│   │   │   │   ├── steps
+│   │   │   │   └── StepNavigation.js
+│   │   │   ├── league-dashboard
+│   │   │   │   ├── BulkPositionAssignmentModal.js
+│   │   │   │   └── PositionAssignmentDropdown.js
+│   │   │   ├── player
+│   │   │   │   ├── PlayerAdvancedAnalytics.js
+│   │   │   │   ├── PlayerCareerTab.js
+│   │   │   │   ├── PlayerContractTab.js
+│   │   │   │   ├── PlayerGameLogsTab.js
+│   │   │   │   ├── PlayerHistoricalAnalytics.js
+│   │   │   │   ├── PlayerInfoCard.js
+│   │   │   │   ├── PlayerOverviewTab.js
+│   │   │   │   ├── PlayerPerformanceAnalytics.js
+│   │   │   │   └── PlayerProfileHeader.js
+│   │   │   ├── AuthModal.js
+│   │   │   ├── LeagueSettings.js
+│   │   │   ├── LoadingSpinner.js
+│   │   │   └── ProtectedRoute.js
+│   │   ├── contexts
+│   │   │   ├── AuthContext.js
+│   │   │   └── CommissionerContext.js
+│   │   ├── hooks
+│   │   │   ├── useLeagueCreation.js
+│   │   │   └── usePlayerData.js
+│   │   ├── pages
+│   │   │   ├── account
+│   │   │   │   ├── shared
+│   │   │   │   ├── CustomizationSettings.js
+│   │   │   │   ├── NotificationSettings.js
+│   │   │   │   ├── PreviewPane.js
+│   │   │   │   ├── ProfileSettings.js
+│   │   │   │   ├── SecuritySettings.js
+│   │   │   │   └── WelcomeBannerEditor.js
+│   │   │   ├── league-dashboard
+│   │   │   │   ├── free-agent-search
+│   │   │   │   ├── salary-contract
+│   │   │   │   ├── ComingSoon.js
+│   │   │   │   ├── CommissionerControls.js
+│   │   │   │   ├── FreeAgentSearch.js
+│   │   │   │   ├── LeagueHome.js
+│   │   │   │   ├── LeagueOwners.js
+│   │   │   │   ├── LeagueStandings.js
+│   │   │   │   ├── MyRoster.js
+│   │   │   │   ├── SalaryContractSettings.old.js
+│   │   │   │   ├── TeamHomeDashboard.js
+│   │   │   │   ├── TeamSetup.js
+│   │   │   │   ├── TeamStats.js
+│   │   │   │   └── TransactionLog.js
+│   │   │   ├── CreateLeague.js
+│   │   │   ├── Dashboard.js
+│   │   │   ├── JoinLeague.js
+│   │   │   ├── LandingPage.js
+│   │   │   ├── LeagueDashboard.js
+│   │   │   ├── LeagueWelcome.js
+│   │   │   ├── MyAccount.js
+│   │   │   └── PlayerProfile.js
+│   │   ├── services
+│   │   │   ├── tables
+│   │   │   │   ├── DynastyTable.js
+│   │   │   │   ├── dashboardColumns.js
+│   │   │   │   ├── playerColumns.js
+│   │   │   │   ├── pricingColumns.js
+│   │   │   │   ├── rosterColumns.js
+│   │   │   │   └── tableHelpers.js
+│   │   │   ├── adaptiveSalaryEngine.js
+│   │   │   ├── apiService.js
+│   │   │   ├── colorService.js
+│   │   │   ├── pricingDataService.js
+│   │   │   └── tableService.js
+│   │   ├── styles
+│   │   │   └── App.css
+│   │   ├── utils
+│   │   │   ├── backend
+│   │   │   │   └── src
+│   │   │   ├── RosterCapacityUtils.js
+│   │   │   ├── catchup_stats.py
+│   │   │   └── update_stats.py
+│   │   ├── App.js
+│   │   ├── App.test.js
+│   │   ├── index.css
+│   │   ├── index.js
+│   │   ├── logo.svg
+│   │   ├── reportWebVitals.js
+│   │   └── setupTests.js
+│   ├── transactions
+│   ├── .gitignore
+│   ├── README.md
+│   ├── api-behavior.json
+│   ├── cache-behavior.json
+│   ├── cf-clean.json
+│   ├── cf-config-updated.json
+│   ├── cf-config.json
+│   ├── cf-current.json
+│   ├── cf-final-fixed.json
+│   ├── cf-final.json
+│   ├── cf-fix-updated.json
+│   ├── cf-fix.json
+│   ├── cf-fresh.json
+│   ├── cf-last-fixed.json
+│   ├── cf-last-try.json
+│   ├── cf-no-behaviors.json
+│   ├── cf-pattern-fix.json
+│   ├── cf-pattern-fixed.json
+│   ├── cf-updated-legacy.json
+│   ├── cf-with-api.json
+│   ├── cloudfront-backup.json
+│   ├── cors-policy.json
+│   ├── current-config.json
+│   ├── deploy.sh
+│   ├── disabled-config.json
+│   ├── dist-config-disabled.json
+│   ├── dist-config.json
+│   ├── distribution-config.json
+│   ├── env.json
+│   ├── new-cf-distribution.json
+│   ├── new-config-clean.json
+│   ├── new-config.json
+│   ├── new-distribution.json
+│   ├── package.json
+│   ├── response.json
+│   ├── route53-change.json
+│   ├── test-logo.txt
+│   └── updated-config.json
+├── idna
+│   ├── __init__.py
+│   ├── codec.py
+│   ├── compat.py
+│   ├── core.py
+│   ├── idnadata.py
+│   ├── intranges.py
+│   ├── package_data.py
+│   ├── py.typed
+│   └── uts46data.py
+├── idna-3.10.dist-info
+│   ├── INSTALLER
+│   ├── LICENSE.md
+│   ├── METADATA
+│   ├── RECORD
+│   └── WHEEL
+├── logs
+├── requests
+│   ├── __init__.py
+│   ├── __version__.py
+│   ├── _internal_utils.py
+│   ├── adapters.py
+│   ├── api.py
+│   ├── auth.py
+│   ├── certs.py
+│   ├── compat.py
+│   ├── cookies.py
+│   ├── exceptions.py
+│   ├── help.py
+│   ├── hooks.py
+│   ├── models.py
+│   ├── packages.py
+│   ├── sessions.py
+│   ├── status_codes.py
+│   ├── structures.py
+│   └── utils.py
+├── requests-2.32.5.dist-info
+│   ├── licenses
+│   │   └── LICENSE
+│   ├── INSTALLER
+│   ├── METADATA
+│   ├── RECORD
+│   ├── REQUESTED
+│   ├── WHEEL
+│   └── top_level.txt
+├── scripts
+├── urllib3
+│   ├── contrib
+│   │   ├── emscripten
+│   │   │   ├── __init__.py
+│   │   │   ├── connection.py
+│   │   │   ├── emscripten_fetch_worker.js
+│   │   │   ├── fetch.py
+│   │   │   ├── request.py
+│   │   │   └── response.py
+│   │   ├── __init__.py
+│   │   ├── pyopenssl.py
+│   │   └── socks.py
+│   ├── http2
+│   │   ├── __init__.py
+│   │   ├── connection.py
+│   │   └── probe.py
+│   ├── util
+│   │   ├── __init__.py
+│   │   ├── connection.py
+│   │   ├── proxy.py
+│   │   ├── request.py
+│   │   ├── response.py
+│   │   ├── retry.py
+│   │   ├── ssl_.py
+│   │   ├── ssl_match_hostname.py
+│   │   ├── ssltransport.py
+│   │   ├── timeout.py
+│   │   ├── url.py
+│   │   ├── util.py
+│   │   └── wait.py
+│   ├── __init__.py
+│   ├── _base_connection.py
+│   ├── _collections.py
+│   ├── _request_methods.py
+│   ├── _version.py
+│   ├── connection.py
+│   ├── connectionpool.py
+│   ├── exceptions.py
+│   ├── fields.py
+│   ├── filepost.py
+│   ├── poolmanager.py
+│   ├── py.typed
+│   └── response.py
+├── urllib3-2.5.0.dist-info
+│   ├── licenses
+│   │   └── LICENSE.txt
+│   ├── INSTALLER
+│   ├── METADATA
+│   ├── RECORD
+│   └── WHEEL
+├── ARCHITECTURE -- CURRENT.MD
+├── project_structure.txt
+└── template.yaml
+
+121 directories, 585 files

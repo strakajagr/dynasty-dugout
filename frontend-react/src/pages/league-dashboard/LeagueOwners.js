@@ -1,4 +1,4 @@
-// src/pages/league-dashboard/LeagueOwners.js
+// src/pages/league-dashboard/LeagueOwners.js - COMPLETE WITH MULTI-COMMISSIONER
 import React, { useState } from 'react';
 import { Users, Crown, Send, Edit, Trash2 } from 'lucide-react';
 import { dynastyTheme } from '../../services/colorService';
@@ -149,6 +149,33 @@ const LeagueOwners = ({ league, leagueId, user, owners, ownersLoading, loadLeagu
       setInviteStatus({
         type: 'error',
         message: 'Failed to cancel invitation. Please try again.'
+      });
+    }
+  };
+
+  const handleToggleCommissioner = async (teamId, currentStatus) => {
+    const action = currentStatus ? 'remove' : 'grant';
+    if (!window.confirm(`Are you sure you want to ${action} commissioner rights?`)) {
+      return;
+    }
+    
+    try {
+      const response = await leaguesAPI.toggleCommissionerStatus(leagueId, teamId, !currentStatus);
+      
+      if (response.success) {
+        setInviteStatus({
+          type: 'success',
+          message: `Commissioner rights ${currentStatus ? 'removed' : 'granted'} successfully.`
+        });
+        loadLeagueData();
+      } else {
+        throw new Error(response.message || 'Failed to update commissioner status');
+      }
+    } catch (error) {
+      console.error('Error updating commissioner status:', error);
+      setInviteStatus({
+        type: 'error',
+        message: 'Failed to update commissioner rights.'
       });
     }
   };
@@ -425,6 +452,9 @@ const LeagueOwners = ({ league, leagueId, user, owners, ownersLoading, loadLeagu
                   <th className={`text-left p-3 ${dynastyTheme.classes.text.white} font-semibold`}>Owner Email</th>
                   <th className={`text-left p-3 ${dynastyTheme.classes.text.white} font-semibold`}>Team Name</th>
                   <th className={`text-left p-3 ${dynastyTheme.classes.text.white} font-semibold`}>Status</th>
+                  {league?.role === 'commissioner' && (
+                    <th className={`text-center p-3 ${dynastyTheme.classes.text.white} font-semibold`}>Admin Rights</th>
+                  )}
                   <th className={`text-left p-3 ${dynastyTheme.classes.text.white} font-semibold`}>Actions</th>
                 </tr>
               </thead>
@@ -432,12 +462,7 @@ const LeagueOwners = ({ league, leagueId, user, owners, ownersLoading, loadLeagu
                 {owners.map((owner) => (
                   <tr key={owner.team_id || owner.invitation_id || `empty-${owner.slot}`} className={`border-b hover:${dynastyTheme.classes.bg.primaryLight} ${dynastyTheme.classes.transition} ${dynastyTheme.classes.border.neutral}`}>
                     <td className={`p-3 ${dynastyTheme.classes.text.white} font-semibold`}>
-                      <div className="flex items-center space-x-2">
-                        <span>{owner.slot}</span>
-                        {owner.is_commissioner && (
-                          <Crown className={`w-4 h-4 ${dynastyTheme.classes.text.primary}`} title="Commissioner" />
-                        )}
-                      </div>
+                      {owner.slot}
                     </td>
                     <td className={`p-3`}>
                       {editingTeam === owner.team_id ? (
@@ -492,6 +517,32 @@ const LeagueOwners = ({ league, leagueId, user, owners, ownersLoading, loadLeagu
                         {owner.status}
                       </span>
                     </td>
+                    
+                    {league?.role === 'commissioner' && (
+                      <td className="p-3 text-center">
+                        {owner.status === 'Active' && owner.team_id ? (
+                          <input
+                            type="checkbox"
+                            checked={owner.is_commissioner || false}
+                            onChange={() => handleToggleCommissioner(owner.team_id, owner.is_commissioner)}
+                            disabled={owner.user_id === user?.sub}
+                            className={`w-5 h-5 rounded ${dynastyTheme.classes.text.primary} ${
+                              owner.user_id === user?.sub ? 'opacity-50 cursor-not-allowed' : 'cursor-pointer'
+                            }`}
+                            title={
+                              owner.user_id === user?.sub 
+                                ? "You cannot remove your own commissioner rights" 
+                                : owner.is_commissioner 
+                                  ? "Remove commissioner rights" 
+                                  : "Grant commissioner rights"
+                            }
+                          />
+                        ) : (
+                          <span className={dynastyTheme.classes.text.neutralLight}>-</span>
+                        )}
+                      </td>
+                    )}
+                    
                     <td className="p-3">
                       <div className="flex items-center space-x-2">
                         {editingTeam === owner.team_id ? (
@@ -525,7 +576,7 @@ const LeagueOwners = ({ league, leagueId, user, owners, ownersLoading, loadLeagu
                                 onClick={() => handleInviteForSlot(owner.slot)}
                                 className={dynastyTheme.utils.getComponent('button', 'primary', 'xs')}
                               >
-                                Invite Owner
+                                Invite
                               </button>
                             )}
                             {owner.actions?.includes('Edit') && owner.team_id && (

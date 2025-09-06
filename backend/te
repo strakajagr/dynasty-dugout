@@ -1,0 +1,85 @@
+{
+    "records": [
+        [
+            {
+                "stringValue": "team_id"
+            },
+            {
+                "stringValue": "uuid"
+            }
+        ],
+        [
+            {
+                "stringValue": "league_id"
+            },
+            {
+                "stringValue": "character varying"
+            }
+        ],
+        [
+            {
+                "stringValue": "user_id"
+            },
+            {
+                "stringValue": "character varying"
+            }
+        ],
+        [
+            {
+                "stringValue": "team_name"
+            },
+            {
+                "stringValue": "character varying"
+            }
+        ],
+        [
+            {
+                "stringValue": "manager_name"
+            },
+            {
+                "stringValue": "character varying"
+            }
+        ],
+        [
+            {
+                "stringValue": "manager_email"
+            },
+            {
+                "stringValue": "character varying"
+            }
+        ],
+        [
+            {
+                "stringValue": "is_commissioner"
+            },
+            {
+                "stringValue": "boolean"
+            }
+        ],
+        [
+            {
+                "stringValue": "is_active"
+            },
+            {
+                "stringValue": "boolean"
+            }
+        ],
+        [
+            {
+                "stringValue": "slot_number"
+            },
+            {
+                "stringValue": "integer"
+            }
+        ],
+        [
+            {
+                "stringValue": "created_at"
+            },
+            {
+                "stringValue": "timestamp without time zone"
+            }
+        ]
+    ],
+    "numberOfRecordsUpdated": 0
+}

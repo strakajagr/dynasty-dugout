@@ -1,0 +1,181 @@
+{
+  "ETag": "E2BA73WWEURG3X",
+  "DistributionConfig": {
+    "CallerReference": "dynasty-dugout-1756858520",
+    "Aliases": {
+      "Quantity": 0
+    },
+    "DefaultRootObject": "index.html",
+    "Origins": {
+      "Quantity": 1,
+      "Items": [
+        {
+          "Id": "S3-fantasy-baseball-frontend-strakajagr",
+          "DomainName": "fantasy-baseball-frontend-strakajagr.s3.amazonaws.com",
+          "OriginPath": "",
+          "CustomHeaders": {
+            "Quantity": 0
+          },
+          "S3OriginConfig": {
+            "OriginAccessIdentity": ""
+          },
+          "ConnectionAttempts": 3,
+          "ConnectionTimeout": 10,
+          "OriginShield": {
+            "Enabled": false
+          },
+          "OriginAccessControlId": ""
+        }
+      ]
+    },
+    "OriginGroups": {
+      "Quantity": 0
+    },
+    "DefaultCacheBehavior": {
+      "TargetOriginId": "S3-fantasy-baseball-frontend-strakajagr",
+      "TrustedSigners": {
+        "Enabled": false,
+        "Quantity": 0
+      },
+      "TrustedKeyGroups": {
+        "Enabled": false,
+        "Quantity": 0
+      },
+      "ViewerProtocolPolicy": "redirect-to-https",
+      "AllowedMethods": {
+        "Quantity": 2,
+        "Items": [
+          "HEAD",
+          "GET"
+        ],
+        "CachedMethods": {
+          "Quantity": 2,
+          "Items": [
+            "HEAD",
+            "GET"
+          ]
+        }
+      },
+      "SmoothStreaming": false,
+      "Compress": true,
+      "LambdaFunctionAssociations": {
+        "Quantity": 0
+      },
+      "FunctionAssociations": {
+        "Quantity": 0
+      },
+      "FieldLevelEncryptionId": "",
+      "GrpcConfig": {
+        "Enabled": false
+      },
+      "ForwardedValues": {
+        "QueryString": false,
+        "Cookies": {
+          "Forward": "none"
+        },
+        "Headers": {
+          "Quantity": 0
+        },
+        "QueryStringCacheKeys": {
+          "Quantity": 0
+        }
+      },
+      "MinTTL": 0,
+      "DefaultTTL": 86400,
+      "MaxTTL": 31536000
+    },
+    "CacheBehaviors": {
+      "Quantity": 1,
+      "Items": [
+        {
+          "PathPattern": "*.html",
+          "TargetOriginId": "S3-fantasy-baseball-frontend-strakajagr",
+          "ViewerProtocolPolicy": "redirect-to-https",
+          "TrustedSigners": {
+            "Enabled": false,
+            "Quantity": 0
+          },
+          "AllowedMethods": {
+            "Quantity": 2,
+            "Items": [
+              "HEAD",
+              "GET"
+            ],
+            "CachedMethods": {
+              "Quantity": 2,
+              "Items": [
+                "HEAD",
+                "GET"
+              ]
+            }
+          },
+          "MinTTL": 0,
+          "DefaultTTL": 0,
+          "MaxTTL": 0,
+          "Compress": true,
+          "ForwardedValues": {
+            "QueryString": false,
+            "Cookies": {
+              "Forward": "none"
+            },
+            "Headers": {
+              "Quantity": 0
+            },
+            "QueryStringCacheKeys": {
+              "Quantity": 0
+            }
+          },
+          "SmoothStreaming": false,
+          "TrustedKeyGroups": {
+            "Enabled": false,
+            "Quantity": 0
+          },
+          "LambdaFunctionAssociations": {
+            "Quantity": 0
+          },
+          "FunctionAssociations": {
+            "Quantity": 0
+          },
+          "FieldLevelEncryptionId": ""
+        }
+      ]
+    },
+    "CustomErrorResponses": {
+      "Quantity": 1,
+      "Items": [
+        {
+          "ErrorCode": 404,
+          "ResponsePagePath": "/index.html",
+          "ResponseCode": "200",
+          "ErrorCachingMinTTL": 300
+        }
+      ]
+    },
+    "Comment": "Dynasty Dugout Frontend",
+    "Logging": {
+      "Enabled": false,
+      "IncludeCookies": false,
+      "Bucket": "",
+      "Prefix": ""
+    },
+    "PriceClass": "PriceClass_All",
+    "Enabled": true,
+    "ViewerCertificate": {
+      "CloudFrontDefaultCertificate": true,
+      "SSLSupportMethod": "vip",
+      "MinimumProtocolVersion": "TLSv1",
+      "CertificateSource": "cloudfront"
+    },
+    "Restrictions": {
+      "GeoRestriction": {
+        "RestrictionType": "none",
+        "Quantity": 0
+      }
+    },
+    "WebACLId": "",
+    "HttpVersion": "http2",
+    "IsIPV6Enabled": true,
+    "ContinuousDeploymentPolicyId": "",
+    "Staging": false
+  }
+}

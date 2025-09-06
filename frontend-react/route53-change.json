@@ -1,0 +1,14 @@
+{
+  "Changes": [{
+    "Action": "UPSERT",
+    "ResourceRecordSet": {
+      "Name": "dynasty-dugout.com",
+      "Type": "A",
+      "AliasTarget": {
+        "HostedZoneId": "Z2FDTNDATAQYW2",
+        "DNSName": "d3b4qchtdedfdp.cloudfront.net",
+        "EvaluateTargetHealth": false
+      }
+    }
+  }]
+}

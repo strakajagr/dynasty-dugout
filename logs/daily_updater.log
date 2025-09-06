@@ -1,0 +1,34 @@
+2025-08-20 18:47:03,649 - botocore.credentials - INFO - Found credentials in shared credentials file: ~/.aws/credentials
+2025-08-20 18:47:03,771 - __main__ - INFO - Running daily update for yesterday: 2025-08-19
+2025-08-20 18:47:03,771 - __main__ - INFO - Fetching games for 2025-08-19
+2025-08-20 18:47:03,848 - __main__ - INFO - Found 16 completed games
+2025-08-20 18:47:07,713 - __main__ - INFO - Fetched 467 player game logs
+2025-08-20 18:47:07,715 - __main__ - INFO - Checking 450 unique players
+2025-08-20 18:47:38,459 - __main__ - INFO - Inserting 467 game logs
+2025-08-20 18:48:10,901 - __main__ - INFO - Recalculating 2025 season stats...
+2025-08-20 18:48:12,983 - __main__ - INFO - Calculated stats for 2332 players
+2025-08-20 18:48:12,983 - __main__ - INFO - ==================================================
+2025-08-20 18:48:12,983 - __main__ - INFO - DAILY UPDATE COMPLETE
+2025-08-20 18:48:12,983 - __main__ - INFO - Date processed: 2025-08-19
+2025-08-20 18:48:12,983 - __main__ - INFO - Games processed: 16
+2025-08-20 18:48:12,983 - __main__ - INFO - Game logs inserted: 467
+2025-08-20 18:48:12,983 - __main__ - INFO - New players added: 0
+2025-08-20 18:48:12,983 - __main__ - INFO - Duration: 0:01:09.211553
+2025-08-20 18:48:12,983 - __main__ - INFO - ==================================================
+2025-08-20 18:48:13,175 - botocore.credentials - INFO - Found credentials in shared credentials file: ~/.aws/credentials
+2025-08-20 18:48:13,198 - __main__ - INFO - Running update for specified date: 2025-08-19
+2025-08-20 18:48:13,198 - __main__ - INFO - Fetching games for 2025-08-19
+2025-08-20 18:48:13,277 - __main__ - INFO - Found 16 completed games
+2025-08-20 18:48:16,173 - __main__ - INFO - Fetched 467 player game logs
+2025-08-20 18:48:16,175 - __main__ - INFO - Checking 450 unique players
+2025-08-20 18:48:46,044 - __main__ - INFO - Inserting 467 game logs
+2025-08-20 18:49:17,721 - __main__ - INFO - Recalculating 2025 season stats...
+2025-08-20 18:49:18,616 - __main__ - INFO - Calculated stats for 2332 players
+2025-08-20 18:49:18,616 - __main__ - INFO - ==================================================
+2025-08-20 18:49:18,616 - __main__ - INFO - DAILY UPDATE COMPLETE
+2025-08-20 18:49:18,616 - __main__ - INFO - Date processed: 2025-08-19
+2025-08-20 18:49:18,616 - __main__ - INFO - Games processed: 16
+2025-08-20 18:49:18,616 - __main__ - INFO - Game logs inserted: 467
+2025-08-20 18:49:18,616 - __main__ - INFO - New players added: 0
+2025-08-20 18:49:18,616 - __main__ - INFO - Duration: 0:01:05.418349
+2025-08-20 18:49:18,616 - __main__ - INFO - ==================================================

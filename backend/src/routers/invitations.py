@@ -79,19 +79,16 @@ async def verify_invitation_token_endpoint(token: str, request: Request):
         league_id = payload['league_id']
         email = payload['email']
 
-        # Convert hyphens to underscores for database name
-        league_database = f"league_{league_id.replace('-', '_')}"
-        logger.info(f"--- invitations.py: League database name: {league_database} ---")
-
-        # STEP 1: Get invitation details from league database
+        # STEP 1: Get invitation details from SHARED leagues database
         invitation_result = execute_sql(
             """SELECT invitation_id, league_id, email, owner_name, personal_message,
                       target_slot, invited_at, expires_at, status
                FROM league_invitations
-               WHERE invitation_token = :token
+               WHERE league_id = :league_id::uuid
+               AND invitation_token = :token
                AND status = 'pending'""",
-            parameters={'token': token},
-            database_name=league_database
+            parameters={'league_id': league_id, 'token': token},
+            database_name='leagues'  # SHARED DATABASE
         )
         logger.info(f"--- invitations.py: Invitation DB query result (verify): {json.dumps(invitation_result)} ---")
 
@@ -111,15 +108,18 @@ async def verify_invitation_token_endpoint(token: str, request: Request):
                     logger.warning(f"--- invitations.py: Invitation {invitation_record[0].get('stringValue')} expired. ---")
                     # Mark as expired in database
                     execute_sql(
-                        "UPDATE league_invitations SET status = 'expired' WHERE invitation_token = :token",
-                        parameters={'token': token},
-                        database_name=league_database
+                        """UPDATE league_invitations 
+                           SET status = 'expired' 
+                           WHERE league_id = :league_id::uuid 
+                           AND invitation_token = :token""",
+                        parameters={'league_id': league_id, 'token': token},
+                        database_name='leagues'  # SHARED DATABASE
                     )
                     raise HTTPException(status_code=400, detail="This invitation has expired")
             except Exception as date_error:
                 logger.warning(f"--- invitations.py: Could not parse expiration date for invitation {invitation_record[0].get('stringValue')}: {date_error}", exc_info=True)
 
-        # STEP 2: Get league name from main postgres database (separate query)
+        # STEP 2: Get league name from main postgres database
         league_name_result = execute_sql(
             "SELECT league_name FROM user_leagues WHERE league_id = :league_id::uuid",
             parameters={'league_id': league_id},
@@ -133,9 +133,11 @@ async def verify_invitation_token_endpoint(token: str, request: Request):
 
         # STEP 3: Check if user already has a team in this league
         existing_team = execute_sql(
-            "SELECT team_id FROM league_teams WHERE league_id = :league_id::uuid AND manager_email = :email",
+            """SELECT team_id FROM league_teams 
+               WHERE league_id = :league_id::uuid 
+               AND manager_email = :email""",
             parameters={'league_id': league_id, 'email': email},
-            database_name=league_database
+            database_name='leagues'  # SHARED DATABASE
         )
         logger.info(f"--- invitations.py: Existing team check result (verify): {json.dumps(existing_team)} ---")
 
@@ -143,11 +145,13 @@ async def verify_invitation_token_endpoint(token: str, request: Request):
             logger.warning(f"--- invitations.py: User {email} already has team in league {league_id}. ---")
             raise HTTPException(status_code=400, detail="You already have a team in this league")
 
-        # STEP 4: Get commissioner name from league database directly
+        # STEP 4: Get commissioner name from SHARED leagues database
         commissioner_result = execute_sql(
-            "SELECT manager_name FROM league_teams WHERE league_id = :league_id::uuid AND is_commissioner = true",
+            """SELECT manager_name FROM league_teams 
+               WHERE league_id = :league_id::uuid 
+               AND is_commissioner = true""",
             parameters={'league_id': league_id},
-            database_name=league_database  # FIXED - Query league database directly
+            database_name='leagues'  # SHARED DATABASE
         )
         logger.info(f"--- invitations.py: Commissioner name DB query result (verify): {json.dumps(commissioner_result)} ---")
 
@@ -190,7 +194,7 @@ async def accept_invitation(
     logger.info(f"--- invitations.py: /accept endpoint HIT. Request data: {request_data.model_dump()} ---")
 
     try:
-        # ✅ FIXED: Get user data from JWT token consistently
+        # Get user data from JWT token consistently
         user_id = current_user.get('sub')  # This is the Cognito User ID (VARCHAR)
         user_email = current_user.get('email')
         user_first_name = current_user.get('given_name', 'User')
@@ -209,10 +213,6 @@ async def accept_invitation(
         invited_email = payload['email']
         target_slot = payload.get('target_slot')
 
-        # Convert hyphens to underscores for database name
-        league_database = f"league_{league_id.replace('-', '_')}"
-        logger.info(f"--- invitations.py: League database name for accept: {league_database} ---")
-
         # Verify the authenticated user's email matches the invitation
         if user_email.lower() != invited_email.lower():
             logger.warning(f"--- invitations.py: Email mismatch: Auth user {user_email} vs Invite {invited_email}. ---")
@@ -222,11 +222,13 @@ async def accept_invitation(
             )
         logger.info(f"--- invitations.py: Email match confirmed. ---")
 
-        # STEP 1: Get invitation details and verify it's still pending (league database)
+        # STEP 1: Get invitation details and verify it's still pending
         invitation_result = execute_sql(
-            "SELECT invitation_id, status FROM league_invitations WHERE invitation_token = :token",
-            parameters={'token': request_data.token},
-            database_name=league_database
+            """SELECT invitation_id, status FROM league_invitations 
+               WHERE league_id = :league_id::uuid 
+               AND invitation_token = :token""",
+            parameters={'league_id': league_id, 'token': request_data.token},
+            database_name='leagues'  # SHARED DATABASE
         )
         logger.info(f"--- invitations.py: Invitation DB query result (accept step 1): {json.dumps(invitation_result)} ---")
 
@@ -242,11 +244,13 @@ async def accept_invitation(
             raise HTTPException(status_code=400, detail="This invitation has already been processed")
         logger.info(f"--- invitations.py: Invitation status confirmed pending. ---")
 
-        # STEP 2: Check if user already has a team in this league (league database)
+        # STEP 2: Check if user already has a team in this league
         existing_team = execute_sql(
-            "SELECT team_id FROM league_teams WHERE league_id = :league_id::uuid AND user_id = :user_id",  # Check user_id
-            parameters={'league_id': league_id, 'user_id': user_id},  # Use user_id
-            database_name=league_database
+            """SELECT team_id FROM league_teams 
+               WHERE league_id = :league_id::uuid 
+               AND user_id = :user_id""",
+            parameters={'league_id': league_id, 'user_id': user_id},
+            database_name='leagues'  # SHARED DATABASE
         )
         logger.info(f"--- invitations.py: Existing team check result (accept step 2): {json.dumps(existing_team)} ---")
 
@@ -270,13 +274,15 @@ async def accept_invitation(
         league_name = league_details["records"][0][0].get('stringValue')
         logger.info(f"--- invitations.py: League name: {league_name} ---")
 
-        # STEP 4: Get max teams from league settings (league database)
+        # STEP 4: Get max teams from league settings
         max_teams = 12
         try:
             settings_result = execute_sql(
-                "SELECT setting_value FROM league_settings WHERE league_id = :league_id::uuid AND setting_name = 'max_teams'",
+                """SELECT setting_value FROM league_settings 
+                   WHERE league_id = :league_id::uuid 
+                   AND setting_name = 'max_teams'""",
                 parameters={'league_id': league_id},
-                database_name=league_database
+                database_name='leagues'  # SHARED DATABASE
             )
             if settings_result.get("records") and len(settings_result["records"]) > 0:
                 max_teams = int(settings_result["records"][0][0].get('stringValue', 12))
@@ -284,11 +290,12 @@ async def accept_invitation(
         except Exception as settings_error:
             logger.warning(f"--- invitations.py: Could not get max_teams setting, using default of 12: {settings_error}", exc_info=True)
 
-        # STEP 5: Check if league is full (league database)
+        # STEP 5: Check if league is full
         existing_teams_result = execute_sql(
-            "SELECT COUNT(*) as team_count FROM league_teams WHERE league_id = :league_id::uuid",
+            """SELECT COUNT(*) as team_count FROM league_teams 
+               WHERE league_id = :league_id::uuid""",
             parameters={'league_id': league_id},
-            database_name=league_database
+            database_name='leagues'  # SHARED DATABASE
         )
         logger.info(f"--- invitations.py: Existing teams count result (accept step 5): {json.dumps(existing_teams_result)} ---")
 
@@ -301,10 +308,10 @@ async def accept_invitation(
             raise HTTPException(status_code=400, detail="League is already full")
         logger.info(f"--- invitations.py: League has available slots. ---")
 
-        # STEP 6: Determine team name and slot (league database)
+        # STEP 6: Determine team name and slot
         team_slot = None
         
-        # ✅ FIXED: Use JWT token data consistently for user display name
+        # Use JWT token data consistently for user display name
         manager_display_name = f"{user_first_name} {user_last_name}".strip()
         if not manager_display_name or manager_display_name == 'User':  # Fallback if first/last name are empty
             manager_display_name = user_email.split('@')[0]
@@ -313,18 +320,22 @@ async def accept_invitation(
         if target_slot:
             # Check if target slot is available
             slot_taken_result = execute_sql(
-                "SELECT team_id FROM league_teams WHERE league_id = :league_id::uuid AND slot_number = :slot_number",
+                """SELECT team_id FROM league_teams 
+                   WHERE league_id = :league_id::uuid 
+                   AND slot_number = :slot_number""",
                 parameters={'league_id': league_id, 'slot_number': target_slot},
-                database_name=league_database
+                database_name='leagues'  # SHARED DATABASE
             )
             logger.info(f"--- invitations.py: Target slot {target_slot} check result: {json.dumps(slot_taken_result)} ---")
 
             if slot_taken_result.get("records") and len(slot_taken_result["records"]) > 0:
                 # Target slot taken, find next available
                 used_slots_query = execute_sql(
-                    "SELECT slot_number FROM league_teams WHERE league_id = :league_id::uuid ORDER BY slot_number",
+                    """SELECT slot_number FROM league_teams 
+                       WHERE league_id = :league_id::uuid 
+                       ORDER BY slot_number""",
                     parameters={'league_id': league_id},
-                    database_name=league_database
+                    database_name='leagues'  # SHARED DATABASE
                 )
                 used_slot_numbers = [r[0].get('longValue') for r in used_slots_query.get("records", []) if r[0] and not r[0].get('isNull')]
 
@@ -346,9 +357,11 @@ async def accept_invitation(
         else:
             # Auto-assign next available slot
             used_slots_query = execute_sql(
-                "SELECT slot_number FROM league_teams WHERE league_id = :league_id::uuid ORDER BY slot_number",
+                """SELECT slot_number FROM league_teams 
+                   WHERE league_id = :league_id::uuid 
+                   ORDER BY slot_number""",
                 parameters={'league_id': league_id},
-                database_name=league_database
+                database_name='leagues'  # SHARED DATABASE
             )
             used_slot_numbers = [r[0].get('longValue') for r in used_slots_query.get("records", []) if r[0] and not r[0].get('isNull')]
 
@@ -365,7 +378,7 @@ async def accept_invitation(
             team_slot = next_available_slot
             logger.info(f"--- invitations.py: Auto-assigned to slot: {team_slot} ---")
 
-        # STEP 7: Create the team (league database) - INCLUDING SLOT_NUMBER
+        # STEP 7: Create the team - INCLUDING SLOT_NUMBER
         team_id = str(uuid.uuid4())
         logger.info(f"--- invitations.py: Creating new team {team_id} for user {user_id} in league {league_id} at slot {team_slot} ---")
         execute_sql(
@@ -377,16 +390,16 @@ async def accept_invitation(
             parameters={
                 'team_id': team_id,
                 'league_id': league_id,
-                'user_id': user_id,  # ✅ FIXED: This is VARCHAR from JWT (sub)
-                'manager_name': manager_display_name,  # ✅ FIXED: From JWT token
-                'manager_email': user_email,  # ✅ FIXED: From JWT token
+                'user_id': user_id,  # VARCHAR from JWT (sub)
+                'manager_name': manager_display_name,  # From JWT token
+                'manager_email': user_email,  # From JWT token
                 'team_name': team_name_final,
                 'created_at': datetime.now(timezone.utc).isoformat(),
-                'slot_number': team_slot  # NEW COLUMN for slot_number
+                'slot_number': team_slot
             },
-            database_name=league_database
+            database_name='leagues'  # SHARED DATABASE
         )
-        logger.info(f"--- invitations.py: Team {team_id} created in league database. ---")
+        logger.info(f"--- invitations.py: Team {team_id} created in leagues database. ---")
 
         # STEP 8: Add user to league membership (main database)
         logger.info(f"--- invitations.py: Adding user {user_id} to league_memberships in main database. ---")
@@ -397,26 +410,29 @@ async def accept_invitation(
                role = 'owner', joined_at = :joined_at::timestamptz, is_active = true""",
             parameters={
                 'league_id': league_id,
-                'user_id': user_id,  # ✅ FIXED: VARCHAR from JWT
+                'user_id': user_id,  # VARCHAR from JWT
                 'joined_at': datetime.now(timezone.utc).isoformat()
             },
             database_name='postgres'  # CORRECT - league_memberships is in main database
         )
         logger.info(f"--- invitations.py: User {user_id} added/updated in league_memberships. ---")
 
-        # STEP 9: Mark invitation as accepted (league database)
+        # STEP 9: Mark invitation as accepted
         logger.info(f"--- invitations.py: Marking invitation {invitation_record[0].get('stringValue')} as accepted. ---")
-        # ✅ FIXED: No UUID casting for accepted_by_user_id (now VARCHAR)
         execute_sql(
             """UPDATE league_invitations
-               SET status = 'accepted', accepted_at = :accepted_at::timestamptz, accepted_by_user_id = :user_id
-               WHERE invitation_token = :token""",
+               SET status = 'accepted', 
+                   accepted_at = :accepted_at::timestamptz, 
+                   accepted_by_user_id = :user_id
+               WHERE league_id = :league_id::uuid 
+               AND invitation_token = :token""",
             parameters={
+                'league_id': league_id,
                 'token': request_data.token,
                 'accepted_at': datetime.now(timezone.utc).isoformat(),
-                'user_id': user_id  # ✅ FIXED: No UUID casting - accepted_by_user_id is now VARCHAR
+                'user_id': user_id  # No UUID casting - accepted_by_user_id is VARCHAR
             },
-            database_name=league_database
+            database_name='leagues'  # SHARED DATABASE
         )
         logger.info(f"--- invitations.py: Invitation marked as accepted in database. ---")
 
@@ -431,8 +447,8 @@ async def accept_invitation(
                 'league_id': league_id,
                 'league_name': league_name,
                 'slot_number': team_slot,
-                'manager_name': manager_display_name,  # ✅ ADDED: Return display name
-                'manager_email': user_email  # ✅ ADDED: Return email
+                'manager_name': manager_display_name,
+                'manager_email': user_email
             }
         }
 

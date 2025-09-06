@@ -1,0 +1,20 @@
+/home/strakajagr/fantasy-baseball-env/bin/python: can't open file '/home/strakajagr/fantasy-baseball-central-clean/backend/utils/daily_stats_updater.py': [Errno 2] No such file or directory
+Thu Aug 21 06:00:02 EDT 2025: Daily update failed
+/home/strakajagr/fantasy-baseball-env/bin/python: can't open file '/home/strakajagr/fantasy-baseball-central-clean/backend/utils/daily_stats_updater.py': [Errno 2] No such file or directory
+Fri Aug 22 06:00:04 EDT 2025: Daily update failed
+/home/strakajagr/fantasy-baseball-env/bin/python: can't open file '/home/strakajagr/fantasy-baseball-central-clean/backend/utils/daily_stats_updater.py': [Errno 2] No such file or directory
+Sat Aug 23 06:00:01 EDT 2025: Daily update failed
+/bin/sh: 1: /home/strakajagr/fantasy-baseball-central-clean/run_daily_update.sh: not found
+/bin/sh: 1: /home/strakajagr/fantasy-baseball-central-clean/run_daily_update.sh: not found
+/bin/sh: 1: /home/strakajagr/fantasy-baseball-central-clean/run_daily_update.sh: not found
+/bin/sh: 1: /home/strakajagr/fantasy-baseball-central-clean/run_daily_update.sh: not found
+/bin/sh: 1: /home/strakajagr/fantasy-baseball-central-clean/run_daily_update.sh: not found
+/bin/sh: 1: /home/strakajagr/fantasy-baseball-central-clean/run_daily_update.sh: not found
+/bin/sh: 1: /home/strakajagr/fantasy-baseball-central-clean/run_daily_update.sh: not found
+/bin/sh: 1: /home/strakajagr/fantasy-baseball-central-clean/run_daily_update.sh: not found
+/bin/sh: 1: /home/strakajagr/fantasy-baseball-central-clean/run_daily_update.sh: not found
+/bin/sh: 1: /home/strakajagr/fantasy-baseball-central-clean/run_daily_update.sh: not found
+/bin/sh: 1: /home/strakajagr/fantasy-baseball-central-clean/run_daily_update.sh: not found
+/bin/sh: 1: /home/strakajagr/fantasy-baseball-central-clean/run_daily_update.sh: not found
+/bin/sh: 1: /home/strakajagr/fantasy-baseball-central-clean/run_daily_update.sh: not found
+/bin/sh: 1: /home/strakajagr/fantasy-baseball-central-clean/run_daily_update.sh: not found

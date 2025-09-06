@@ -1,0 +1,95 @@
+{
+  "CallerReference": "fantasy-baseball-$(date +%s)",
+  "Comment": "Dynasty Dugout Distribution",
+  "DefaultRootObject": "index.html",
+  "Origins": {
+    "Quantity": 2,
+    "Items": [
+      {
+        "Id": "S3-fantasy-baseball-frontend",
+        "DomainName": "fantasy-baseball-frontend-strakajagr.s3.amazonaws.com",
+        "S3OriginConfig": {
+          "OriginAccessIdentity": ""
+        }
+      },
+      {
+        "Id": "API-Gateway",
+        "DomainName": "4574ig9tp9.execute-api.us-east-1.amazonaws.com",
+        "OriginPath": "/Prod",
+        "CustomOriginConfig": {
+          "HTTPPort": 80,
+          "HTTPSPort": 443,
+          "OriginProtocolPolicy": "https-only"
+        }
+      }
+    ]
+  },
+  "DefaultCacheBehavior": {
+    "TargetOriginId": "S3-fantasy-baseball-frontend",
+    "ViewerProtocolPolicy": "redirect-to-https",
+    "AllowedMethods": {
+      "Quantity": 2,
+      "Items": ["GET", "HEAD"]
+    },
+    "Compress": true,
+    "ForwardedValues": {
+      "QueryString": false,
+      "Cookies": { "Forward": "none" }
+    },
+    "TrustedSigners": {
+      "Enabled": false,
+      "Quantity": 0
+    },
+    "MinTTL": 0,
+    "DefaultTTL": 86400,
+    "MaxTTL": 31536000
+  },
+  "CacheBehaviors": {
+    "Quantity": 1,
+    "Items": [
+      {
+        "PathPattern": "/api/*",
+        "TargetOriginId": "API-Gateway",
+        "ViewerProtocolPolicy": "https-only",
+        "AllowedMethods": {
+          "Quantity": 7,
+          "Items": ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+        },
+        "ForwardedValues": {
+          "QueryString": true,
+          "Headers": {
+            "Quantity": 1,
+            "Items": ["*"]
+          },
+          "Cookies": { "Forward": "all" }
+        },
+        "TrustedSigners": {
+          "Enabled": false,
+          "Quantity": 0
+        },
+        "MinTTL": 0,
+        "DefaultTTL": 0,
+        "MaxTTL": 0,
+        "Compress": true
+      }
+    ]
+  },
+  "CustomErrorResponses": {
+    "Quantity": 2,
+    "Items": [
+      {
+        "ErrorCode": 403,
+        "ResponsePagePath": "/index.html",
+        "ResponseCode": "200",
+        "ErrorCachingMinTTL": 300
+      },
+      {
+        "ErrorCode": 404,
+        "ResponsePagePath": "/index.html",
+        "ResponseCode": "200",
+        "ErrorCachingMinTTL": 300
+      }
+    ]
+  },
+  "Enabled": true
+}

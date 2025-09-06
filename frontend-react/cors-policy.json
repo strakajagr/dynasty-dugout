@@ -1,0 +1,18 @@
+{
+  "CORSRules": [
+    {
+      "AllowedHeaders": ["*"],
+      "AllowedMethods": ["GET", "PUT", "POST", "DELETE"],
+      "AllowedOrigins": [
+        "https://dynasty-dugout.com",
+        "https://www.dynasty-dugout.com", 
+        "https://d3m07ty6v4sik6.cloudfront.net",
+        "https://d20wx6xzxkf84y.cloudfront.net",
+        "http://localhost:3000",
+        "http://localhost:3001"
+      ],
+      "ExposeHeaders": ["ETag"],
+      "MaxAgeSeconds": 3000
+    }
+  ]
+}

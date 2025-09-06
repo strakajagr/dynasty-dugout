@@ -1,135 +1,135 @@
 #!/usr/bin/env python3
 """
-Dynasty Dugout FastAPI Application - Main App
-Modular enterprise architecture with separate router modules
+Dynasty Dugout FastAPI Application - Fixed Handler
+Forces proper route registration in Lambda environment
 """
-
 import logging
-import sys # Keep sys for logging stdout
-from fastapi import FastAPI
+import sys
+from datetime import datetime, timedelta
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from mangum import Mangum
+from typing import Optional, List, Dict, Any
 
-# Configure logging for this file
-logging.basicConfig(level=logging.INFO, stream=sys.stdout)
+# Configure logging
+logging.basicConfig(level=logging.INFO, stream=sys.stdout, force=True)
 logger = logging.getLogger(__name__)
 
-logger.info("--- FastAPI App (fantasy_api.py): Starting initialization ---")
+logger.info("🚀 Starting FastAPI app initialization")
 
-# Import all router modules with individual try-except blocks for debugging
-try:
-    from routers import auth
-    logger.info("--- FastAPI App (fantasy_api.py): Imported auth router. ---")
-except Exception as e:
-    logger.critical(f"--- FastAPI App (fantasy_api.py): FAILED to import auth router: {e}", exc_info=True)
-    sys.exit(1) # Crash early if this critical import fails
+# --- Early Database Setup ---
+from core.database import execute_sql, test_database_connection
 
-try:
-    from routers import account
-    logger.info("--- FastAPI App (fantasy_api.py): Imported account router. ---")
-except Exception as e:
-    logger.critical(f"--- FastAPI App (fantasy_api.py): FAILED to import account router: {e}", exc_info=True)
-    sys.exit(1)
-
-try:
-    from routers import players
-    logger.info("--- FastAPI App (fantasy_api.py): Imported players router. ---")
-except Exception as e:
-    logger.critical(f"--- FastAPI App (fantasy_api.py): FAILED to import players router: {e}", exc_info=True)
-    sys.exit(1)
-
-try:
-    from routers import analytics
-    logger.info("--- FastAPI App (fantasy_api.py): Imported analytics router. ---")
-except Exception as e:
-    logger.critical(f"--- FastAPI App (fantasy_api.py): FAILED to import analytics router: {e}", exc_info=True)
-    sys.exit(1)
-
-try:
-    from routers import utilities
-    logger.info("--- FastAPI App (fantasy_api.py): Imported utilities router. ---")
-except Exception as e:
-    logger.critical(f"--- FastAPI App (fantasy_api.py): FAILED to import utilities router: {e}", exc_info=True)
-    sys.exit(1)
-
-try:
-    from routers import invitations
-    logger.info("--- FastAPI App (fantasy_api.py): Imported invitations router. ---")
-except Exception as e:
-    logger.critical(f"--- FastAPI App (fantasy_api.py): FAILED to import invitations router: {e}", exc_info=True)
-    sys.exit(1)
-
-try:
-    from routers.leagues import router as leagues_router
-    logger.info("--- FastAPI App (fantasy_api.py): Imported leagues router. ---")
-except Exception as e:
-    logger.critical(f"--- FastAPI App (fantasy_api.py): FAILED to import leagues router: {e}", exc_info=True)
-    sys.exit(1)
-
-# Create FastAPI app
+# Create app FIRST before any imports that might use it
 app = FastAPI(
     title="Dynasty Dugout API",
-    version="6.0.0",
-    description="Complete fantasy baseball platform with league management and invitation system"
+    version="7.1.1",
+    description="Fixed serverless fantasy baseball platform"
 )
 
-# Configure CORS (assuming this is needed for your frontend)
+# CORS Configuration
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Adjust this to your frontend domain in production
+    allow_origins=[
+        "https://d3m07ty6v4sik6.cloudfront.net",  # ADD THIS LINE
+        "https://d20wx6xzxkf84y.cloudfront.net",
+        "https://d31ij4udqr5ude.cloudfront.net",
+        "https://dynasty-dugout.com",
+        "https://www.dynasty-dugout.com",
+        "http://localhost:3000",
+        "http://localhost:3001"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Include all routers with prefixes
-# Use individual try-except for app.include_router if desired, but import is usually the issue
-app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
-app.include_router(account.router, prefix="/api/auth", tags=["Account Management"])
-app.include_router(players.router, prefix="/api/players", tags=["Players"])
-app.include_router(analytics.router, prefix="/api", tags=["Analytics"])
-app.include_router(leagues_router, prefix="/api/leagues", tags=["League Management"])
-app.include_router(invitations.router, prefix="/api/invitation", tags=["League Invitations"])
-app.include_router(utilities.router, prefix="/api", tags=["Utilities"])
-
-# Root endpoint
-@app.get("/")
-async def root():
-    logger.info("--- FastAPI App (fantasy_api.py): Root endpoint hit ---")
-    return {
-        "message": "Dynasty Dugout API v6.0 - Complete League Management with Invitations",
-        # ... (rest of your root endpoint return) ...
-    }
-
-# Health check endpoint
+# Simple health check BEFORE importing routers
 @app.get("/api/health")
 async def health_check():
-    """Health check endpoint"""
+    """Simple health check"""
+    return {"status": "healthy", "service": "Dynasty Dugout API", "version": "7.1.1"}
+
+# Now import and register routers
+try:
+    logger.info("📦 Importing routers...")
+    from routers import auth
+    app.include_router(auth.router, prefix="/api/auth", tags=["Authentication"])
+    logger.info("✅ Auth router registered")
+    
+    from routers import account
+    app.include_router(account.router, prefix="/api/account", tags=["Profile"])
+    logger.info("✅ Account router registered")
+    
+    from routers import leagues
+    app.include_router(leagues.router, prefix="/api/leagues", tags=["Leagues"])
+    logger.info("✅ Leagues router registered")
+    
+    from routers.leagues import players
+    app.include_router(players.global_router, prefix="/api/players", tags=["Players"])
+    logger.info("✅ Players router registered")
+    
+    from routers import analytics
+    app.include_router(analytics.router, prefix="/api/analytics", tags=["Analytics"])
+    
+    from routers import invitations
+    app.include_router(invitations.router, prefix="/api/invitation", tags=["Invitations"])
+    
+    from routers import utilities
+    app.include_router(utilities.router, prefix="/api/utilities", tags=["Utilities"])
+    
+    logger.info("✅ All routers registered successfully")
+except Exception as e:
+    logger.error(f"❌ Failed to import routers: {e}", exc_info=True)
+
+# Debug endpoint
+@app.get("/api/debug/routes")
+async def debug_routes():
+    """List all registered routes"""
+    routes = []
+    for route in app.routes:
+        if hasattr(route, "path"):
+            routes.append({"path": route.path, "methods": list(route.methods) if hasattr(route, "methods") else None})
+    return {"total_routes": len(routes), "routes": sorted(routes, key=lambda x: x["path"])}
+
+# Root endpoints
+@app.get("/")
+async def root():
+    return {"service": "Dynasty Dugout API", "status": "operational"}
+
+@app.get("/api")
+async def api_root():
+    return {"message": "Dynasty Dugout API", "endpoints": "Use /api/debug/routes to see all"}
+
+# Create handler with proper request logging
+_handler = Mangum(app, lifespan="off")
+
+def handler(event, context):
+    """Lambda handler with path fix"""
+    event = fix_doubled_api_path(event)
+    """Lambda handler with logging"""
+    logger.info(f"📨 Request: {event.get('httpMethod')} {event.get('path')}")
     try:
-        from core.database import test_database_connection # <--- Check this import
-        logger.info("--- FastAPI App (fantasy_api.py): Testing DB connection in health check. ---")
-        health_status = {
-            "status": "healthy",
-            "service": "Dynasty Dugout API",
-            "version": "6.0.0",
-            "architecture": "modular",
-            "modules": ["auth", "account", "players", "analytics", "leagues", "invitations", "utilities"],
-            "database": "checking..."
-        }
-        
-        if test_database_connection():
-            health_status["database"] = "connected"
-        else:
-            health_status["database"] = "no_response"
-            health_status["status"] = "degraded"
-        
-        return health_status
+        response = _handler(event, context)
+        logger.info(f"✅ Response status: {response.get('statusCode')}")
+        return response
     except Exception as e:
-        logger.critical(f"--- FastAPI App (fantasy_api.py): HEALTH CHECK FAILED: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail="Health check failed due to internal error.")
+        logger.error(f"❌ Handler error: {e}", exc_info=True)
+        return {
+            "statusCode": 500,
+            "body": '{"error": "Internal server error"}',
+            "headers": {"Content-Type": "application/json"}
+        }
 
-
-logger.info("--- FastAPI App (fantasy_api.py): Initialization complete ---")
+logger.info("🎯 Handler ready")
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run("fantasy_api:app", host="0.0.0.0", port=8000, reload=True)
+
+# Add this function before the handler
+def fix_doubled_api_path(event):
+    """Fix doubled /api/api paths from custom domain"""
+    if "path" in event and event["path"].startswith("/api/api/"):
+        event["path"] = event["path"].replace("/api/api/", "/api/", 1)
+    return event

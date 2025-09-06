@@ -1,9 +1,9 @@
 """
-Dynasty Dugout - Basic League Management Module
+Dynasty Dugout - Basic League Management Module - ENHANCED WITH FULL ROSTER CONFIGURATION
+ENHANCED with Teams List Endpoint for Team Browsing
 EXTRACTED FROM: The massive leagues.py file (basic CRUD operations)
-PURPOSE: Simple league info retrieval, settings, health checks, data sync
-CONTAINS: Health checks, my-leagues, league details, settings, data pipeline sync
-ENHANCED: Added data sync and complete settings retrieval
+PURPOSE: Simple league info retrieval, settings, health checks, teams management
+STATUS: Updated for shared database architecture with complete roster configuration support
 """
 
 import logging
@@ -13,18 +13,165 @@ from fastapi import APIRouter, HTTPException, Depends
 
 from core.auth_utils import get_current_user
 from core.database import execute_sql
+from core.season_utils import get_current_season, CURRENT_SEASON, SEASON_START
 
 logger = logging.getLogger(__name__)
-router = APIRouter()
+
+# Two routers to separate global vs. league-specific routes
+global_router = APIRouter()  # For routes without a league_id prefix
+router = APIRouter()  # For routes that require a league_id prefix
+
+def get_value_from_field(field, value_type='string', default=None):
+    """Safely extract value from RDS Data API field"""
+    if not field or field.get('isNull'):
+        return default
+    
+    if value_type == 'string':
+        return field.get('stringValue', default)
+    elif value_type == 'long':
+        return field.get('longValue', default or 0)
+    elif value_type == 'decimal':
+        # Handle decimal values that come as stringValue
+        if 'stringValue' in field:
+            try:
+                return float(field['stringValue'])
+            except:
+                return default or 0.0
+        return field.get('doubleValue', default or 0.0)
+    elif value_type == 'boolean':
+        return field.get('booleanValue', default or False)
+    else:
+        return field.get('stringValue', default)
+
+def parse_league_settings(settings_records):
+    """Parse league settings from database records into organized structure"""
+    settings = {}
+    
+    for record in settings_records:
+        setting_name = get_value_from_field(record[0], 'string')
+        setting_value = get_value_from_field(record[1], 'string')
+        setting_type = get_value_from_field(record[2], 'string', 'string')
+        
+        if not setting_name or not setting_value:
+            continue
+            
+        # Convert based on type
+        try:
+            if setting_type == 'boolean':
+                settings[setting_name] = setting_value.lower() == 'true'
+            elif setting_type == 'integer':
+                settings[setting_name] = int(setting_value)
+            elif setting_type == 'float':
+                settings[setting_name] = float(setting_value)
+            elif setting_type == 'json':
+                settings[setting_name] = json.loads(setting_value)
+            else:
+                settings[setting_name] = setting_value
+        except (ValueError, json.JSONDecodeError) as e:
+            logger.warning(f"Failed to parse setting {setting_name} with value {setting_value}: {e}")
+            settings[setting_name] = setting_value
+    
+    return settings
 
 # =============================================================================
-# HEALTH & DEBUG ENDPOINTS
+# GLOBAL ENDPOINTS (Handled by global_router)
+# =============================================================================
+
+@global_router.get("/my-leagues")
+async def get_my_leagues(current_user: dict = Depends(get_current_user)):
+    """Get all leagues for the current user with configuration details"""
+    try:
+        user_id = current_user.get('sub')
+        
+        sql = """
+            SELECT 
+                ul.league_id, ul.league_name, ul.created_at, lm.role,
+                ul.commissioner_user_id
+            FROM user_leagues ul
+            JOIN league_memberships lm ON ul.league_id = lm.league_id
+            WHERE lm.user_id = :user_id AND lm.is_active = true
+            ORDER BY ul.created_at DESC
+        """
+        
+        response = execute_sql(sql, {'user_id': user_id})
+        
+        leagues = []
+        if response.get('records'):
+            for record in response['records']:
+                # Basic league info from phone book
+                league_id = record[0].get('stringValue') if record[0] and not record[0].get('isNull') else None
+                commissioner_user_id = record[4].get('stringValue') if record[4] and not record[4].get('isNull') else None
+                
+                league = {
+                    'league_id': league_id,
+                    'league_name': record[1].get('stringValue') if record[1] and not record[1].get('isNull') else None,
+                    'database_name': 'leagues',  # Always shared database
+                    'created_at': record[2].get('stringValue') if record[2] and not record[2].get('isNull') else None,
+                    'role': record[3].get('stringValue') if record[3] and not record[3].get('isNull') else 'member',
+                    'status': 'active',
+                    'current_season': CURRENT_SEASON,
+                    'is_commissioner': user_id == commissioner_user_id,
+                    # Default values for missing config
+                    'scoring_system': 'rotisserie_ytd',
+                    'player_pool': 'american_national',
+                    'max_teams': 12,
+                    'salary_cap': 200.0,
+                    'league_status': 'setup',
+                    'prices_set': False
+                }
+                
+                # Try to get detailed config from shared leagues database
+                try:
+                    settings_sql = """
+                        SELECT setting_name, setting_value, setting_type
+                        FROM league_settings 
+                        WHERE league_id = :league_id::uuid
+                    """
+                    settings_response = execute_sql(settings_sql, {'league_id': league_id}, database_name='leagues')
+                    
+                    if settings_response.get('records'):
+                        parsed_settings = parse_league_settings(settings_response['records'])
+                        league.update(parsed_settings)
+                                    
+                    # Check if prices are set
+                    price_check = execute_sql(
+                        """SELECT COUNT(*) FROM league_players 
+                           WHERE league_id = :league_id::uuid 
+                           AND (salary > 0 OR generated_price > 0 OR manual_price_override > 0)""",
+                        {'league_id': league_id},
+                        database_name='leagues'
+                    )
+                    if price_check and price_check.get('records'):
+                        count = price_check['records'][0][0].get('longValue', 0)
+                        league['prices_set'] = count > 0
+                        
+                except Exception as settings_error:
+                    logger.warning(f"Could not get settings for league {league['league_id']}: {settings_error}")
+                
+                leagues.append(league)
+        
+        return {
+            "success": True,
+            "leagues": leagues,
+            "count": len(leagues),
+            "current_season": CURRENT_SEASON,
+            "note": "Phone book + complete league settings including roster configuration",
+            "architecture": "Shared database architecture"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting user leagues: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to retrieve leagues")
+
+# =============================================================================
+# LEAGUE-SPECIFIC ENDPOINTS (Handled by the original router)
 # =============================================================================
 
 @router.get("/health")
 async def league_health_check():
     """Health check for league services"""
     try:
+        current_season = get_current_season()
         sql = "SELECT COUNT(*) FROM mlb_players"
         response = execute_sql(sql)
         
@@ -35,25 +182,30 @@ async def league_health_check():
         return {
             "status": "healthy",
             "service": "leagues",
+            "current_season": current_season,
             "mlb_players_available": player_count,
             "services": {
                 "lifecycle": "operational (creation/deletion)",
-                "management": "operational (basic CRUD + data sync)",
+                "management": "operational (FULL roster configuration support)",
                 "owners": "operational (owner management)",
                 "standings": "operational (competitive rankings)",
-                "players": "planned (league-specific players)",
-                "transactions": "planned (trades/waivers)",
-                "database_provisioning": "operational",
-                "async_creation": "ARCHITECTURE FIXED + PERFORMANCE OPTIMIZED!",
+                "players": "operational (league-specific players)",
+                "transactions": "operational (trades/waivers)",
+                "database_provisioning": "operational (shared database)",
+                "async_creation": "operational",
                 "modular_structure": "✅ REORGANIZED INTO FOCUSED MODULES!",
-                "data_pipeline": "operational (sync + calculate stats)"
+                "data_pipeline": "operational (main DB stats)",
+                "season_management": f"✅ Dynamic season support ({current_season})",
+                "team_browsing": "✅ Enhanced with cross-team roster viewing",
+                "roster_configuration": "✅ Dynamic position requirements, bench/DL/minor slots"
             },
             "architecture": {
-                "main_database": "Phone book (minimal registry)",
-                "league_databases": "All configuration and data",
-                "modular_routers": "Focused, maintainable modules"
+                "main_database": "Single source of truth (all MLB stats)",
+                "leagues_database": "Shared database for all league data",
+                "modular_routers": "Focused, maintainable modules",
+                "roster_configuration": "Fully dynamic based on league settings"
             },
-            "performance": "30-60 seconds with batch inserts",
+            "performance": "Improved with shared database",
             "file_organization": "1200+ line file broken into 6 focused modules",
             "timestamp": datetime.utcnow().isoformat()
         }
@@ -67,187 +219,22 @@ async def league_health_check():
             "timestamp": datetime.utcnow().isoformat()
         }
 
-# ADD THE NEW DEBUG ENDPOINT HERE (don't replace anything):
-@router.post("/{league_id}/debug-create-db")
-async def debug_create_database(
-    league_id: str,
-    current_user: dict = Depends(get_current_user)
-):
-    """Debug endpoint to test raw database creation"""
-    try:
-        database_name = f"league_debug_{league_id.replace('-', '_')}"
-        create_db_sql = f'CREATE DATABASE "{database_name}"'
-        
-        logger.info(f"🔍 Attempting to create: {database_name}")
-        logger.info(f"🔍 SQL: {create_db_sql}")
-        
-        result = execute_sql(create_db_sql, database_name='postgres')
-        
-        return {
-            "success": True,
-            "database_name": database_name,
-            "sql_executed": create_db_sql,
-            "result": result
-        }
-        
-    except Exception as e:
-        logger.error(f"❌ Database creation failed: {str(e)}")
-        return {
-            "success": False,
-            "error": str(e),
-            "error_type": type(e).__name__
-        }
-
-@router.post("/{league_id}/debug-create-tables")
-async def debug_create_tables(
-    league_id: str,
-    current_user: dict = Depends(get_current_user)
-):
-    """Debug endpoint to test table creation in existing database"""
-    try:
-        database_name = f"league_debug_test_123"  # Use our existing debug database
-        
-        # Try to create just one simple table
-        create_table_sql = """
-            CREATE TABLE IF NOT EXISTS league_settings (
-                setting_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                league_id UUID NOT NULL,
-                setting_name VARCHAR(255) NOT NULL,
-                setting_value TEXT NOT NULL,
-                setting_type VARCHAR(50) DEFAULT 'string',
-                created_at TIMESTAMP DEFAULT NOW(),
-                updated_at TIMESTAMP DEFAULT NOW()
-            )
-        """
-        
-        logger.info(f"🔍 Attempting to create table in: {database_name}")
-        logger.info(f"🔍 SQL: {create_table_sql}")
-        
-        result = execute_sql(create_table_sql, database_name=database_name)
-        
-        # Test if table actually exists
-        test_sql = "SELECT COUNT(*) FROM league_settings"
-        test_result = execute_sql(test_sql, database_name=database_name)
-        
-        return {
-            "success": True,
-            "database_name": database_name,
-            "table_created": True,
-            "create_result": result,
-            "test_result": test_result
-        }
-        
-    except Exception as e:
-        logger.error(f"❌ Table creation failed: {str(e)}")
-        return {
-            "success": False,
-            "error": str(e),
-            "error_type": type(e).__name__
-        }
-# =============================================================================
-# BASIC LEAGUE CRUD OPERATIONS
-# =============================================================================
-
-@router.get("/my-leagues")
-async def get_my_leagues(current_user: dict = Depends(get_current_user)):
-    """Get all leagues for the current user with configuration details"""
-    try:
-        user_id = current_user.get('sub')
-        
-        # Get basic league info from phone book
-        sql = """
-            SELECT 
-                league_id, league_name, status, database_name, created_at
-            FROM user_leagues
-            WHERE commissioner_user_id = :user_id
-            ORDER BY created_at DESC
-        """
-        
-        response = execute_sql(sql, {'user_id': user_id})
-        
-        leagues = []
-        if response.get('records'):
-            for record in response['records']:
-                # Basic league info from phone book
-                league = {
-                    'league_id': record[0].get('stringValue') if record[0] and not record[0].get('isNull') else None,
-                    'league_name': record[1].get('stringValue') if record[1] and not record[1].get('isNull') else None,
-                    'status': record[2].get('stringValue') if record[2] and not record[2].get('isNull') else None,
-                    'database_name': record[3].get('stringValue') if record[3] and not record[3].get('isNull') else None,
-                    'role': 'commissioner',
-                    'created_at': record[4].get('stringValue') if record[4] and not record[4].get('isNull') else None,
-                    # Default values for missing config
-                    'scoring_system': 'rotisserie_ytd',
-                    'player_pool': 'american_national',
-                    'max_teams': 12,
-                    'salary_cap': 200.0
-                }
-                
-                # Try to get detailed config from league database
-                database_name = league['database_name']
-                if database_name:
-                    try:
-                        settings_sql = """
-                            SELECT setting_name, setting_value 
-                            FROM league_settings 
-                            WHERE league_id = :league_id::uuid::uuid
-                        """
-                        settings_response = execute_sql(settings_sql, {'league_id': league['league_id']}, database_name=database_name)
-                        
-                        if settings_response.get('records'):
-                            for setting_record in settings_response['records']:
-                                setting_name = setting_record[0].get('stringValue')
-                                setting_value = setting_record[1].get('stringValue')
-                                if setting_name and setting_value:
-                                    # Convert numeric values
-                                    if setting_name in ['max_teams', 'max_players_total', 'min_hitters', 'max_pitchers']:
-                                        try:
-                                            league[setting_name] = int(setting_value)
-                                        except:
-                                            pass
-                                    elif setting_name in ['salary_cap', 'salary_floor']:
-                                        try:
-                                            league[setting_name] = float(setting_value)
-                                        except:
-                                            pass
-                                    else:
-                                        league[setting_name] = setting_value
-                    except Exception as settings_error:
-                        logger.warning(f"Could not get settings for league {league['league_id']}: {settings_error}")
-                
-                leagues.append(league)
-        
-        return {
-            "success": True,
-            "leagues": leagues,
-            "count": len(leagues),
-            "note": "Phone book + league settings (from management module)",
-            "architecture": "Modular structure - basic operations only"
-        }
-        
-    except Exception as e:
-        logger.error(f"Error getting user leagues: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to retrieve leagues")
-
 @router.get("/{league_id}")
 async def get_league(
     league_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get league details (phone book + league database config)"""
+    """Get league details - ENHANCED WITH FULL ROSTER CONFIGURATION FOR MYROSTER"""
     try:
         user_id = current_user.get('sub')
         
-        # Get basic info from phone book
         league_sql = """
             SELECT 
                 ul.league_id, ul.league_name, ul.commissioner_user_id, 
-                ul.database_name, ul.status, ul.created_at, lm.role
+                ul.created_at, lm.role, ul.creation_status
             FROM user_leagues ul
-            JOIN league_memberships lm ON ul.league_id = lm.league_id
-            WHERE ul.league_id = :league_id::uuid 
-            AND lm.user_id = :user_id 
-            AND lm.is_active = true
+            LEFT JOIN league_memberships lm ON ul.league_id = lm.league_id AND lm.user_id = :user_id
+            WHERE ul.league_id = :league_id::uuid
         """
         
         league_response = execute_sql(league_sql, {
@@ -265,40 +252,177 @@ async def get_league(
                 return default
             return record_item.get(value_type, default)
         
-        database_name = safe_get(record[3], 'stringValue')
+        commissioner_user_id = safe_get(record[2], 'stringValue')
+        creation_status = safe_get(record[5], 'stringValue', 'unknown')
         
+        # Build initial league object with ALL fields including ROSTER CONFIGURATION
         league = {
             'league_id': safe_get(record[0], 'stringValue'),
             'league_name': safe_get(record[1], 'stringValue'),
-            'commissioner_user_id': safe_get(record[2], 'stringValue'),
-            'database_name': database_name,
-            'status': safe_get(record[4], 'stringValue', 'setup'),
-            'created_at': safe_get(record[5], 'stringValue'),
-            'role': safe_get(record[6], 'stringValue'),
+            'commissioner_user_id': commissioner_user_id,
+            'database_name': 'leagues',  # Always shared database
+            'status': 'active',
+            'created_at': safe_get(record[3], 'stringValue'),
+            'role': safe_get(record[4], 'stringValue'),
+            'creation_status': creation_status,
             'current_week': "Week 17",
-            'season': "2025"
+            'season': CURRENT_SEASON,
+            
+            # Basic league info
+            'league_status': 'setup',
+            'is_commissioner': user_id == commissioner_user_id,
+            'prices_set': False,
+            'draft_type': None,
+            'max_teams': 12,
+            'current_teams': 0,
+            
+            # Financial defaults
+            'use_salaries': True,
+            'use_contracts': True,
+            'use_dual_cap': True,
+            'salary_cap': 800.0,
+            'draft_cap': 600.0,
+            'season_cap': 200.0,
+            'min_salary': 2.0,
+            'salary_increment': 2.0,
+            'rookie_price': 20.0,
+            'standard_contract_length': 2,
+            'draft_cap_usage': 0.75,
+            
+            # ROSTER CONFIGURATION DEFAULTS - CRITICAL FOR MYROSTER
+            'position_requirements': {
+                'C': {'slots': 2},
+                '1B': {'slots': 1},
+                '2B': {'slots': 1},
+                '3B': {'slots': 1},
+                'SS': {'slots': 1},
+                'OF': {'slots': 4},
+                'MI': {'slots': 1},
+                'CI': {'slots': 1},
+                'UTIL': {'slots': 1},
+                'P': {'slots': 10}
+            },
+            'max_players_total': 23,
+            'min_hitters': 13,
+            'max_pitchers': 10,
+            'min_pitchers': 10,
+            'bench_slots': 5,
+            'dl_slots': 0,
+            'minor_league_slots': 0,
+            
+            # Scoring defaults
+            'scoring_system': 'rotisserie_ytd',
+            'scoring_categories': {
+                'hitters': ['R', 'HR', 'RBI', 'SB', 'AVG', 'OPS'],
+                'pitchers': ['W', 'SV', 'ERA', 'WHIP', 'SO', 'QS']
+            },
+            
+            # Advanced defaults
+            'player_pool': 'american_national',
+            'include_minor_leagues': False,
+            'transaction_deadline': 'monday',
+            'use_waivers': False,
+            'season_start_date': '2025-03-28',
+            'season_end_date': '2025-09-28',
+            'season_started_at': None
         }
         
-        # Get detailed config from league database if it exists
-        if database_name:
-            try:
-                settings_sql = "SELECT setting_name, setting_value FROM league_settings WHERE league_id = :league_id::uuid::uuid"
-                settings_response = execute_sql(settings_sql, {'league_id': league_id}, database_name=database_name)
+        # If creation isn't complete, return defaults
+        if creation_status != 'completed':
+            return {
+                "success": True,
+                "league": league,
+                "source": "management module (basic league info with defaults)",
+                "note": "League creation not complete - using default roster configuration"
+            }
+        
+        # Get COMPLETE config from shared leagues database including ROSTER SETTINGS
+        try:
+            settings_sql = """
+                SELECT setting_name, setting_value, setting_type
+                FROM league_settings 
+                WHERE league_id = :league_id::uuid
+                ORDER BY setting_name
+            """
+            settings_response = execute_sql(settings_sql, {'league_id': league_id}, database_name='leagues')
+            
+            if settings_response.get('records'):
+                logger.info(f"[{league_id[:8]}] Found {len(settings_response['records'])} league settings")
                 
-                if settings_response.get('records'):
-                    for setting_record in settings_response['records']:
-                        setting_name = setting_record[0].get('stringValue')
-                        setting_value = setting_record[1].get('stringValue')
-                        if setting_name and setting_value:
-                            league[setting_name] = setting_value
+                # Parse all settings using the helper function
+                parsed_settings = parse_league_settings(settings_response['records'])
                 
-            except Exception as settings_error:
-                logger.warning(f"Could not get league settings: {settings_error}")
+                # Update league object with parsed settings
+                league.update(parsed_settings)
+                
+                # Log roster configuration for debugging
+                if 'position_requirements' in parsed_settings:
+                    logger.info(f"[{league_id[:8]}] Roster config loaded: {len(parsed_settings['position_requirements'])} positions")
+                    
+                # Special handling for legacy fields or missing data
+                if 'roster_positions' in parsed_settings and 'position_requirements' not in parsed_settings:
+                    # Handle legacy format if needed
+                    league['position_requirements'] = parsed_settings['roster_positions']
+            
+            # Enhanced commissioner check (multi-commissioner support)
+            comm_check = execute_sql(
+                """SELECT COUNT(*) FROM league_teams 
+                   WHERE league_id = :league_id::uuid 
+                   AND user_id = :user_id 
+                   AND is_commissioner = true""",
+                {'league_id': league_id, 'user_id': user_id},
+                database_name='leagues'
+            )
+            if comm_check and comm_check.get('records'):
+                count = comm_check['records'][0][0].get('longValue', 0)
+                if count > 0:
+                    league['is_commissioner'] = True
+            
+            # Check if prices are set
+            price_check = execute_sql(
+                """SELECT COUNT(*) FROM league_players 
+                   WHERE league_id = :league_id::uuid 
+                   AND (salary > 0 OR generated_price > 0 OR manual_price_override > 0)""",
+                {'league_id': league_id},
+                database_name='leagues'
+            )
+            if price_check and price_check.get('records'):
+                count = price_check['records'][0][0].get('longValue', 0)
+                league['prices_set'] = count > 0
+            
+            # Get current team count
+            team_count_result = execute_sql(
+                "SELECT COUNT(*) FROM league_teams WHERE league_id = :league_id::uuid",
+                {'league_id': league_id},
+                database_name='leagues'
+            )
+            if team_count_result and team_count_result.get('records'):
+                league['current_teams'] = team_count_result['records'][0][0].get('longValue', 0)
+        
+        except Exception as settings_error:
+            logger.warning(f"Could not get league settings: {settings_error}")
+        
+        # Calculate roster totals for MyRoster
+        if isinstance(league.get('position_requirements'), dict):
+            total_active_slots = sum(pos.get('slots', 0) for pos in league['position_requirements'].values())
+            league['total_active_slots'] = total_active_slots
+            league['total_roster_slots'] = (
+                total_active_slots + 
+                league.get('bench_slots', 0) + 
+                league.get('dl_slots', 0) + 
+                league.get('minor_league_slots', 0)
+            )
         
         return {
             "success": True,
             "league": league,
-            "source": "management module (basic league info)"
+            "source": "management module (complete league configuration including roster)",
+            "roster_config_loaded": 'position_requirements' in league and bool(league['position_requirements']),
+            "debug_info": {
+                "settings_found": len(parsed_settings) if 'parsed_settings' in locals() else 0,
+                "position_requirements_type": type(league.get('position_requirements')).__name__,
+                "total_active_slots": league.get('total_active_slots', 'not calculated')
+            }
         }
         
     except HTTPException:
@@ -307,18 +431,105 @@ async def get_league(
         logger.error(f"Error getting league details: {str(e)}")
         raise HTTPException(status_code=500, detail="Failed to retrieve league details")
 
-# =============================================================================
-# LEAGUE SETTINGS ENDPOINTS
-# =============================================================================
+@router.get("/{league_id}/teams")
+async def get_league_teams(
+    league_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get all teams in the league for team browsing and commissioner mode"""
+    try:
+        user_id = current_user.get('sub')
+        
+        # Simple query - just get teams with basic info
+        teams_sql = """
+            SELECT 
+                lt.team_id,
+                lt.team_name,
+                lt.user_id,
+                lt.is_commissioner,
+                lt.manager_name,
+                COALESCE(salary_summary.total_salary, 0) as salary_used,
+                COALESCE(salary_summary.player_count, 0) as total_players
+            FROM league_teams lt
+            LEFT JOIN (
+                SELECT 
+                    team_id,
+                    SUM(salary) as total_salary,
+                    COUNT(*) as player_count
+                FROM league_players 
+                WHERE league_id = :league_id::uuid
+                  AND team_id IS NOT NULL
+                  AND availability_status = 'owned'
+                GROUP BY team_id
+            ) salary_summary ON lt.team_id = salary_summary.team_id
+            WHERE lt.league_id = :league_id::uuid
+            ORDER BY lt.team_name ASC
+        """
+        
+        teams_result = execute_sql(
+            teams_sql,
+            parameters={'league_id': league_id},
+            database_name='leagues'
+        )
+        
+        if not teams_result or not teams_result.get("records"):
+            return {
+                "success": True,
+                "teams": [],
+                "count": 0,
+                "league_id": league_id,
+                "message": "No teams found in this league"
+            }
+        
+        teams = []
+        user_team_found = False
+        
+        for record in teams_result["records"]:
+            team_user_id = get_value_from_field(record[2], 'string')
+            is_user_team = user_id == team_user_id
+            
+            if is_user_team:
+                user_team_found = True
+            
+            team = {
+                "team_id": get_value_from_field(record[0], 'string'),
+                "team_name": get_value_from_field(record[1], 'string') or "Unnamed Team",
+                "user_id": team_user_id,
+                "is_commissioner": get_value_from_field(record[3], 'boolean', False),
+                "is_user_team": is_user_team,
+                "manager_name": get_value_from_field(record[4], 'string') or "Unknown Manager",
+                "salary_used": get_value_from_field(record[5], 'decimal', 0.0),
+                "total_players": get_value_from_field(record[6], 'long', 0),
+                "salary_cap": 800.0  # Default value
+            }
+            
+            teams.append(team)
+        
+        # Sort teams: user's team first, then alphabetically
+        teams.sort(key=lambda t: (not t["is_user_team"], t["team_name"]))
+        
+        return {
+            "success": True,
+            "teams": teams,
+            "count": len(teams),
+            "league_id": league_id,
+            "user_has_team": user_team_found,
+            "season": CURRENT_SEASON,
+            "data_source": "leagues_db"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting league teams: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error getting league teams: {str(e)}")
 
 @router.get("/{league_id}/settings")
 async def get_league_settings(
     league_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get league settings including UI feature toggles"""
+    """Get league settings including UI feature toggles AND COMPLETE ROSTER CONFIGURATION"""
     try:
-        # Get all league settings
+        # Get all league settings from shared database
         settings_sql = """
             SELECT setting_name, setting_value, setting_type
             FROM league_settings
@@ -329,52 +540,48 @@ async def get_league_settings(
         result = execute_sql(
             settings_sql,
             parameters={'league_id': league_id},
-            database_name=f"league_{league_id.replace('-', '_')}"
+            database_name='leagues'  # SHARED DATABASE
         )
         
-        # Convert to dictionary
+        # Parse all settings
         settings = {}
         ui_features = {}
+        roster_config = {}
         
         if result and result.get("records"):
-            for record in result["records"]:
-                setting_name = record[0]["stringValue"]
-                setting_value = record[1]["stringValue"]
-                setting_type = record[2]["stringValue"]
-                
-                # Convert based on type
-                if setting_type == 'boolean':
-                    converted_value = setting_value.lower() == 'true'
-                elif setting_type == 'integer':
-                    converted_value = int(setting_value) if setting_value.isdigit() else 0
-                elif setting_type == 'float':
-                    converted_value = float(setting_value) if setting_value.replace('.', '').isdigit() else 0.0
-                elif setting_type == 'json':
-                    try:
-                        converted_value = json.loads(setting_value)
-                    except:
-                        converted_value = {}
-                else:
-                    converted_value = setting_value
-                
-                settings[setting_name] = converted_value
-                
-                # Extract UI feature toggles
-                if setting_name.startswith('use_') or setting_name.startswith('show_'):
-                    ui_features[setting_name] = converted_value
+            parsed_settings = parse_league_settings(result["records"])
+            settings.update(parsed_settings)
+            
+            # Extract UI feature toggles
+            for key, value in parsed_settings.items():
+                if key.startswith('use_') or key.startswith('show_'):
+                    ui_features[key] = value
+                elif key in ['position_requirements', 'bench_slots', 'dl_slots', 'minor_league_slots', 'max_players_total']:
+                    roster_config[key] = value
         
         return {
             "success": True,
             "league_id": league_id,
             "settings": settings,
             "ui_features": ui_features,
+            "roster_configuration": roster_config,
+            "current_season": CURRENT_SEASON,
             "feature_summary": {
                 "contracts_enabled": settings.get('use_contracts', True),
                 "salaries_enabled": settings.get('use_salaries', True),
                 "waivers_enabled": settings.get('use_waivers', False),
                 "team_attribution_enabled": settings.get('use_team_attribution', True),
                 "transactions_enabled": settings.get('use_transactions', True),
-                "advanced_stats_enabled": settings.get('show_advanced_stats', True)
+                "advanced_stats_enabled": settings.get('show_advanced_stats', True),
+                "team_browsing_enabled": True,
+                "dynamic_roster_enabled": True  # Always enabled now
+            },
+            "roster_summary": {
+                "total_positions": len(roster_config.get('position_requirements', {})),
+                "bench_slots": roster_config.get('bench_slots', 0),
+                "dl_slots": roster_config.get('dl_slots', 0),
+                "minor_league_slots": roster_config.get('minor_league_slots', 0),
+                "max_players_total": roster_config.get('max_players_total', 0)
             }
         }
         
@@ -388,297 +595,272 @@ async def update_league_settings(
     settings_data: dict,
     current_user: dict = Depends(get_current_user)
 ):
-    """Update league settings (TO BE IMPLEMENTED)"""
-    # TODO: Update league settings in league database
-    # This should validate commissioner permissions
-    # and update settings in league_settings table
-    return {
-        "success": False,
-        "message": "Update league settings endpoint not yet implemented",
-        "todo": "Implement settings updates with validation"
-    }
-
-# =============================================================================
-# DATA PIPELINE SYNC ENDPOINT
-# =============================================================================
-
-@router.post("/{league_id}/sync-data")
-async def sync_league_data(
-    league_id: str,
-    current_user: dict = Depends(get_current_user)
-):
-    """Sync game logs and calculate season stats for league"""
+    """Update league settings (commissioner only)"""
     try:
-        # Verify commissioner permissions
         user_id = current_user.get('sub')
-        team_check = execute_sql(
-            "SELECT is_commissioner FROM league_teams WHERE user_id = :user_id",
-            parameters={'user_id': user_id},
-            database_name=f"league_{league_id.replace('-', '_')}"
+        
+        # Check if user is commissioner (multi-commissioner support)
+        comm_check = execute_sql(
+            """SELECT COUNT(*) FROM league_teams 
+               WHERE league_id = :league_id::uuid 
+               AND user_id = :user_id 
+               AND is_commissioner = true""",
+            {'league_id': league_id, 'user_id': user_id},
+            database_name='leagues'
         )
         
-        if not team_check or not team_check.get("records") or not team_check["records"][0][0]["booleanValue"]:
-            raise HTTPException(status_code=403, detail="Only commissioners can sync league data")
+        is_commissioner = False
+        if comm_check and comm_check.get('records'):
+            count = comm_check['records'][0][0].get('longValue', 0)
+            is_commissioner = count > 0
         
-        league_db_name = f"league_{league_id.replace('-', '_')}"
-        sync_results = {
-            "game_logs_synced": 0,
-            "season_stats_calculated": 0,
-            "errors": []
-        }
+        # Fallback to original commissioner check
+        if not is_commissioner:
+            result = execute_sql(
+                "SELECT commissioner_user_id FROM user_leagues WHERE league_id = :league_id::uuid",
+                {'league_id': league_id},
+                database_name='postgres'
+            )
+            if result and result.get('records'):
+                commissioner_id = result['records'][0][0].get('stringValue')
+                is_commissioner = commissioner_id == user_id
         
-        # Step 1: Sync game logs from main DB
-        logger.info(f"🔄 Syncing game logs for league {league_id}")
+        if not is_commissioner:
+            raise HTTPException(status_code=403, detail="Only commissioners can update league settings")
         
-        try:
-            # Get recent game logs from main DB (last 30 days)
-            main_logs_sql = """
-                SELECT player_id, game_date, 
-                       at_bats, hits, runs, rbis, home_runs, doubles, triples, 
-                       stolen_bases, walks, strikeouts, hit_by_pitch,
-                       innings_pitched, wins, losses, saves, holds, blown_saves,
-                       earned_runs, hits_allowed, walks_allowed, strikeouts_pitched
-                FROM player_game_logs 
-                WHERE game_date >= CURRENT_DATE - INTERVAL '30 days'
-                ORDER BY game_date DESC
-                LIMIT 5000
-            """
+        # Process each setting
+        for setting_name, setting_value in settings_data.items():
+            # Skip empty values
+            if setting_value is None:
+                continue
             
-            main_logs = execute_sql(main_logs_sql, database_name='postgres')
+            # Determine setting type
+            setting_type = 'string'
+            stored_value = str(setting_value)
             
-            if main_logs and main_logs.get('records'):
-                logger.info(f"Found {len(main_logs['records'])} game log records to sync")
-                
-                # Batch insert into league DB
-                synced_count = 0
-                batch_size = 100
-                
-                for i in range(0, len(main_logs['records']), batch_size):
-                    batch = main_logs['records'][i:i + batch_size]
-                    values_list = []
-                    
-                    for record in batch:
-                        try:
-                            # Extract values safely from AWS RDS format
-                            player_id = record[0].get('longValue', 0)
-                            game_date = record[1].get('stringValue', '2025-01-01')
-                            
-                            # Extract stats (handling NULL values)
-                            stats = []
-                            for j in range(2, len(record)):
-                                if record[j].get('isNull'):
-                                    stats.append(0)
-                                elif 'longValue' in record[j]:
-                                    stats.append(record[j]['longValue'])
-                                elif 'doubleValue' in record[j]:
-                                    stats.append(record[j]['doubleValue'])
-                                else:
-                                    stats.append(0)
-                            
-                            # Pad with zeros if needed
-                            while len(stats) < 21:
-                                stats.append(0)
-                            
-                            values_list.append(f"({player_id}, '{game_date}', {', '.join(map(str, stats))})")
-                            
-                        except Exception as e:
-                            logger.error(f"Error processing game log record: {e}")
-                            continue
-                    
-                    if values_list:
-                        # Insert batch
-                        batch_sql = f"""
-                            INSERT INTO player_game_logs 
-                            (player_id, game_date, at_bats, hits, runs, rbis, home_runs, doubles, triples,
-                             stolen_bases, walks, strikeouts, hit_by_pitch, innings_pitched, wins, losses,
-                             saves, holds, blown_saves, earned_runs, hits_allowed, walks_allowed, strikeouts_pitched)
-                            VALUES {', '.join(values_list)}
-                            ON CONFLICT (player_id, game_date) DO NOTHING
-                        """
-                        
-                        execute_sql(batch_sql, database_name=league_db_name)
-                        synced_count += len(values_list)
-                        logger.info(f"Synced batch {i//batch_size + 1}: {len(values_list)} records")
-                
-                sync_results["game_logs_synced"] = synced_count
-                logger.info(f"✅ Synced {synced_count} game log records")
-                
-        except Exception as e:
-            error_msg = f"Error syncing game logs: {str(e)}"
-            logger.error(error_msg)
-            sync_results["errors"].append(error_msg)
-        
-        # Step 2: Calculate season stats from game logs
-        logger.info(f"📊 Calculating 2025 season stats from game logs")
-        
-        try:
-            calc_sql = """
-                INSERT INTO player_season_stats (
-                    player_id, season_year, games_played, at_bats, hits, runs, rbis, home_runs, 
-                    doubles, triples, stolen_bases, walks, strikeouts, hit_by_pitch,
-                    avg, obp, slg, ops, games_started, innings_pitched, wins, losses, 
-                    saves, holds, blown_saves, earned_runs, hits_allowed, walks_allowed, 
-                    strikeouts_pitched, era, whip, last_updated, games_calculated_through
-                )
-                SELECT 
-                    player_id,
-                    2025,
-                    COUNT(*) as games_played,
-                    SUM(at_bats) as at_bats,
-                    SUM(hits) as hits,
-                    SUM(runs) as runs,
-                    SUM(rbis) as rbis,
-                    SUM(home_runs) as home_runs,
-                    SUM(doubles) as doubles,
-                    SUM(triples) as triples,
-                    SUM(stolen_bases) as stolen_bases,
-                    SUM(walks) as walks,
-                    SUM(strikeouts) as strikeouts,
-                    SUM(hit_by_pitch) as hit_by_pitch,
-                    -- Calculated ratios
-                    CASE 
-                        WHEN SUM(at_bats) > 0 THEN ROUND(SUM(hits)::NUMERIC / SUM(at_bats), 3)
-                        ELSE 0.000
-                    END as avg,
-                    CASE 
-                        WHEN (SUM(at_bats) + SUM(walks) + SUM(hit_by_pitch)) > 0 
-                        THEN ROUND((SUM(hits) + SUM(walks) + SUM(hit_by_pitch))::NUMERIC / (SUM(at_bats) + SUM(walks) + SUM(hit_by_pitch)), 3)
-                        ELSE 0.000
-                    END as obp,
-                    CASE 
-                        WHEN SUM(at_bats) > 0 
-                        THEN ROUND((SUM(hits) + SUM(doubles) + 2*SUM(triples) + 3*SUM(home_runs))::NUMERIC / SUM(at_bats), 3)
-                        ELSE 0.000
-                    END as slg,
-                    0.000 as ops, -- Will calculate after
-                    COUNT(CASE WHEN innings_pitched > 0 THEN 1 END) as games_started,
-                    SUM(innings_pitched) as innings_pitched,
-                    SUM(wins) as wins,
-                    SUM(losses) as losses,
-                    SUM(saves) as saves,
-                    SUM(holds) as holds,
-                    SUM(blown_saves) as blown_saves,
-                    SUM(earned_runs) as earned_runs,
-                    SUM(hits_allowed) as hits_allowed,
-                    SUM(walks_allowed) as walks_allowed,
-                    SUM(strikeouts_pitched) as strikeouts_pitched,
-                    -- ERA calculation
-                    CASE 
-                        WHEN SUM(innings_pitched) > 0 
-                        THEN ROUND((SUM(earned_runs) * 9.0) / SUM(innings_pitched), 2)
-                        ELSE 0.00
-                    END as era,
-                    -- WHIP calculation
-                    CASE 
-                        WHEN SUM(innings_pitched) > 0 
-                        THEN ROUND((SUM(hits_allowed) + SUM(walks_allowed))::NUMERIC / SUM(innings_pitched), 3)
-                        ELSE 0.000
-                    END as whip,
-                    NOW() as last_updated,
-                    MAX(game_date) as games_calculated_through
-                FROM player_game_logs
-                WHERE game_date >= '2025-01-01'
-                GROUP BY player_id
-                ON CONFLICT (player_id, season_year) 
-                DO UPDATE SET
-                    games_played = EXCLUDED.games_played,
-                    at_bats = EXCLUDED.at_bats,
-                    hits = EXCLUDED.hits,
-                    runs = EXCLUDED.runs,
-                    rbis = EXCLUDED.rbis,
-                    home_runs = EXCLUDED.home_runs,
-                    doubles = EXCLUDED.doubles,
-                    triples = EXCLUDED.triples,
-                    stolen_bases = EXCLUDED.stolen_bases,
-                    walks = EXCLUDED.walks,
-                    strikeouts = EXCLUDED.strikeouts,
-                    hit_by_pitch = EXCLUDED.hit_by_pitch,
-                    avg = EXCLUDED.avg,
-                    obp = EXCLUDED.obp,
-                    slg = EXCLUDED.slg,
-                    games_started = EXCLUDED.games_started,
-                    innings_pitched = EXCLUDED.innings_pitched,
-                    wins = EXCLUDED.wins,
-                    losses = EXCLUDED.losses,
-                    saves = EXCLUDED.saves,
-                    holds = EXCLUDED.holds,
-                    blown_saves = EXCLUDED.blown_saves,
-                    earned_runs = EXCLUDED.earned_runs,
-                    hits_allowed = EXCLUDED.hits_allowed,
-                    walks_allowed = EXCLUDED.walks_allowed,
-                    strikeouts_pitched = EXCLUDED.strikeouts_pitched,
-                    era = EXCLUDED.era,
-                    whip = EXCLUDED.whip,
-                    last_updated = NOW(),
-                    games_calculated_through = EXCLUDED.games_calculated_through
-            """
+            if isinstance(setting_value, bool):
+                setting_type = 'boolean'
+                stored_value = 'true' if setting_value else 'false'
+            elif isinstance(setting_value, int):
+                setting_type = 'integer'
+                stored_value = str(setting_value)
+            elif isinstance(setting_value, float):
+                setting_type = 'float'
+                stored_value = str(setting_value)
+            elif isinstance(setting_value, dict) or isinstance(setting_value, list):
+                setting_type = 'json'
+                stored_value = json.dumps(setting_value)
             
-            result = execute_sql(calc_sql, database_name=league_db_name)
-            
-            # Update OPS (OBP + SLG)
+            # Update league_settings table
             execute_sql(
-                "UPDATE player_season_stats SET ops = obp + slg WHERE season_year = 2025",
-                database_name=league_db_name
+                """INSERT INTO league_settings (league_id, setting_name, setting_value, setting_type)
+                   VALUES (:league_id::uuid, :setting_name, :setting_value, :setting_type)
+                   ON CONFLICT (league_id, setting_name) 
+                   DO UPDATE SET setting_value = :setting_value, updated_at = NOW()""",
+                {
+                    'league_id': league_id,
+                    'setting_name': setting_name,
+                    'setting_value': stored_value,
+                    'setting_type': setting_type
+                },
+                database_name='leagues'
             )
             
-            # Count how many players got stats
-            count_result = execute_sql(
-                "SELECT COUNT(*) FROM player_season_stats WHERE season_year = 2025",
-                database_name=league_db_name
-            )
+            # Special handling for league_name - also update main database
+            if setting_name == 'league_name':
+                execute_sql(
+                    "UPDATE user_leagues SET league_name = :league_name WHERE league_id = :league_id::uuid",
+                    {'league_name': setting_value, 'league_id': league_id},
+                    database_name='postgres'
+                )
+                logger.info(f"Updated league name to '{setting_value}' for league {league_id}")
             
-            if count_result and count_result.get("records"):
-                sync_results["season_stats_calculated"] = count_result["records"][0][0]["longValue"]
-            
-            logger.info(f"✅ Calculated season stats for {sync_results['season_stats_calculated']} players")
-            
-        except Exception as e:
-            error_msg = f"Error calculating season stats: {str(e)}"
-            logger.error(error_msg)
-            sync_results["errors"].append(error_msg)
+            logger.debug(f"Updated setting {setting_name} = {stored_value} (type: {setting_type})")
         
-        # Step 3: Verify results
-        try:
-            # Get sample of calculated stats
-            sample_sql = """
-                SELECT mp.first_name, mp.last_name, mp.position, 
-                       pss.avg, pss.home_runs, pss.rbis, pss.era, pss.wins, pss.saves
-                FROM player_season_stats pss
-                JOIN mlb_players mp ON pss.player_id = mp.player_id
-                WHERE pss.season_year = 2025 
-                  AND (pss.home_runs > 0 OR pss.wins > 0 OR pss.saves > 0)
-                ORDER BY pss.home_runs DESC, pss.wins DESC, pss.saves DESC
-                LIMIT 5
-            """
-            
-            sample_result = execute_sql(sample_sql, database_name=league_db_name)
-            sample_players = []
-            
-            if sample_result and sample_result.get('records'):
-                for record in sample_result['records']:
-                    sample_players.append({
-                        "name": f"{record[0]['stringValue']} {record[1]['stringValue']}",
-                        "position": record[2]['stringValue'],
-                        "avg": record[3]['doubleValue'] if record[3].get('doubleValue') else 0,
-                        "home_runs": record[4]['longValue'] if record[4].get('longValue') else 0,
-                        "wins": record[7]['longValue'] if record[7].get('longValue') else 0
-                    })
-            
-            sync_results["sample_players"] = sample_players
-            
-        except Exception as e:
-            logger.error(f"Error getting sample data: {e}")
+        logger.info(f"✅ Successfully updated {len(settings_data)} settings for league {league_id}")
         
         return {
             "success": True,
-            "league_id": league_id,
-            "sync_results": sync_results,
-            "message": f"Data sync completed. {sync_results['game_logs_synced']} game logs synced, {sync_results['season_stats_calculated']} players with calculated stats.",
-            "next_step": "Free agent system should now show real 2025 stats instead of N/A values"
+            "message": f"Successfully updated {len(settings_data)} settings",
+            "settings_updated": list(settings_data.keys())
         }
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error syncing league data: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Error syncing league data: {str(e)}")
+        logger.error(f"Error updating league settings: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to update settings: {str(e)}")
+
+@router.post("/{league_id}/check-stats")
+async def check_league_stats(
+    league_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Check if stats are available for the league (in main database)"""
+    try:
+        # Verify commissioner permissions
+        user_id = current_user.get('sub')
+        team_check = execute_sql(
+            """SELECT is_commissioner FROM league_teams 
+               WHERE league_id = :league_id::uuid AND user_id = :user_id""",
+            parameters={'league_id': league_id, 'user_id': user_id},
+            database_name='leagues'
+        )
+        
+        if not team_check or not team_check.get("records") or not team_check["records"][0][0]["booleanValue"]:
+            raise HTTPException(status_code=403, detail="Only commissioners can check stats")
+        
+        # Check if stats exist in main database for current season
+        stats_check = execute_sql(
+            f"""SELECT COUNT(*) FROM player_season_stats 
+                WHERE season = {CURRENT_SEASON}""",
+            database_name='postgres'
+        )
+        
+        stats_count = 0
+        if stats_check and stats_check.get('records'):
+            stats_count = stats_check['records'][0][0].get('longValue', 0)
+        
+        # Get some sample players with stats
+        sample_sql = f"""
+            SELECT mp.first_name, mp.last_name, mp.position, 
+                   pss.batting_avg, pss.home_runs, pss.rbi, pss.era, pss.wins, pss.saves
+            FROM player_season_stats pss
+            JOIN mlb_players mp ON pss.player_id = mp.player_id
+            WHERE pss.season = {CURRENT_SEASON}
+              AND (pss.home_runs > 0 OR pss.wins > 0 OR pss.saves > 0)
+            ORDER BY pss.home_runs DESC, pss.wins DESC, pss.saves DESC
+            LIMIT 5
+        """
+        
+        sample_result = execute_sql(sample_sql, database_name='postgres')
+        sample_players = []
+        
+        if sample_result and sample_result.get('records'):
+            for record in sample_result['records']:
+                sample_players.append({
+                    "name": f"{record[0]['stringValue']} {record[1]['stringValue']}",
+                    "position": record[2]['stringValue'],
+                    "avg": record[3]['doubleValue'] if record[3].get('doubleValue') else 0,
+                    "home_runs": record[4]['longValue'] if record[4].get('longValue') else 0,
+                    "wins": record[7]['longValue'] if record[7].get('longValue') else 0
+                })
+        
+        return {
+            "success": True,
+            "league_id": league_id,
+            "season": CURRENT_SEASON,
+            "stats_available": stats_count > 0,
+            "player_count": stats_count,
+            "sample_players": sample_players,
+            "message": f"{stats_count} players have {CURRENT_SEASON} season stats available",
+            "note": "Stats are stored in main database and shared across all leagues"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error checking league stats: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error checking stats: {str(e)}")
+    
+@router.get("/{league_id}/my-team")
+async def get_my_team(
+    league_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get user's team in this league"""
+    try:
+        user_id = current_user.get('sub')
+        
+        result = execute_sql(
+            "SELECT team_id, team_name, team_logo_url, team_colors, team_motto, manager_name FROM league_teams WHERE league_id = :league_id::uuid AND user_id = :user_id",
+            {'league_id': league_id, 'user_id': user_id},
+            database_name='leagues'
+        )
+        
+        if not result or not result.get('records'):
+            raise HTTPException(status_code=404, detail="Team not found")
+        
+        team = result['records'][0]
+        return {
+            "success": True,
+            "team_id": team[0].get('stringValue'),
+            "team_name": team[1].get('stringValue'),
+            "team_logo_url": team[2].get('stringValue') if team[2] and not team[2].get('isNull') else '',
+            "team_colors": json.loads(team[3].get('stringValue', '{}')) if team[3] and not team[3].get('isNull') else {},
+            "team_motto": team[4].get('stringValue') if team[4] and not team[4].get('isNull') else '',
+            "manager_name": team[5].get('stringValue') if team[5] and not team[5].get('isNull') else ''
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting user team: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error getting team: {str(e)}")
+
+@router.get("/{league_id}/roster-configuration")
+async def get_roster_configuration(
+    league_id: str,
+    current_user: dict = Depends(get_current_user)
+):
+    """Get detailed roster configuration for dynamic roster generation"""
+    try:
+        # Get roster-specific settings
+        settings_sql = """
+            SELECT setting_name, setting_value, setting_type
+            FROM league_settings
+            WHERE league_id = :league_id::uuid
+            AND setting_name IN (
+                'position_requirements', 'bench_slots', 'dl_slots', 'minor_league_slots',
+                'max_players_total', 'min_hitters', 'max_pitchers', 'min_pitchers'
+            )
+        """
+        
+        result = execute_sql(
+            settings_sql,
+            parameters={'league_id': league_id},
+            database_name='leagues'
+        )
+        
+        roster_config = {
+            'position_requirements': {
+                'C': {'slots': 2}, '1B': {'slots': 1}, '2B': {'slots': 1}, 
+                '3B': {'slots': 1}, 'SS': {'slots': 1}, 'OF': {'slots': 4},
+                'MI': {'slots': 1}, 'CI': {'slots': 1}, 'UTIL': {'slots': 1}, 'P': {'slots': 10}
+            },
+            'bench_slots': 5,
+            'dl_slots': 0,
+            'minor_league_slots': 0,
+            'max_players_total': 23
+        }
+        
+        if result and result.get("records"):
+            parsed_settings = parse_league_settings(result["records"])
+            roster_config.update(parsed_settings)
+        
+        # Calculate totals
+        total_active = sum(pos.get('slots', 0) for pos in roster_config['position_requirements'].values())
+        total_roster = (
+            total_active + 
+            roster_config.get('bench_slots', 0) + 
+            roster_config.get('dl_slots', 0) + 
+            roster_config.get('minor_league_slots', 0)
+        )
+        
+        return {
+            "success": True,
+            "league_id": league_id,
+            "roster_configuration": roster_config,
+            "calculated_totals": {
+                "total_active_slots": total_active,
+                "total_roster_slots": total_roster,
+                "batters": sum(pos.get('slots', 0) for k, pos in roster_config['position_requirements'].items() if k != 'P'),
+                "pitchers": roster_config['position_requirements'].get('P', {}).get('slots', 0)
+            },
+            "data_source": "leagues_db_settings",
+            "note": "This configuration powers the dynamic MyRoster screen generation"
+        }
+        
+    except Exception as e:
+        logger.error(f"Error getting roster configuration: {e}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Error getting roster configuration: {str(e)}")

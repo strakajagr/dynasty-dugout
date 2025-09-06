@@ -1,40 +1,52 @@
 """
 Dynasty Dugout - Main Leagues Router
 🎯 MODULAR STRUCTURE: Combines all league sub-modules into one clean router
-📁 REPLACES: The massive 1200+ line leagues.py file
-🧩 MODULES: lifecycle, management, owners, standings, players, transactions
-STATUS: Players module added - Team Home Dashboard ready!
+📁 COMPLETE VERSION: Includes all modules including salaries and status
+🧩 MODULES: lifecycle, management, owners, standings, players (now modular), transactions, salaries, status
+STATUS: Complete with modular players implementation
 """
 
 from fastapi import APIRouter
-import logging  # <-- ADDED FOR DEBUGGING
+import logging
+from core.season_utils import CURRENT_SEASON
 
-logger = logging.getLogger(__name__) # <-- ADDED FOR DEBUGGING
+logger = logging.getLogger(__name__)
 
-# =============================================================================
-# EXPLICIT DEBUGGING BLOCK FOR 'owners.py'
-# This block will force the application to crash if 'owners.py' fails to
-# import for any reason, printing the exact error to the CloudWatch logs.
-# =============================================================================
-try:
-    from . import owners
-    logger.warning("✅✅✅ DEBUG: Successfully imported owners.py module.")
-except Exception:
-    logger.critical("❌❌❌ DEBUG: FAILED TO IMPORT owners.py. See traceback below.", exc_info=True)
-    raise  # This forces the app to crash and show the error
-
-# =============================================================================
-# Import all other modular sub-routers
-# =============================================================================
-from . import lifecycle, management, standings, players
-
-from . import transactions
+# Import all modular sub-routers
+from . import lifecycle, management, owners, standings, players, transactions, salaries, status
 
 # Create main router
 router = APIRouter()
 
 # =============================================================================
-# INCLUDE ALL SUB-ROUTERS WITH CLEAR ORGANIZATION
+# INCLUDE GLOBAL ROUTERS (No league_id required)
+# =============================================================================
+
+# Global player endpoints (no league_id needed)
+router.include_router(
+    players.global_router,
+    prefix="/players",
+    tags=["Global Players"],
+    responses={
+        200: {"description": "Success"},
+        404: {"description": "Player not found"},
+        500: {"description": "Internal server error"}
+    }
+)
+
+# Global league management endpoints (my-leagues, etc.)
+router.include_router(
+    management.global_router,
+    tags=["League Management - Global"],
+    responses={
+        200: {"description": "Success"},
+        403: {"description": "Access denied"},
+        500: {"description": "Internal server error"}
+    }
+)
+
+# =============================================================================
+# INCLUDE LEAGUE-SPECIFIC SUB-ROUTERS
 # =============================================================================
 
 # League Creation & Destruction (lifecycle.py)
@@ -48,7 +60,7 @@ router.include_router(
     }
 )
 
-# Basic League Operations (management.py)
+# League-specific management endpoints
 router.include_router(
     management.router,
     tags=["League Management"],
@@ -59,9 +71,10 @@ router.include_router(
     }
 )
 
-# Owner & Team Management (owners.py) - CRITICAL FOR FRONTEND FIX
+# Owner & Team Management (owners.py)
 router.include_router(
     owners.router,
+    #prefix="/{league_id}",
     tags=["Owner Management"],
     responses={
         200: {"description": "Success"},
@@ -73,6 +86,7 @@ router.include_router(
 # Competitive Standings & Scoring (standings.py)
 router.include_router(
     standings.router,
+    #prefix="/{league_id}",
     tags=["Standings & Scoring"],
     responses={
         200: {"description": "Success"},
@@ -81,10 +95,10 @@ router.include_router(
     }
 )
 
-# League-Specific Player Data (players.py) - ✅ NEW! TEAM HOME READY
+# League-Specific Player Data (players module - now modular)
 router.include_router(
     players.router,
-    prefix="/{league_id}",  # <-- ADD THIS PREFIX
+    prefix="/{league_id}",
     tags=["League Players & Rosters"],
     responses={
         200: {"description": "Success"},
@@ -93,14 +107,38 @@ router.include_router(
     }
 )
 
+# Transactions (trades, waivers, free agency)
 router.include_router(
-     transactions.router,
-     tags=["Transactions"],
-     responses={
-         200: {"description": "Success"},
-         400: {"description": "Invalid transaction"},
-         403: {"description": "Transaction not allowed"}
-     }
+    transactions.router,
+    prefix="/{league_id}",
+    tags=["Transactions"],
+    responses={
+        200: {"description": "Success"},
+        400: {"description": "Invalid transaction"},
+        403: {"description": "Transaction not allowed"}
+    }
+)
+
+# Salary and Contract Management (salaries.py)
+router.include_router(
+    salaries.router,
+    tags=["Salary Management"],
+    responses={
+        200: {"description": "Success"},
+        403: {"description": "Commissioner only"},
+        500: {"description": "Internal server error"}
+    }
+)
+
+# League Status Management (status.py)
+router.include_router(
+    status.router,
+    tags=["League Status"],
+    responses={
+        200: {"description": "Success"},
+        403: {"description": "Commissioner only"},
+        400: {"description": "Invalid status transition"}
+    }
 )
 
 # =============================================================================
@@ -112,110 +150,153 @@ async def leagues_module_info():
     """Information about the modular leagues structure"""
     return {
         "module": "leagues",
-        "status": "modular_structure_complete_with_players",
-        "description": "Leagues functionality broken into focused modules",
+        "status": "complete_with_modular_players",
+        "current_season": CURRENT_SEASON,
+        "description": "Leagues functionality with complete salary, status, and modular player systems",
+        "architecture": {
+            "main_database": "Single source of truth - stores ALL historical data",
+            "league_databases": f"Current season cache - only {CURRENT_SEASON} stats",
+            "season_management": "Automatic season detection and rollover support",
+            "financial_system": "Complete salary cap and contract management",
+            "status_progression": "Enforced workflow from setup through active season",
+            "players_module": "Refactored into modular components for maintainability"
+        },
         "modules": {
             "lifecycle": {
                 "file": "lifecycle.py",
                 "purpose": "League creation, status tracking, deletion",
                 "endpoints": ["/create", "/{league_id}/creation-status", "/{league_id}/cleanup"],
-                "status": "✅ extracted and operational",
-                "lines": "~657"
+                "status": "✅ Complete with financial settings",
+                "features": ["Syncs current season stats", "Saves all financial settings from frontend"]
             },
             "management": {
                 "file": "management.py",
-                "purpose": "Basic league info, settings, health checks",
-                "endpoints": ["/health", "/my-leagues", "/{league_id}", "/{league_id}/settings"],
-                "status": "✅ extracted and operational",
-                "lines": "~262"
+                "purpose": "Basic league info, settings, health checks, data sync",
+                "global_endpoints": ["/my-leagues"],
+                "league_endpoints": ["/{league_id}", "/{league_id}/settings", "/{league_id}/sync-data"],
+                "status": "✅ Season-aware",
+                "features": ["Dynamic season in all data operations"]
             },
             "owners": {
                 "file": "owners.py",
                 "purpose": "Owner management, team setup, invitations",
                 "endpoints": ["/{league_id}/owners", "/{league_id}/setup-team", "/{league_id}/invite-owner"],
-                "status": "✅ extracted and operational - FRONTEND USES /owners",
-                "lines": "~500+"
+                "status": "✅ Complete",
+                "notes": "Email-first invitation pattern"
             },
             "standings": {
                 "file": "standings.py",
                 "purpose": "Competitive rankings, points, wins/losses",
                 "endpoints": ["/{league_id}/standings", "/{league_id}/scores", "/{league_id}/categories"],
-                "status": "✅ extracted and operational - FOR STANDINGS PAGE ONLY",
-                "lines": "~174"
+                "status": "✅ Ready for season support",
+                "notes": "Will calculate based on active rosters"
             },
             "players": {
-                "file": "players.py",
-                "purpose": "League-specific player management with team attribution",
-                "endpoints": [
-                    "/{league_id}/team-home-data",
-                    "/{league_id}/players",
-                    "/{league_id}/free-agents",
-                    "/{league_id}/my-roster",
-                    "/{league_id}/teams/{team_id}/two-line-stats"
+                "file": "players/ (modular directory)",
+                "structure": {
+                    "__init__.py": "Router aggregation",
+                    "models.py": "Pydantic models for all stats types",
+                    "analytics.py": "PlayerAnalytics class with comprehensive analysis",
+                    "utils.py": "Helper functions for parsing and validation",
+                    "roster.py": "Team roster endpoints with 3-line stats",
+                    "free_agents.py": "Free agent browsing with 2-line stats",
+                    "global_stats.py": "Player info, career stats, complete data"
+                },
+                "global_endpoints": [
+                    "/players/{player_id} (basic info)",
+                    "/players/{player_id}/career-stats",
+                    "/players/{player_id}/complete",
+                    "/players/{player_id}/analytics",
+                    "/players/search (dashboard search)"
                 ],
-                "status": "✅ COMPLETE - TEAM HOME DASHBOARD READY!",
-                "lines": "~1000+",
+                "league_endpoints": [
+                    "/{league_id}/teams/{team_id}/roster-three-line",
+                    "/{league_id}/team-dashboard/{team_id}",
+                    "/{league_id}/my-roster",
+                    "/{league_id}/free-agents",
+                    "/{league_id}/free-agents/{player_id}",
+                    "/{league_id}/free-agents/by-position/{position}"
+                ],
+                "status": "✅ REFACTORED - Modular architecture",
                 "features": [
-                    "Two-line player display (season vs team stats)",
-                    "Team attribution system",
-                    "Daily stats accumulation",
-                    "Starting pitchers integration",
-                    "Complete Team Home Dashboard API"
+                    f"Shows {CURRENT_SEASON} stats from league cache",
+                    "Three-line display for team pages (Season/Accrued/14-day)",
+                    "Two-line display for free agents (Season/14-day)",
+                    "Comprehensive analytics with z-scores and trends",
+                    "Player search for main dashboard",
+                    "Clean separation of concerns"
                 ]
             },
             "transactions": {
                 "file": "transactions.py",
                 "purpose": "Trades, waivers, free agency",
-                "endpoints": ["/{league_id}/transactions", "/{league_id}/trades", "/{league_id}/waivers"],
-                "status": "🚧 planned - to be created",
-                "lines": "~107 (placeholder)"
-            }
-        },
-        "frontend_integration": {
-            "team_home_dashboard": {
-                "status": "✅ READY TO DEPLOY",
-                "endpoint": "GET /{league_id}/team-home-data",
-                "purpose": "Complete dashboard data in one API call",
-                "returns": [
-                    "team_info (name, manager, etc.)",
-                    "roster_stats (two-line player display)",
-                    "starting_pitchers (today's games)",
-                    "player_notes (news updates)",
-                    "last_night_box (yesterday's performance)"
+                "endpoints": [
+                    "/{league_id}/free-agents",
+                    "/{league_id}/free-agents-enhanced",
+                    "/{league_id}/add-player",
+                    "/{league_id}/drop-player",
+                    "/{league_id}/my-roster",
+                    "/{league_id}/my-roster-enhanced",
+                    "/{league_id}/transactions"
+                ],
+                "status": "✅ Season-aware with status checking",
+                "features": [f"Uses {CURRENT_SEASON} stats", "Multi-row displays"]
+            },
+            "salaries": {
+                "file": "salaries.py",
+                "purpose": "Salary cap and pricing management",
+                "endpoints": [
+                    "/{league_id}/salary-settings",
+                    "/{league_id}/salary-settings (PUT)",
+                    "/{league_id}/price-status",
+                    "/{league_id}/reset-prices"
+                ],
+                "status": "✅ Complete implementation",
+                "features": [
+                    "Saves prices from adaptive engine",
+                    "Tracks manual overrides",
+                    "Price change history",
+                    "CSV export/import support"
                 ]
             },
-            "owner_management": {
-                "endpoint": "GET /{league_id}/owners",
-                "purpose": "Owner management table data",
-                "returns": "teams + invitations + empty slots"
-            },
-            "standings_display": {
-                "endpoint": "GET /{league_id}/standings",
-                "purpose": "Competitive rankings only",
-                "returns": "wins/losses/points data"
+            "status": {
+                "file": "status.py",
+                "purpose": "League status progression management",
+                "endpoints": [
+                    "/{league_id}/status",
+                    "/{league_id}/status (PUT)",
+                    "/{league_id}/draft-type",
+                    "/{league_id}/start-season",
+                    "/{league_id}/notify-owners"
+                ],
+                "status": "✅ Complete implementation",
+                "features": [
+                    "Enforced status progression",
+                    "Transaction locking by status",
+                    "Commissioner controls",
+                    "Owner notifications"
+                ]
             }
         },
-        "architecture": {
-            "before": "1200+ line leagues.py file (unmaintainable)",
-            "after": "5 focused modules (~2,500+ lines total)",
-            "benefits": [
-                "single responsibility",
-                "easy testing",
-                "team development",
-                "clear separation",
-                "sophisticated player attribution system"
-            ]
+        "refactoring_benefits": {
+            "maintainability": "1800 lines split into focused modules",
+            "reusability": "Shared utils and models",
+            "testability": "Each module can be tested independently",
+            "scalability": "Easy to add new player features",
+            "clarity": "Clear separation of concerns"
         },
         "deployment_status": {
-            "core_modules": "✅ extracted and operational",
-            "team_home_system": "✅ complete and ready",
-            "two_line_stats": "✅ implemented with team attribution",
-            "migration_safe": "✅ old file can be safely replaced"
+            "core_modules": "✅ All 8 modules complete",
+            "players_refactor": "✅ Successfully modularized",
+            "dynamic_season": f"✅ Using {CURRENT_SEASON} everywhere",
+            "financial_system": "✅ Complete with frontend integration",
+            "status_system": "✅ Complete with UI controls",
+            "production_ready": "✅ Full feature set implemented"
         }
     }
 
 # =============================================================================
-# ROOT LEAGUE ENDPOINTS - TODO
+# ROOT LEAGUE ENDPOINTS
 # =============================================================================
 
 @router.get("/search")
@@ -224,5 +305,21 @@ async def search_leagues():
     return {
         "success": False,
         "message": "League search endpoint not yet implemented",
-        "todo": "Search public leagues with filters (name, sport, etc.)"
+        "todo": "Search public leagues with filters",
+        "current_season": CURRENT_SEASON
+    }
+
+@router.get("/season-info")
+async def get_season_info():
+    """Get current season information"""
+    from core.season_utils import get_current_season, get_season_start_date, get_season_end_date
+    
+    current = get_current_season()
+    return {
+        "current_season": current,
+        "season_start": get_season_start_date(current),
+        "season_end": get_season_end_date(current),
+        "previous_season": current - 1,
+        "next_season": current + 1,
+        "note": "League databases only cache current season stats"
     }

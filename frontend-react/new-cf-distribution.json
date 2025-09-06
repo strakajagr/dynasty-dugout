@@ -1,0 +1,77 @@
+{
+  "CallerReference": "dynasty-dugout-1756845588",
+  "Comment": "Dynasty Dugout Frontend Fresh",
+  "Enabled": true,
+  "Origins": {
+    "Quantity": 1,
+    "Items": [
+      {
+        "Id": "S3-fantasy-baseball-frontend-strakajagr",
+        "DomainName": "fantasy-baseball-frontend-strakajagr.s3.amazonaws.com",
+        "S3OriginConfig": {
+          "OriginAccessIdentity": ""
+        },
+        "ConnectionAttempts": 3,
+        "ConnectionTimeout": 10
+      }
+    ]
+  },
+  "DefaultRootObject": "index.html",
+  "DefaultCacheBehavior": {
+    "TargetOriginId": "S3-fantasy-baseball-frontend-strakajagr",
+    "ViewerProtocolPolicy": "redirect-to-https",
+    "TrustedSigners": {
+      "Enabled": false,
+      "Quantity": 0
+    },
+    "TrustedKeyGroups": {
+      "Enabled": false,
+      "Quantity": 0
+    },
+    "AllowedMethods": {
+      "Quantity": 2,
+      "Items": ["HEAD", "GET"],
+      "CachedMethods": {
+        "Quantity": 2,
+        "Items": ["HEAD", "GET"]
+      }
+    },
+    "ForwardedValues": {
+      "QueryString": false,
+      "Cookies": {
+        "Forward": "none"
+      },
+      "Headers": {
+        "Quantity": 0
+      }
+    },
+    "MinTTL": 0,
+    "DefaultTTL": 86400,
+    "MaxTTL": 31536000,
+    "Compress": true,
+    "SmoothStreaming": false
+  },
+  "CustomErrorResponses": {
+    "Quantity": 1,
+    "Items": [
+      {
+        "ErrorCode": 404,
+        "ResponsePagePath": "/index.html",
+        "ResponseCode": "200",
+        "ErrorCachingMinTTL": 300
+      }
+    ]
+  },
+  "HttpVersion": "http2",
+  "IsIPV6Enabled": true,
+  "PriceClass": "PriceClass_All",
+  "ViewerCertificate": {
+    "CloudFrontDefaultCertificate": true
+  },
+  "Restrictions": {
+    "GeoRestriction": {
+      "RestrictionType": "none",
+      "Quantity": 0
+    }
+  }
+}

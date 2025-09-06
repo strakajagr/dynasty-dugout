@@ -1,0 +1,28 @@
+{
+  "body": "{\"league_name\": \"Test League 2025\", \"use_salaries\": true, \"use_contracts\": true, \"use_waivers\": false, \"max_teams\": 12}",
+  "resource": "/{proxy+}",
+  "path": "/api/leagues/create",
+  "httpMethod": "POST",
+  "isBase64Encoded": false,
+  "queryStringParameters": null,
+  "pathParameters": {
+    "proxy": "api/leagues/create"
+  },
+  "headers": {
+    "Accept": "application/json",
+    "Authorization": "Bearer eyJraWQiOiIydmIyMTg1UHpaMDhwOVwvZ0ZGUzFqSTI0T1lGUExsK21CT0xYVVNoV1k1cz0iLCJhbGciOiJSUzI1NiJ9.eyJzdWIiOiJlNDA4MzRhOC04MGIxLTcwMjUtZWUwOS1iNTQyYzBiOTNmY2IiLCJpc3MiOiJodHRwczpcL1wvY29nbml0by1pZHAudXMtZWFzdC0xLmFtYXpvbmF3cy5jb21cL3VzLWVhc3QtMV9Pb29WNXU4M3ciLCJjbGllbnRfaWQiOiI1bTl0cTk3NThhZDAwdnRuam9ib2JwZmdhcSIsIm9yaWdpbl9qdGkiOiI3N2JhNTYyZS0wNjc0LTQzMjctOGEyZC04NDAwMTdkNDhlN2MiLCJldmVudF9pZCI6ImUxYzVkNTVlLTk0ZDAtNGI2MS1iZTQyLWE3YjRlYjg1YWQ2ZCIsInRva2VuX3VzZSI6ImFjY2VzcyIsInNjb3BlIjoiYXdzLmNvZ25pdG8uc2lnbmluLnVzZXIuYWRtaW4iLCJhdXRoX3RpbWUiOjE3NTU3NDU3NDYsImV4cCI6MTc1NTc0OTM0NiwiaWF0IjoxNzU1NzQ1NzQ2LCJqdGkiOiI4YzA1MjAyNS1jMDlmLTQxOTUtYjNhMC02ZjAxNGQxZjFjY2IiLCJ1c2VybmFtZSI6ImU0MDgzNGE4LTgwYjEtNzAyNS1lZTA5LWI1NDJjMGI5M2ZjYiJ9.Ru5Xwqjg_dmyRherclW0zMXjjNvsKUAfTuWv_iRsGK1Fs8jN_Oc4Tksu8djh8fH2nAmZXChgD1iDMiDUytBuLsuSEY4OCS9l0kmfgvlCG6wu7zpJivaczRjt52lEENbMLS_egSVw9BG7fQ4RyQYNGVCIaYFkkpPmqoIeHM1_6Bw5ALU6cImlquXHbHZcDpMUvWGBLzUWIFyq2A2b8QdOHosLmmEQ5i-GCn1FF383-KdCJF4QnEcBsjCWGxx7c4n31kJa3KMhSxWHKSCD6vZDQ-QOaHHQjnbmnHQSyUZILu9-FLkMzMjRNxbboPWMfJ8BEdzpvkANTDBRpl2_vFFhsA",
+    "Content-Type": "application/json",
+    "Host": "localhost:3000"
+  },
+  "requestContext": {
+    "accountId": "123456789012",
+    "resourceId": "123456",
+    "stage": "test",
+    "requestId": "test-create-league",
+    "identity": {
+      "sourceIp": "127.0.0.1"
+    },
+    "httpMethod": "POST",
+    "path": "/api/leagues/create"
+  }
+}

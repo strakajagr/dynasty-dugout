@@ -1,0 +1,1 @@
+{"statusCode": 500, "body": "{\"error\": \"An error occurred (DatabaseErrorException) when calling the ExecuteStatement operation: ERROR: column \\\"home_runs_allowed\\\" does not exist; Position: 2055; SQLState: 42703\"}"}
