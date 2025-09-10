@@ -1,7 +1,7 @@
 """
 Dynasty Dugout - League Lifecycle Management Module - SHARED DATABASE VERSION
 Creates new leagues using an asynchronous pattern to avoid API Gateway timeouts.
-Now uses shared 'leagues' database instead of creating separate databases
+Now includes public/private league support with invite codes
 FIXED: Pydantic model now includes ALL roster configuration fields
 """
 
@@ -9,6 +9,8 @@ import logging
 import json
 import os
 import boto3
+import random
+import string
 from uuid import uuid4
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import JSONResponse
@@ -26,7 +28,30 @@ lambda_client = boto3.client('lambda')
 LEAGUE_WORKER_LAMBDA_NAME = os.environ.get('LEAGUE_WORKER_LAMBDA_NAME', 'league-creation-worker')
 
 # =============================================================================
-# PYDANTIC MODELS - FIXED WITH ALL ROSTER CONFIGURATION FIELDS
+# HELPER FUNCTIONS
+# =============================================================================
+
+def generate_invite_code(length=8):
+    """Generate a unique invite code for private leagues"""
+    # Use uppercase letters and numbers, avoiding confusing characters (0, O, I, 1)
+    characters = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'
+    while True:
+        code = ''.join(random.choices(characters, k=length))
+        
+        # Check if code already exists
+        check_result = execute_sql(
+            "SELECT league_id FROM user_leagues WHERE invite_code = :code",
+            {'code': code},
+            database_name='postgres'
+        )
+        
+        if not check_result.get('records'):
+            return code
+        
+        logger.info(f"Invite code collision detected: {code}, generating new one")
+
+# =============================================================================
+# PYDANTIC MODELS - FIXED WITH ALL ROSTER CONFIGURATION FIELDS + PRIVACY
 # =============================================================================
 
 class LeagueCreateRequest(BaseModel):
@@ -35,6 +60,9 @@ class LeagueCreateRequest(BaseModel):
     max_teams: int = Field(default=12, ge=4, le=20)
     player_pool: str = Field(default='american_national')
     include_minor_leagues: bool = Field(default=False)
+    
+    # Privacy Settings - NEW
+    is_public: bool = Field(default=True, description="Whether league appears in public listings")
     
     # Scoring Configuration
     scoring_system: str = Field(default='rotisserie_ytd')
@@ -93,11 +121,11 @@ async def create_league_async(league_data: LeagueCreateRequest, current_user: di
     """
     Initiates league creation. Creates an immediate record and triggers a background worker.
     Returns a 202 Accepted response with a URL to poll for status.
-    Now uses shared 'leagues' database instead of creating separate databases.
-    FIXED: Now passes ALL roster configuration fields to worker
+    Now includes public/private support with invite codes for private leagues.
     """
     logger.info("🚀 CREATE LEAGUE ENDPOINT HIT")
     logger.info(f"League data received: {league_data.league_name}")
+    logger.info(f"Privacy setting: {'PUBLIC' if league_data.is_public else 'PRIVATE'}")
     logger.info(f"Roster config: {league_data.position_requirements}")
     logger.info(f"Bench slots: {league_data.bench_slots}")
     logger.info(f"DL slots: {league_data.dl_slots}")
@@ -106,16 +134,33 @@ async def create_league_async(league_data: LeagueCreateRequest, current_user: di
     
     user_id = current_user.get('sub')
     league_id = str(uuid4())
+    
+    # Generate invite code for private leagues
+    invite_code = None if league_data.is_public else generate_invite_code()
 
     logger.info(f"[{league_id[:8]}] Initiating async league creation for '{league_data.league_name}'")
+    if invite_code:
+        logger.info(f"[{league_id[:8]}] Private league - Invite code: {invite_code}")
     logger.info(f"[{league_id[:8]}] Worker Lambda Name: {LEAGUE_WORKER_LAMBDA_NAME}")
 
-    # 1. Create the "phone book" entry with 'pending' status (NO database_name anymore!)
+    # 1. Create the "phone book" entry with 'pending' status and privacy settings
     try:
         execute_sql(
-            """INSERT INTO user_leagues (league_id, league_name, commissioner_user_id, creation_status, status)
-               VALUES (:league_id::uuid, :league_name, :user_id, 'pending', 'creating')""",
-            {'league_id': league_id, 'league_name': league_data.league_name, 'user_id': user_id},
+            """INSERT INTO user_leagues (
+                league_id, league_name, commissioner_user_id, 
+                creation_status, status, is_public, invite_code
+               )
+               VALUES (
+                :league_id::uuid, :league_name, :user_id, 
+                'pending', 'creating', :is_public, :invite_code
+               )""",
+            {
+                'league_id': league_id, 
+                'league_name': league_data.league_name, 
+                'user_id': user_id,
+                'is_public': league_data.is_public,
+                'invite_code': invite_code
+            },
             database_name='postgres'
         )
         # Explicitly set is_active to true for the new membership record
@@ -125,7 +170,7 @@ async def create_league_async(league_data: LeagueCreateRequest, current_user: di
             {'league_id': league_id, 'user_id': user_id}, 
             database_name='postgres'
         )
-        logger.info(f"[{league_id[:8]}] ✅ Phone book entry created")
+        logger.info(f"[{league_id[:8]}] ✅ Phone book entry created with privacy settings")
         
     except Exception as e:
         logger.error(f"[{league_id[:8]}] Failed to create initial league record: {e}")
@@ -135,12 +180,15 @@ async def create_league_async(league_data: LeagueCreateRequest, current_user: di
     payload = {
         'league_id': league_id,
         'user_id': user_id,
-        'league_data': league_data.model_dump(),  # Now includes ALL roster fields
-        'current_season': CURRENT_SEASON
+        'league_data': league_data.model_dump(),  # Now includes is_public
+        'current_season': CURRENT_SEASON,
+        'invite_code': invite_code  # Pass to worker for settings table
     }
     
     # Log the complete payload being sent to worker for debugging
     logger.info(f"[{league_id[:8]}] Worker payload includes:")
+    logger.info(f"  - is_public: {payload['league_data'].get('is_public', True)}")
+    logger.info(f"  - invite_code: {payload.get('invite_code', 'N/A')}")
     logger.info(f"  - position_requirements: {payload['league_data'].get('position_requirements', 'MISSING')}")
     logger.info(f"  - bench_slots: {payload['league_data'].get('bench_slots', 'MISSING')}")
     logger.info(f"  - dl_slots: {payload['league_data'].get('dl_slots', 'MISSING')}")
@@ -168,21 +216,30 @@ async def create_league_async(league_data: LeagueCreateRequest, current_user: di
         raise HTTPException(status_code=500, detail="Failed to start league creation")
 
     status_url = f"/api/leagues/{league_id}/creation-status"
+    
+    response_data = {
+        "success": True,
+        "league_id": league_id,
+        "status": "pending",
+        "message": "League creation has started. Poll the status URL for updates.",
+        "status_url": status_url,
+        "is_public": league_data.is_public,
+        "roster_config_included": {
+            "position_requirements": bool(league_data.position_requirements),
+            "bench_slots": league_data.bench_slots,
+            "dl_slots": league_data.dl_slots,
+            "minor_league_slots": league_data.minor_league_slots
+        }
+    }
+    
+    # Include invite code in response for private leagues
+    if invite_code:
+        response_data["invite_code"] = invite_code
+        response_data["message"] += f" Share invite code '{invite_code}' with players to join."
+    
     return JSONResponse(
         status_code=202,
-        content={
-            "success": True,
-            "league_id": league_id,
-            "status": "pending",
-            "message": "League creation has started. Poll the status URL for updates.",
-            "status_url": status_url,
-            "roster_config_included": {
-                "position_requirements": bool(league_data.position_requirements),
-                "bench_slots": league_data.bench_slots,
-                "dl_slots": league_data.dl_slots,
-                "minor_league_slots": league_data.minor_league_slots
-            }
-        }
+        content=response_data
     )
 
 @router.get("/{league_id}/creation-status")
@@ -202,7 +259,8 @@ async def get_league_creation_status(league_id: str, current_user: dict = Depend
 
     # Get status from the now-guaranteed-to-exist columns
     result = execute_sql(
-        "SELECT creation_status, creation_error_message FROM user_leagues WHERE league_id = :league_id::uuid",
+        """SELECT creation_status, creation_error_message, is_public, invite_code 
+           FROM user_leagues WHERE league_id = :league_id::uuid""",
         {'league_id': league_id}, 'postgres'
     )
     
@@ -212,14 +270,181 @@ async def get_league_creation_status(league_id: str, current_user: dict = Depend
     record = result['records'][0]
     status = record[0].get('stringValue', 'unknown')
     error_message = record[1].get('stringValue') if len(record) > 1 and not record[1].get('isNull') else None
+    is_public = record[2].get('booleanValue', True) if len(record) > 2 else True
+    invite_code = record[3].get('stringValue') if len(record) > 3 and not record[3].get('isNull') else None
     
-    logger.info(f"[{league_id[:8]}] Status: {status}")
+    logger.info(f"[{league_id[:8]}] Status: {status}, Public: {is_public}")
     
-    return {
+    response = {
         "league_id": league_id,
         "status": status,
-        "error_message": error_message
+        "error_message": error_message,
+        "is_public": is_public
     }
+    
+    if invite_code and not is_public:
+        response["invite_code"] = invite_code
+    
+    return response
+
+# =============================================================================
+# PUBLIC/PRIVATE LEAGUE ENDPOINTS
+# =============================================================================
+
+@router.get("/public")
+async def get_public_leagues():
+    """Get all public leagues that are accepting new teams"""
+    try:
+        logger.info("📢 Fetching public leagues")
+        
+        # Get public leagues from phone book with team counts
+        sql = """
+            SELECT 
+                ul.league_id,
+                ul.league_name,
+                ul.commissioner_user_id,
+                ul.created_at,
+                ul.invite_code,
+                COUNT(DISTINCT lm.user_id) as current_teams
+            FROM user_leagues ul
+            LEFT JOIN league_memberships lm ON ul.league_id = lm.league_id AND lm.is_active = true
+            WHERE ul.is_public = true 
+              AND ul.creation_status = 'completed'
+              AND ul.status != 'archived'
+            GROUP BY ul.league_id, ul.league_name, ul.commissioner_user_id, ul.created_at, ul.invite_code
+            ORDER BY ul.created_at DESC
+        """
+        
+        response = execute_sql(sql, database_name='postgres')
+        
+        leagues = []
+        if response.get('records'):
+            for record in response['records']:
+                league_id = record[0].get('stringValue')
+                
+                # Get detailed settings from leagues database
+                settings_sql = """
+                    SELECT setting_name, setting_value, setting_type
+                    FROM league_settings 
+                    WHERE league_id = :league_id::uuid
+                      AND setting_name IN ('max_teams', 'scoring_system', 'salary_cap', 'commissioner_name')
+                """
+                settings_response = execute_sql(
+                    settings_sql, 
+                    {'league_id': league_id}, 
+                    database_name='leagues'
+                )
+                
+                # Parse settings
+                max_teams = 12
+                scoring_system = 'rotisserie_ytd'
+                salary_cap = 800
+                commissioner_name = 'Commissioner'
+                
+                if settings_response.get('records'):
+                    for setting_record in settings_response['records']:
+                        setting_name = setting_record[0].get('stringValue')
+                        setting_value = setting_record[1].get('stringValue')
+                        
+                        if setting_name == 'max_teams':
+                            max_teams = int(setting_value)
+                        elif setting_name == 'scoring_system':
+                            scoring_system = setting_value
+                        elif setting_name == 'salary_cap':
+                            salary_cap = float(setting_value)
+                        elif setting_name == 'commissioner_name':
+                            commissioner_name = setting_value
+                
+                current_teams = record[5].get('longValue', 0)
+                
+                # Only include leagues with open spots
+                if current_teams < max_teams:
+                    leagues.append({
+                        'league_id': league_id,
+                        'league_name': record[1].get('stringValue'),
+                        'commissioner_user_id': record[2].get('stringValue'),
+                        'commissioner_name': commissioner_name,
+                        'created_at': record[3].get('stringValue'),
+                        'current_teams': current_teams,
+                        'max_teams': max_teams,
+                        'scoring_system': scoring_system,
+                        'salary_cap': salary_cap,
+                        'spots_available': max_teams - current_teams
+                    })
+        
+        logger.info(f"✅ Found {len(leagues)} public leagues with open spots")
+        
+        return {
+            "success": True,
+            "leagues": leagues,
+            "count": len(leagues)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fetching public leagues: {e}")
+        raise HTTPException(status_code=500, detail="Failed to fetch public leagues")
+
+@router.post("/join-with-code")
+async def join_league_with_code(
+    request: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """Join a private league using an invite code"""
+    try:
+        invite_code = request.get('invite_code', '').upper()
+        user_id = current_user.get('sub')
+        
+        if not invite_code:
+            raise HTTPException(status_code=400, detail="Invite code is required")
+        
+        logger.info(f"User {user_id} attempting to join with code: {invite_code}")
+        
+        # Find league by invite code
+        result = execute_sql(
+            """SELECT league_id, league_name 
+               FROM user_leagues 
+               WHERE invite_code = :code AND creation_status = 'completed'""",
+            {'code': invite_code},
+            database_name='postgres'
+        )
+        
+        if not result.get('records'):
+            raise HTTPException(status_code=404, detail="Invalid invite code")
+        
+        league_id = result['records'][0][0].get('stringValue')
+        league_name = result['records'][0][1].get('stringValue')
+        
+        # Check if user is already a member
+        membership_check = execute_sql(
+            """SELECT user_id FROM league_memberships 
+               WHERE league_id = :league_id::uuid AND user_id = :user_id""",
+            {'league_id': league_id, 'user_id': user_id},
+            database_name='postgres'
+        )
+        
+        if membership_check.get('records'):
+            return {
+                "success": True,
+                "league_id": league_id,
+                "league_name": league_name,
+                "message": "You are already a member of this league"
+            }
+        
+        # TODO: Add logic to create team and add member
+        # For now, just return the league info for the join flow
+        
+        return {
+            "success": True,
+            "league_id": league_id,
+            "league_name": league_name,
+            "message": "League found! Redirecting to team setup..."
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error joining league with code: {e}")
+        raise HTTPException(status_code=500, detail="Failed to join league")
 
 # =============================================================================
 # DESTRUCTIVE OPERATIONS (Retained for admin/cleanup purposes)

@@ -1,7 +1,7 @@
 """
-Dynasty Dugout - Team Statistics Display
+Dynasty Dugout - Team Statistics Display FIXED
 PURPOSE: Three-line stats display for team pages (Season/Accrued/14-day)
-FIXED: Corrected transactions query to JOIN with league_players and use proper column names
+FIXED: Rolling stats query from correct database (postgres)
 """
 
 from fastapi import APIRouter, HTTPException, Depends
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 # =============================================================================
-# TEAM STATS WITH 3-LINE DISPLAY
+# TEAM STATS WITH 3-LINE DISPLAY - FIXED DATABASE ISSUE
 # =============================================================================
 
 @router.get("/teams/{team_id}/stats")
@@ -35,14 +35,15 @@ async def get_team_three_line_stats(
     Get team statistics with THREE lines of data per player:
     1. Season stats (from CACHED data in leagues DB)
     2. Accrued stats (only while in active lineup - from leagues DB)  
-    3. 14-day rolling stats (recent performance - from leagues DB)
+    3. 14-day rolling stats (recent performance - from POSTGRES DB)
     
-    THIS IS THE CRITICAL ENDPOINT FOR TEAM STATS PAGE
+    FIXED: Rolling stats now correctly query from postgres DB
     """
     try:
-        # Query combines data all from LEAGUES database (no cross-DB JOIN):
+        # STEP 1: Get roster and season stats from LEAGUES database
         roster_query = f"""
         SELECT 
+            lp.league_player_id,
             lp.mlb_player_id,
             lp.player_name,
             lp.position,
@@ -102,25 +103,7 @@ async def get_team_three_line_stats(
             paas.active_earned_runs,
             paas.active_quality_starts,
             paas.active_era,
-            paas.active_whip,
-            prs.games_played as roll_games,
-            prs.at_bats as roll_ab,
-            prs.hits as roll_hits,
-            prs.home_runs as roll_hr,
-            prs.rbi as roll_rbi,
-            prs.runs as roll_runs,
-            prs.stolen_bases as roll_sb,
-            prs.batting_avg as roll_avg,
-            prs.obp as roll_obp,
-            prs.slg as roll_slg,
-            prs.ops as roll_ops,
-            prs.innings_pitched as roll_ip,
-            prs.wins as roll_wins,
-            prs.losses as roll_losses,
-            prs.saves as roll_saves,
-            prs.quality_starts as roll_qs,
-            prs.era as roll_era,
-            prs.whip as roll_whip
+            paas.active_whip
             
         FROM league_players lp
         LEFT JOIN player_season_stats pss 
@@ -131,11 +114,6 @@ async def get_team_three_line_stats(
             ON lp.mlb_player_id = paas.mlb_player_id 
             AND paas.team_id = :team_id::uuid
             AND paas.league_id = :league_id::uuid
-        LEFT JOIN player_rolling_stats prs 
-            ON lp.mlb_player_id = prs.player_id 
-            AND prs.period = 'last_14_days' 
-            AND prs.as_of_date = CURRENT_DATE
-            AND prs.league_id = :league_id::uuid
         WHERE lp.league_id = :league_id::uuid
             AND lp.team_id = :team_id::uuid 
             AND lp.availability_status = 'owned'
@@ -153,108 +131,94 @@ async def get_team_three_line_stats(
         result = execute_sql(
             roster_query,
             parameters={'team_id': team_id, 'league_id': league_id},
-            database_name='leagues'
+            database_name='leagues'  # Season and accrued stats are in leagues DB
         )
         
         players = []
+        player_ids = []
+        
         if result and result.get("records"):
             for record in result["records"]:
                 try:
-                    # Parse season stats (indices 9-38)
+                    # Get MLB player ID for rolling stats query
+                    mlb_player_id = get_long_value(record[1])
+                    if mlb_player_id:
+                        player_ids.append(mlb_player_id)
+                    
+                    # Parse season stats (indices 10-39)
                     season_stats = SeasonStats(
-                        games_played=get_long_value(record[9]),
-                        at_bats=get_long_value(record[10]),
-                        runs=get_long_value(record[11]),
-                        hits=get_long_value(record[12]),
-                        doubles=get_long_value(record[13]),
-                        triples=get_long_value(record[14]),
-                        home_runs=get_long_value(record[15]),
-                        rbi=get_long_value(record[16]),
-                        stolen_bases=get_long_value(record[17]),
-                        caught_stealing=get_long_value(record[18]),
-                        walks=get_long_value(record[19]),
-                        strikeouts=get_long_value(record[20]),
-                        batting_avg=get_decimal_value(record[21]),
-                        obp=get_decimal_value(record[22]),
-                        slg=get_decimal_value(record[23]),
-                        ops=get_decimal_value(record[24]),
-                        games_started=get_long_value(record[25]),
-                        wins=get_long_value(record[26]),
-                        losses=get_long_value(record[27]),
-                        saves=get_long_value(record[28]),
-                        innings_pitched=get_decimal_value(record[29]),
-                        hits_allowed=get_long_value(record[30]),
-                        earned_runs=get_long_value(record[31]),
-                        walks_allowed=get_long_value(record[32]),
-                        strikeouts_pitched=get_long_value(record[33]),
-                        era=get_decimal_value(record[34]),
-                        whip=get_decimal_value(record[35]),
-                        quality_starts=get_long_value(record[36]),
-                        blown_saves=get_long_value(record[37]),
-                        holds=get_long_value(record[38])
+                        games_played=get_long_value(record[10]),
+                        at_bats=get_long_value(record[11]),
+                        runs=get_long_value(record[12]),
+                        hits=get_long_value(record[13]),
+                        doubles=get_long_value(record[14]),
+                        triples=get_long_value(record[15]),
+                        home_runs=get_long_value(record[16]),
+                        rbi=get_long_value(record[17]),
+                        stolen_bases=get_long_value(record[18]),
+                        caught_stealing=get_long_value(record[19]),
+                        walks=get_long_value(record[20]),
+                        strikeouts=get_long_value(record[21]),
+                        batting_avg=get_decimal_value(record[22]),
+                        obp=get_decimal_value(record[23]),
+                        slg=get_decimal_value(record[24]),
+                        ops=get_decimal_value(record[25]),
+                        games_started=get_long_value(record[26]),
+                        wins=get_long_value(record[27]),
+                        losses=get_long_value(record[28]),
+                        saves=get_long_value(record[29]),
+                        innings_pitched=get_decimal_value(record[30]),
+                        hits_allowed=get_long_value(record[31]),
+                        earned_runs=get_long_value(record[32]),
+                        walks_allowed=get_long_value(record[33]),
+                        strikeouts_pitched=get_long_value(record[34]),
+                        era=get_decimal_value(record[35]),
+                        whip=get_decimal_value(record[36]),
+                        quality_starts=get_long_value(record[37]),
+                        blown_saves=get_long_value(record[38]),
+                        holds=get_long_value(record[39])
                     )
                     
-                    # Parse accrued stats (indices 39-59)
+                    # Parse accrued stats (indices 40-60)
                     accrued_stats = AccruedStats(
-                        first_active_date=get_string_value(record[39]),
-                        last_active_date=get_string_value(record[40]),
-                        total_active_days=get_long_value(record[41]),
-                        active_games_played=get_long_value(record[42]),
-                        active_at_bats=get_long_value(record[43]),
-                        active_hits=get_long_value(record[44]),
-                        active_home_runs=get_long_value(record[45]),
-                        active_rbi=get_long_value(record[46]),
-                        active_runs=get_long_value(record[47]),
-                        active_stolen_bases=get_long_value(record[48]),
-                        active_walks=get_long_value(record[49]),
-                        active_strikeouts=get_long_value(record[50]),
-                        active_batting_avg=get_decimal_value(record[51]),
-                        active_innings_pitched=get_decimal_value(record[52]),
-                        active_wins=get_long_value(record[53]),
-                        active_losses=get_long_value(record[54]),
-                        active_saves=get_long_value(record[55]),
-                        active_earned_runs=get_long_value(record[56]),
-                        active_quality_starts=get_long_value(record[57]),
-                        active_era=get_decimal_value(record[58]),
-                        active_whip=get_decimal_value(record[59])
+                        first_active_date=get_string_value(record[40]),
+                        last_active_date=get_string_value(record[41]),
+                        total_active_days=get_long_value(record[42]),
+                        active_games_played=get_long_value(record[43]),
+                        active_at_bats=get_long_value(record[44]),
+                        active_hits=get_long_value(record[45]),
+                        active_home_runs=get_long_value(record[46]),
+                        active_rbi=get_long_value(record[47]),
+                        active_runs=get_long_value(record[48]),
+                        active_stolen_bases=get_long_value(record[49]),
+                        active_walks=get_long_value(record[50]),
+                        active_strikeouts=get_long_value(record[51]),
+                        active_batting_avg=get_decimal_value(record[52]),
+                        active_innings_pitched=get_decimal_value(record[53]),
+                        active_wins=get_long_value(record[54]),
+                        active_losses=get_long_value(record[55]),
+                        active_saves=get_long_value(record[56]),
+                        active_earned_runs=get_long_value(record[57]),
+                        active_quality_starts=get_long_value(record[58]),
+                        active_era=get_decimal_value(record[59]),
+                        active_whip=get_decimal_value(record[60])
                     )
                     
-                    # Parse 14-day rolling stats (indices 60-77)
-                    rolling_stats = RollingStats(
-                        games_played=get_long_value(record[60]),
-                        at_bats=get_long_value(record[61]),
-                        hits=get_long_value(record[62]),
-                        home_runs=get_long_value(record[63]),
-                        rbi=get_long_value(record[64]),
-                        runs=get_long_value(record[65]),
-                        stolen_bases=get_long_value(record[66]),
-                        batting_avg=get_decimal_value(record[67]),
-                        obp=get_decimal_value(record[68]),
-                        slg=get_decimal_value(record[69]),
-                        ops=get_decimal_value(record[70]),
-                        innings_pitched=get_decimal_value(record[71]),
-                        wins=get_long_value(record[72]),
-                        losses=get_long_value(record[73]),
-                        saves=get_long_value(record[74]),
-                        quality_starts=get_long_value(record[75]),
-                        era=get_decimal_value(record[76]),
-                        whip=get_decimal_value(record[77]),
-                        trend=calculate_trend(get_decimal_value(record[67]))
-                    )
-                    
+                    # Create player object (rolling stats will be added later)
                     player = ThreeLinePlayerStats(
-                        mlb_player_id=get_long_value(record[0]),
-                        player_name=get_string_value(record[1]) or "Unknown",
-                        position=get_string_value(record[2]) or "UTIL",
-                        mlb_team=get_string_value(record[3]) or "FA",
-                        roster_status=get_string_value(record[4]),
-                        salary=get_decimal_value(record[5]),
-                        contract_years=get_long_value(record[6]),
+                        league_player_id=get_string_value(record[0]),
+                        mlb_player_id=mlb_player_id,
+                        player_name=get_string_value(record[2]) or "Unknown",
+                        position=get_string_value(record[3]) or "UTIL",
+                        mlb_team=get_string_value(record[4]) or "FA",
+                        roster_status=get_string_value(record[5]),
+                        salary=get_decimal_value(record[6]),
+                        contract_years=get_long_value(record[7]),
                         season_stats=season_stats,
                         accrued_stats=accrued_stats,
-                        rolling_14_day=rolling_stats,
-                        acquisition_date=get_string_value(record[7]),
-                        acquisition_method=get_string_value(record[8])
+                        rolling_14_day=RollingStats(),  # Will be populated from separate query
+                        acquisition_date=get_string_value(record[8]),
+                        acquisition_method=get_string_value(record[9])
                     )
                     
                     players.append(player)
@@ -262,6 +226,76 @@ async def get_team_three_line_stats(
                 except Exception as e:
                     logger.error(f"Error parsing player record: {e}")
                     continue
+        
+        # STEP 2: Get rolling stats from POSTGRES database
+        if player_ids:
+            placeholders = ','.join([f':id_{i}' for i in range(len(player_ids))])
+            parameters = {f'id_{i}': pid for i, pid in enumerate(player_ids)}
+            
+            rolling_query = f"""
+            SELECT 
+                player_id,
+                games_played,
+                at_bats,
+                hits,
+                home_runs,
+                rbi,
+                runs,
+                stolen_bases,
+                batting_avg,
+                obp,
+                slg,
+                ops,
+                innings_pitched,
+                wins,
+                losses,
+                saves,
+                quality_starts,
+                era,
+                whip
+            FROM player_rolling_stats
+            WHERE player_id IN ({placeholders})
+              AND period = 'last_14_days'
+              AND as_of_date = (SELECT MAX(as_of_date) FROM player_rolling_stats WHERE period = 'last_14_days')
+            """
+            
+            rolling_result = execute_sql(
+                rolling_query,
+                parameters=parameters,
+                database_name='postgres'  # FIXED: Rolling stats are in postgres DB!
+            )
+            
+            # Create lookup dictionary for rolling stats
+            rolling_lookup = {}
+            if rolling_result and rolling_result.get("records"):
+                for record in rolling_result["records"]:
+                    player_id = get_long_value(record[0])
+                    rolling_lookup[player_id] = RollingStats(
+                        games_played=get_long_value(record[1]),
+                        at_bats=get_long_value(record[2]),
+                        hits=get_long_value(record[3]),
+                        home_runs=get_long_value(record[4]),
+                        rbi=get_long_value(record[5]),
+                        runs=get_long_value(record[6]),
+                        stolen_bases=get_long_value(record[7]),
+                        batting_avg=get_decimal_value(record[8]),
+                        obp=get_decimal_value(record[9]),
+                        slg=get_decimal_value(record[10]),
+                        ops=get_decimal_value(record[11]),
+                        innings_pitched=get_decimal_value(record[12]),
+                        wins=get_long_value(record[13]),
+                        losses=get_long_value(record[14]),
+                        saves=get_long_value(record[15]),
+                        quality_starts=get_long_value(record[16]),
+                        era=get_decimal_value(record[17]),
+                        whip=get_decimal_value(record[18]),
+                        trend=calculate_trend(get_decimal_value(record[8]))
+                    )
+            
+            # Merge rolling stats into players
+            for player in players:
+                if player.mlb_player_id in rolling_lookup:
+                    player.rolling_14_day = rolling_lookup[player.mlb_player_id]
         
         return players
         
@@ -306,7 +340,7 @@ async def get_my_team_stats(
         raise HTTPException(status_code=500, detail=str(e))
 
 # =============================================================================
-# TEAM STATS DASHBOARD ENDPOINT - FIXED TRANSACTIONS QUERY
+# TEAM STATS DASHBOARD ENDPOINT - FIXED
 # =============================================================================
 
 @router.get("/team-stats-dashboard/{team_id}")
@@ -317,18 +351,18 @@ async def get_team_stats_dashboard(
 ):
     """
     Get complete team stats dashboard including:
-    - Three-line stats for all players
+    - Three-line stats for all players (with fixed rolling stats)
     - Team totals (active players only)
     - Recent transactions
     """
     try:
-        # Get three-line stats
+        # Get three-line stats (now with properly sourced rolling stats)
         stats = await get_team_three_line_stats(league_id, team_id, current_user)
         
         # Calculate team totals from ACTIVE players only
         team_totals = calculate_team_totals(stats)
         
-        # FIXED: Get recent transactions with proper JOIN and column names
+        # Get recent transactions
         transactions_query = """
         SELECT 
             lt.transaction_type,
@@ -356,18 +390,78 @@ async def get_team_stats_dashboard(
                     'type': get_string_value(record[0]),
                     'player': get_string_value(record[1]) or 'Unknown Player',
                     'date': get_string_value(record[2]),
-                    'details': get_string_value(record[3])  # Using 'notes' from DB as 'details'
+                    'details': get_string_value(record[3])
                 })
         
-        return {
+        # Prepare response
+        response_data = {
             "success": True,
-            "team_stats": stats,
-            "team_totals": team_totals,
-            "active_count": len([p for p in stats if p.roster_status == 'active']),
-            "bench_count": len([p for p in stats if p.roster_status == 'bench']),
-            "injured_count": len([p for p in stats if p.roster_status == 'injured']),
-            "recent_transactions": recent_transactions
+            "team_stats": []
         }
+        
+        # Convert player objects to dictionaries for JSON response
+        for player in stats:
+            player_dict = {
+                "league_player_id": player.league_player_id,
+                "mlb_player_id": player.mlb_player_id,
+                "player_name": player.player_name,
+                "position": player.position,
+                "mlb_team": player.mlb_team,
+                "roster_status": player.roster_status,
+                "salary": player.salary,
+                "contract_years": player.contract_years,
+                "acquisition_date": player.acquisition_date,
+                "acquisition_method": player.acquisition_method,
+                "season_stats": {
+                    "games_played": player.season_stats.games_played,
+                    "batting_avg": player.season_stats.batting_avg,
+                    "home_runs": player.season_stats.home_runs,
+                    "rbi": player.season_stats.rbi,
+                    "runs": player.season_stats.runs,
+                    "stolen_bases": player.season_stats.stolen_bases,
+                    "era": player.season_stats.era,
+                    "wins": player.season_stats.wins,
+                    "saves": player.season_stats.saves,
+                    "strikeouts_pitched": player.season_stats.strikeouts_pitched
+                },
+                "rolling_14_day": {
+                    "games_played": player.rolling_14_day.games_played,
+                    "batting_avg": player.rolling_14_day.batting_avg,
+                    "home_runs": player.rolling_14_day.home_runs,
+                    "rbi": player.rolling_14_day.rbi,
+                    "runs": player.rolling_14_day.runs,
+                    "stolen_bases": player.rolling_14_day.stolen_bases,
+                    "era": player.rolling_14_day.era,
+                    "wins": player.rolling_14_day.wins,
+                    "saves": player.rolling_14_day.saves
+                },
+                "accrued_stats": {
+                    "total_active_days": player.accrued_stats.total_active_days,
+                    "active_games_played": player.accrued_stats.active_games_played,
+                    "active_batting_avg": player.accrued_stats.active_batting_avg,
+                    "active_home_runs": player.accrued_stats.active_home_runs,
+                    "active_rbi": player.accrued_stats.active_rbi,
+                    "active_runs": player.accrued_stats.active_runs,
+                    "active_stolen_bases": player.accrued_stats.active_stolen_bases,
+                    "active_era": player.accrued_stats.active_era,
+                    "active_wins": player.accrued_stats.active_wins,
+                    "active_saves": player.accrued_stats.active_saves
+                }
+            }
+            response_data["team_stats"].append(player_dict)
+        
+        response_data["team_totals"] = team_totals
+        response_data["active_count"] = len([p for p in stats if p.roster_status == 'active'])
+        response_data["bench_count"] = len([p for p in stats if p.roster_status == 'bench'])
+        response_data["injured_count"] = len([p for p in stats if p.roster_status == 'injured'])
+        response_data["recent_transactions"] = recent_transactions
+        response_data["data_sources"] = {
+            "season_stats": "leagues_db",
+            "accrued_stats": "leagues_db",
+            "rolling_stats": "postgres_db"
+        }
+        
+        return response_data
         
     except Exception as e:
         logger.error(f"Error getting team stats dashboard: {str(e)}")

@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+venv/
+env/
+.env
+
+# AWS SAM build artifacts
+.aws-sam/
+samconfig.toml
+
+# Node
+node_modules/
+npm-debug.log*
+build/
+dist/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+*.log
+
+# AWS CLI installer
+awscliv2.zip
+aws/

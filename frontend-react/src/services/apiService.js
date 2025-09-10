@@ -1,5 +1,5 @@
 // frontend-react/src/services/apiService.js
-// Updated with team browsing, commissioner support, S3 logo upload, and TEAM STATS ENDPOINTS FIXED
+// Complete rewrite with MLB data endpoints and improved organization
 
 import axios from 'axios';
 
@@ -40,6 +40,73 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+// =============================================================================
+// MLB DATA API - NEW SECTION FOR DASHBOARD TILES
+// =============================================================================
+
+export const mlbAPI = {
+  // Today's games with starting pitchers and live scores
+  getTodaysGames: async () => {
+    try {
+      const response = await api.get('/api/mlb/games/today');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching today\'s games:', error);
+      return { success: false, games: [] };
+    }
+  },
+
+  // MLB news headlines from RSS feeds
+  getHeadlines: async () => {
+    try {
+      const response = await api.get('/api/mlb/news/headlines');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching MLB headlines:', error);
+      return { success: false, headlines: [] };
+    }
+  },
+
+  // Current injury report
+  getInjuryReport: async () => {
+    try {
+      const response = await api.get('/api/mlb/injuries');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching injury report:', error);
+      return { success: false, injuries: [] };
+    }
+  },
+
+  // Trending players (hot/cold/waiver wire)
+  getTrendingPlayers: async (queryString = '') => {
+    try {
+      const response = await api.get(`/api/mlb/trending${queryString}`);
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching trending players:', error);
+      return { 
+        success: false, 
+        hot_players: [], 
+        cold_players: [], 
+        waiver_adds: [], 
+        waiver_drops: [] 
+      };
+    }
+  },
+
+  // MLB API health check
+  healthCheck: async () => {
+    try {
+      const response = await api.get('/api/mlb/health');
+      return response.data;
+    } catch (error) {
+      console.error('Error checking MLB API health:', error);
+      return { success: false, mlb_api_status: 'unhealthy' };
+    }
+  }
+};
 
 // =============================================================================
 // AUTH API
@@ -116,7 +183,7 @@ export const authAPI = {
 };
 
 // =============================================================================
-// ACCOUNT API - ENHANCED WITH PROFILE PICTURE UPLOAD
+// ACCOUNT API
 // =============================================================================
 
 export const accountAPI = {
@@ -131,11 +198,7 @@ export const accountAPI = {
     return response.data;
   },
 
-  // ===============================================
-  // PROFILE PICTURE UPLOAD - NEW FUNCTIONS
-  // ===============================================
-  
-  // Get presigned URL for profile picture upload
+  // Profile Picture Upload
   getProfilePictureUploadUrl: async (filename, contentType) => {
     const response = await api.post('/api/account/get-profile-picture-upload-url', {
       filename: filename,
@@ -144,7 +207,6 @@ export const accountAPI = {
     return response.data;
   },
 
-  // Upload file to S3 using presigned URL
   uploadProfilePictureToS3: async (presignedUrl, file) => {
     const response = await fetch(presignedUrl, {
       method: 'PUT',
@@ -161,24 +223,20 @@ export const accountAPI = {
     return { success: true, status: response.status };
   },
 
-  // Complete profile picture upload flow (same pattern as team logo)
   uploadProfilePicture: async (file) => {
     try {
       console.log('📸 Starting profile picture upload for:', file.name);
       
-      // Step 1: Get presigned URL
       const urlResponse = await accountAPI.getProfilePictureUploadUrl(file.name, file.type);
       
       if (!urlResponse.success) {
         throw new Error(urlResponse.message || 'Failed to get upload URL');
       }
       
-      // Step 2: Upload file to S3
       await accountAPI.uploadProfilePictureToS3(urlResponse.upload_url, file);
       
       console.log('✅ Profile picture uploaded successfully to:', urlResponse.public_url);
       
-      // Step 3: Return public URL for display
       return {
         success: true,
         profile_picture_url: urlResponse.public_url,
@@ -202,41 +260,9 @@ export const accountAPI = {
     return response.data;
   },
 
-  // Banner Image Upload (DEPRECATED - use profile picture instead)
-  uploadBannerImage: async (formData) => {
-    const response = await api.post('/api/account/upload-banner-image', formData, {
-      headers: { 'Content-Type': 'multipart/form-data' }
-    });
-    return response.data;
-  },
-
   // Account Health Check
   healthCheck: async () => {
     const response = await api.get('/api/account/account-health');
-    return response.data;
-  }
-};
-
-// =============================================================================
-// TEAM STATS API - NEW SECTION
-// =============================================================================
-
-export const teamStatsAPI = {
-  // Get team statistics with 3-line display (just the array)
-  getTeamStats: async (leagueId, teamId) => {
-    const response = await api.get(`/api/leagues/${leagueId}/teams/${teamId}/stats`);
-    return response.data;
-  },
-
-  // Get current user's team statistics
-  getMyTeamStats: async (leagueId) => {
-    const response = await api.get(`/api/leagues/${leagueId}/my-team-stats`);
-    return response.data;
-  },
-
-  // Get complete team stats dashboard with totals and transactions
-  getTeamStatsDashboard: async (leagueId, teamId) => {
-    const response = await api.get(`/api/leagues/${leagueId}/team-stats-dashboard/${teamId}`);
     return response.data;
   }
 };
@@ -257,6 +283,25 @@ export const leaguesAPI = {
     return response.data;
   },
 
+  joinPrivateLeague: async (leagueCode) => {
+    try {
+      const response = await api.post('/api/leagues/join-private', {
+        league_code: leagueCode.toUpperCase()
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error joining private league:', error);
+      if (error.response?.status === 404) {
+        throw new Error('League code not found');
+      } else if (error.response?.status === 400) {
+        throw new Error('Invalid league code format');
+      } else if (error.response?.status === 409) {
+        throw new Error('League is full or you are already a member');
+      }
+      throw new Error('Failed to join private league');
+    }
+  },
+
   checkLeagueCreationStatus: async (leagueId) => {
     const response = await api.get(`/api/leagues/${leagueId}/creation-status`);
     return response.data;
@@ -268,11 +313,11 @@ export const leaguesAPI = {
   },
 
   deleteLeague: async (leagueId) => {
-    const response = await api.delete(`/api/leagues/${leagueId}/cleanup`);
+    const response = await api.delete(`/api/leagues/${leagueId}`);
     return response.data;
   },
 
-  // League Status Management - COMPLETE SET
+  // League Status Management
   getLeagueStatus: async (leagueId) => {
     const response = await api.get(`/api/leagues/${leagueId}/status`);
     return response.data;
@@ -302,10 +347,7 @@ export const leaguesAPI = {
     return response.data;
   },
 
-  // ===============================================
-  // PRICING ENGINE ENDPOINTS
-  // ===============================================
-  
+  // Pricing Engine
   getPricingData: async (leagueId) => {
     try {
       const response = await api.get(`/api/leagues/${leagueId}/salaries/pricing-data`);
@@ -316,10 +358,7 @@ export const leaguesAPI = {
     }
   },
 
-  // ===============================================
-  // SALARY & CONTRACT SETTINGS - WITH ASYNC SUPPORT
-  // ===============================================
-  
+  // Salary & Contract Settings
   getSalarySettings: async (leagueId) => {
     try {
       const response = await api.get(`/api/leagues/${leagueId}/salaries/settings`);
@@ -344,30 +383,26 @@ export const leaguesAPI = {
     }
   },
 
-  // Synchronous update for small datasets (< 100 players)
   updateSalarySettings: async (leagueId, settings) => {
     const response = await api.post(`/api/leagues/${leagueId}/salaries/prices`, settings);
     return response.data;
   },
 
-  // NEW: Async save for large datasets
   startAsyncPriceSave: async (leagueId, settings) => {
     const response = await api.post(`/api/leagues/${leagueId}/salaries/prices/async`, settings);
     return response.data;
   },
 
-  // NEW: Check async job status
   checkPriceSaveStatus: async (leagueId, jobId) => {
     const response = await api.get(`/api/leagues/${leagueId}/salaries/job/${jobId}`);
     return response.data;
   },
 
-  // NEW: Poll for job completion
   pollPriceSaveJob: async (leagueId, jobId, options = {}) => {
     const { 
       onProgress, 
       pollInterval = 2000, 
-      maxAttempts = 150  // 5 minutes max
+      maxAttempts = 150
     } = options;
     
     let attempts = 0;
@@ -435,17 +470,12 @@ export const leaguesAPI = {
     return response.data;
   },
 
-  // ===============================================
-  // TEAM MANAGEMENT & LOGO UPLOAD
-  // ===============================================
-  
-  // Team Setup
+  // Team Management & Logo Upload
   setupTeam: async (leagueId, teamData) => {
     const response = await api.post(`/api/leagues/${leagueId}/setup-team`, teamData);
     return response.data;
   },
 
-  // NEW: Get presigned URL for logo upload
   getLogoUploadUrl: async (leagueId, filename, contentType) => {
     const response = await api.post(`/api/leagues/${leagueId}/upload-logo-url`, {
       filename: filename,
@@ -454,7 +484,6 @@ export const leaguesAPI = {
     return response.data;
   },
 
-  // NEW: Upload file to S3 using presigned URL
   uploadLogoToS3: async (presignedUrl, file) => {
     const response = await fetch(presignedUrl, {
       method: 'PUT',
@@ -471,24 +500,20 @@ export const leaguesAPI = {
     return { success: true, status: response.status };
   },
 
-  // NEW: Complete logo upload flow (get URL + upload + return public URL)
   uploadTeamLogo: async (leagueId, file) => {
     try {
       console.log('🖼️ Starting team logo upload for:', file.name);
       
-      // Step 1: Get presigned URL
       const urlResponse = await leaguesAPI.getLogoUploadUrl(leagueId, file.name, file.type);
       
       if (!urlResponse.success) {
         throw new Error(urlResponse.message || 'Failed to get upload URL');
       }
       
-      // Step 2: Upload file to S3
       await leaguesAPI.uploadLogoToS3(urlResponse.upload_url, file);
       
       console.log('✅ Logo uploaded successfully to:', urlResponse.public_url);
       
-      // Step 3: Return public URL for saving to database
       return {
         success: true,
         logo_url: urlResponse.public_url,
@@ -501,17 +526,12 @@ export const leaguesAPI = {
     }
   },
 
-  // NEW: Delete team logo
   deleteTeamLogo: async (leagueId) => {
     const response = await api.delete(`/api/leagues/${leagueId}/team-logo`);
     return response.data;
   },
 
-  // ===============================================
-  // LEAGUE BANNER UPLOAD - NEW FUNCTIONS
-  // ===============================================
-  
-  // Get presigned URL for league banner upload
+  // League Banner Upload
   getLeagueBannerUploadUrl: async (leagueId, filename, contentType) => {
     const response = await api.post(`/api/leagues/${leagueId}/upload-banner-url`, {
       filename: filename,
@@ -520,7 +540,6 @@ export const leaguesAPI = {
     return response.data;
   },
 
-  // Upload file to S3 using presigned URL
   uploadBannerToS3: async (presignedUrl, file) => {
     const response = await fetch(presignedUrl, {
       method: 'PUT',
@@ -537,24 +556,20 @@ export const leaguesAPI = {
     return { success: true, status: response.status };
   },
 
-  // Complete league banner upload flow
   uploadLeagueBanner: async (leagueId, file) => {
     try {
       console.log('🏆 Starting league banner upload for:', file.name);
       
-      // Step 1: Get presigned URL
       const urlResponse = await leaguesAPI.getLeagueBannerUploadUrl(leagueId, file.name, file.type);
       
       if (!urlResponse.success) {
         throw new Error(urlResponse.message || 'Failed to get upload URL');
       }
       
-      // Step 2: Upload file to S3
       await leaguesAPI.uploadBannerToS3(urlResponse.upload_url, file);
       
       console.log('✅ League banner uploaded successfully to:', urlResponse.public_url);
       
-      // Step 3: Return public URL for display
       return {
         success: true,
         banner_url: urlResponse.public_url,
@@ -567,27 +582,20 @@ export const leaguesAPI = {
     }
   },
 
-  // Update league settings including banner URL
   updateLeagueSettings: async (leagueId, settings) => {
     const response = await api.put(`/api/leagues/${leagueId}/settings`, settings);
     return response.data;
   },
 
-  // ===============================================
-  // TEAM BROWSING & ROSTER MANAGEMENT - ENHANCED
-  // ===============================================
-  
-  // Get all teams in league for browsing
+  // Team Browsing & Roster Management
   getLeagueTeams: async (leagueId) => {
     const response = await api.get(`/api/leagues/${leagueId}/teams`);
     return response.data;
   },
 
-  // Get current user's roster (original functionality)
   getMyRoster: async (leagueId, options = {}) => {
     let url = `/api/leagues/${leagueId}/my-roster`;
     
-    // Support commissioner mode parameters
     if (options.commissioner_action && options.target_team_id) {
       const params = new URLSearchParams({
         target_team_id: options.target_team_id,
@@ -600,17 +608,14 @@ export const leaguesAPI = {
     return response.data;
   },
 
-  // NEW: Get any team's roster by team_id (read-only for non-owners)
   getTeamRoster: async (leagueId, teamId) => {
     const response = await api.get(`/api/leagues/${leagueId}/teams/${teamId}/roster`);
     return response.data;
   },
 
-  // Enhanced version with rolling stats
   getMyRosterEnhanced: async (leagueId, options = {}) => {
     let url = `/api/leagues/${leagueId}/my-roster-enhanced`;
     
-    // Support commissioner mode parameters
     if (options.commissioner_action && options.target_team_id) {
       const params = new URLSearchParams({
         target_team_id: options.target_team_id,
@@ -623,19 +628,16 @@ export const leaguesAPI = {
     return response.data;
   },
 
-  // NEW: Get any team's enhanced roster with stats
   getTeamRosterEnhanced: async (leagueId, teamId) => {
     const response = await api.get(`/api/leagues/${leagueId}/teams/${teamId}/roster-enhanced`);
     return response.data;
   },
 
-  // Move roster player between positions/status
   moveRosterPlayer: async (leagueId, moveData) => {
     const response = await api.post(`/api/leagues/${leagueId}/roster-move`, moveData);
     return response.data;
   },
 
-  // Add player to team (supports commissioner mode)
   addPlayerToTeam: async (leagueId, playerData) => {
     const requestData = {
       league_player_id: playerData.league_player_id,
@@ -644,7 +646,7 @@ export const leaguesAPI = {
       roster_status: playerData.roster_status || 'active',
       roster_position: playerData.roster_position || null
     };
-    // Add commissioner support
+    
     if (playerData.commissioner_action && playerData.target_team_id) {
       requestData.commissioner_action = true;
       requestData.target_team_id = playerData.target_team_id;
@@ -653,13 +655,11 @@ export const leaguesAPI = {
     return response.data;
   },
 
-  // Drop player from team (supports commissioner mode)
   dropPlayerFromTeam: async (leagueId, leaguePlayerId, options = {}) => {
     const requestData = {
       league_player_id: leaguePlayerId
     };
 
-    // Add commissioner support
     if (options.commissioner_action && options.target_team_id) {
       requestData.commissioner_action = true;
       requestData.target_team_id = options.target_team_id;
@@ -669,23 +669,17 @@ export const leaguesAPI = {
     return response.data;
   },
 
-  // ===============================================
-  // TEAM STATISTICS - THREE-LINE DISPLAY
-  // ===============================================
-  
-  // Get team statistics with 3-line display (Season/Accrued/14-day)
+  // Team Statistics
   getTeamStats: async (leagueId, teamId) => {
     const response = await api.get(`/api/leagues/${leagueId}/teams/${teamId}/stats`);
     return response.data;
   },
 
-  // Get current user's team statistics
   getMyTeamStats: async (leagueId) => {
     const response = await api.get(`/api/leagues/${leagueId}/my-team-stats`);
     return response.data;
   },
 
-  // Get complete team stats dashboard with totals
   getTeamStatsDashboard: async (leagueId, teamId) => {
     const response = await api.get(`/api/leagues/${leagueId}/team-stats-dashboard/${teamId}`);
     return response.data;
@@ -783,7 +777,6 @@ export const leaguesAPI = {
         }
       });
       
-      // Transform transactions into ticker-friendly format
       const activities = [];
       if (response.data.success && response.data.transactions) {
         response.data.transactions.forEach(t => {
@@ -824,7 +817,6 @@ export const leaguesAPI = {
     return response.data;
   },
 
-  // NEW: Initiate trade with specific team and players
   initiateTrade: async (leagueId, tradeData) => {
     const response = await api.post(`/api/leagues/${leagueId}/trades/initiate`, tradeData);
     return response.data;
@@ -882,6 +874,17 @@ export const leaguesAPI = {
   notifyOwners: async (leagueId, notification) => {
     const response = await api.post(`/api/leagues/${leagueId}/notify-owners`, notification);
     return response.data;
+  },
+
+  // Public Leagues - NEW ENDPOINT
+  getPublicLeagues: async () => {
+    try {
+      const response = await api.get('/api/leagues/public');
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching public leagues:', error);
+      return { success: false, leagues: [] };
+    }
   }
 };
 
@@ -917,6 +920,27 @@ export const playersAPI = {
 
   getCareerStats: async (playerId) => {
     const response = await api.get(`/api/players/${playerId}/career-stats`);
+    return response.data;
+  }
+};
+
+// =============================================================================
+// TEAM STATS API
+// =============================================================================
+
+export const teamStatsAPI = {
+  getTeamStats: async (leagueId, teamId) => {
+    const response = await api.get(`/api/leagues/${leagueId}/teams/${teamId}/stats`);
+    return response.data;
+  },
+
+  getMyTeamStats: async (leagueId) => {
+    const response = await api.get(`/api/leagues/${leagueId}/my-team-stats`);
+    return response.data;
+  },
+
+  getTeamStatsDashboard: async (leagueId, teamId) => {
+    const response = await api.get(`/api/leagues/${leagueId}/team-stats-dashboard/${teamId}`);
     return response.data;
   }
 };
@@ -1006,7 +1030,6 @@ export const createLeagueWithPolling = async (leagueData, callbacks = {}) => {
 // DEFAULT EXPORT - Support direct api.get(), api.post() calls
 // =============================================================================
 
-// Default export with direct access methods for backwards compatibility
 export default {
   // Direct access to axios methods
   get: api.get.bind(api),
@@ -1021,7 +1044,8 @@ export default {
   leagues: leaguesAPI,
   teamStats: teamStatsAPI,
   players: playersAPI,
-  utilities: utilitiesAPI
+  utilities: utilitiesAPI,
+  mlb: mlbAPI  // NEW MLB API
 };
 
-// Build timestamp: Team Stats Endpoints Fixed - teamStatsAPI Export Added
+// Build timestamp: MLB Data API Integration Complete

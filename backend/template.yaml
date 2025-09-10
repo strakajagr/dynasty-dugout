@@ -23,9 +23,9 @@ Resources:
         - "image/*"
         - "application/octet-stream"
       Cors:
-        AllowMethods: "'GET,POST,PUT,DELETE,OPTIONS,PATCH'"
-        AllowHeaders: "'Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,Cookie'"
-        AllowOrigin: "'*'"
+        AllowMethods: "GET,POST,PUT,DELETE,OPTIONS,PATCH"
+        AllowHeaders: "Content-Type,X-Amz-Date,Authorization,X-Api-Key,X-Amz-Security-Token,Cookie"
+        AllowOrigin: "*"
 
   # Main Dynasty Dugout API function
   FantasyBaseballApi:

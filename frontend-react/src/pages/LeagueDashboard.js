@@ -1,4 +1,4 @@
-// src/pages/LeagueDashboard.js - COMPLETE WITH ALL FIXES
+// src/pages/LeagueDashboard.js - COMPLETE WITH ALL FIXES + PLAYER MODAL INTEGRATION
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { 
@@ -9,6 +9,7 @@ import {
   ArrowRightLeft, Gavel, AlertCircle, User
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
+import { PlayerModalProvider } from '../contexts/PlayerModalContext';
 import { leaguesAPI } from '../services/apiService';
 import apiService from '../services/apiService';
 import { dynastyTheme } from '../services/colorService';
@@ -628,195 +629,201 @@ const LeagueDashboard = () => {
   }
 
   // ========================================
-  // MAIN LAYOUT
+  // MAIN LAYOUT WITH PLAYER MODAL PROVIDER
   // ========================================
   return (
-    <div className={dynastyTheme.components.page}>
-      {/* Header with User Profile Picture */}
-      <header 
-        className={`px-6 py-4 border-b ${dynastyTheme.components.card.base} ${dynastyTheme.classes.border.light}`}
-      >
-        <div className="flex items-center justify-between">
-          <div className="flex items-center space-x-4">
-            <UserProfilePicture />
-            
-            <button
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className={`lg:hidden ${dynastyTheme.classes.text.white} hover:text-yellow-400`}
-            >
-              {sidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
-            </button>
-            
-            <button
-              onClick={() => navigate('/dashboard')}
-              className={`flex items-center space-x-3 hover:text-white ${dynastyTheme.classes.transition} ${dynastyTheme.classes.text.neutralLight}`}
-            >
-              <Crown className={`w-8 h-8 ${dynastyTheme.classes.text.primary}`} />
-              <div className="text-left">
-                <div className={`text-xl font-bold ${dynastyTheme.classes.text.white}`}>Dynasty Dugout</div>
-                <div className="text-sm">Return to Dashboard</div>
-              </div>
-            </button>
-          </div>
-          
-          <div className="flex items-center space-x-4">
-            {/* Warning if there was a non-critical error */}
-            {loadError && league && (
-              <div className="flex items-center gap-2 px-3 py-1 rounded bg-yellow-500/20 text-yellow-400">
-                <AlertCircle className="w-4 h-4" />
-                <span className="text-sm">Limited Mode</span>
-              </div>
-            )}
-
-            {/* Team Name Display */}
-            {userTeam && (
-              <div className="hidden md:block text-right">
-                <div className={`font-semibold ${dynastyTheme.classes.text.primary}`}>
-                  {userTeam.team_name}
-                </div>
-                <div className={`text-xs ${dynastyTheme.classes.text.neutralLight}`}>
-                  Your Team
-                </div>
-              </div>
-            )}
-            
-            {/* League Status Badge */}
-            {league && (
-              <div className={`px-3 py-1 rounded-full text-sm font-medium ${
-                league.league_status === 'active' ? 'bg-green-500/20 text-green-400' :
-                league.league_status === 'draft_ready' ? 'bg-yellow-500/20 text-yellow-400' :
-                league.league_status === 'drafting' ? 'bg-blue-500/20 text-blue-400' :
-                'bg-gray-500/20 text-gray-400'
-              }`}>
-                {league.league_status === 'setup' ? 'Setup Mode' :
-                 league.league_status === 'pricing' ? 'Setting Prices' :
-                 league.league_status === 'draft_ready' ? 'Ready to Draft' :
-                 league.league_status === 'drafting' ? 'Drafting' :
-                 'Active'}
-              </div>
-            )}
-            
-            <span className={`hidden md:block ${dynastyTheme.classes.text.neutralLight}`}>
-              Welcome, {userProfile?.firstName || user?.given_name || user?.firstName || 'User'}
-            </span>
-            <button
-              onClick={handleSignOut}
-              className={`flex items-center space-x-2 hover:text-white ${dynastyTheme.classes.transition} ${dynastyTheme.classes.text.neutralLight}`}
-            >
-              <LogOut className="w-5 h-5" />
-              <span className="hidden md:inline">Sign Out</span>
-            </button>
-          </div>
-        </div>
-      </header>
-
-      <div className="flex">
-        {/* Sidebar */}
-        <aside 
-          className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed lg:static w-72 flex-shrink-0 min-h-screen border-r ${dynastyTheme.classes.transition} duration-300 ease-in-out z-40 ${dynastyTheme.components.card.base} ${dynastyTheme.classes.border.light}`}
-          style={{ minWidth: '18rem', maxWidth: '18rem' }}
+    <PlayerModalProvider 
+      leagueId={leagueId}
+      userTeamId={userTeam?.team_id}
+      isCommissionerMode={league?.role === 'commissioner'}
+    >
+      <div className={dynastyTheme.components.page}>
+        {/* Header with User Profile Picture */}
+        <header 
+          className={`px-6 py-4 border-b ${dynastyTheme.components.card.base} ${dynastyTheme.classes.border.light}`}
         >
-          <div className="p-4 h-full overflow-y-auto">
-            {/* League Info Card */}
-            <div className={`mb-6 p-4 rounded-lg ${dynastyTheme.classes.bg.darkLighter} border ${dynastyTheme.classes.border.light}`}>
-              <h3 className={`text-lg font-bold ${dynastyTheme.classes.text.white} mb-3`}>
-                {league?.league_name || 'Loading...'}
-              </h3>
-              <div className="space-y-2 text-sm">
-                <div className="flex justify-between">
-                  <span className={dynastyTheme.classes.text.neutralLight}>Teams:</span>
-                  <span className={dynastyTheme.classes.text.white}>
-                    {teams.length || owners.filter(o => o.team_id).length}/{league?.max_teams || 12}
-                  </span>
+          <div className="flex items-center justify-between">
+            <div className="flex items-center space-x-4">
+              <UserProfilePicture />
+              
+              <button
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                className={`lg:hidden ${dynastyTheme.classes.text.white} hover:text-yellow-400`}
+              >
+                {sidebarOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
+              </button>
+              
+              <button
+                onClick={() => navigate('/dashboard')}
+                className={`flex items-center space-x-3 hover:text-white ${dynastyTheme.classes.transition} ${dynastyTheme.classes.text.neutralLight}`}
+              >
+                <Crown className={`w-8 h-8 ${dynastyTheme.classes.text.primary}`} />
+                <div className="text-left">
+                  <div className={`text-xl font-bold ${dynastyTheme.classes.text.white}`}>Dynasty Dugout</div>
+                  <div className="text-sm">Return to Dashboard</div>
                 </div>
-                <div className="flex justify-between">
-                  <span className={dynastyTheme.classes.text.neutralLight}>Your Role:</span>
-                  <span className={`font-semibold ${
-                    league?.role === 'commissioner' 
-                      ? dynastyTheme.classes.text.primary 
-                      : dynastyTheme.classes.text.success
-                  }`}>
-                    {league?.role === 'commissioner' ? 'Commissioner' : 'Owner'}
-                  </span>
-                </div>
-                {userTeam && (
-                  <div className="flex justify-between">
-                    <span className={dynastyTheme.classes.text.neutralLight}>Your Team:</span>
-                    <span className={`${dynastyTheme.classes.text.primary} truncate ml-2`}>
-                      {userTeam.team_name || 'Team 1'}
-                    </span>
-                  </div>
-                )}
-                {(league?.salary_cap_enabled || league?.use_salaries) && (
-                  <div className="flex justify-between">
-                    <span className={dynastyTheme.classes.text.neutralLight}>Salary Cap:</span>
-                    <span className={dynastyTheme.classes.text.success}>
-                      ${league?.salary_cap || 260}
-                    </span>
-                  </div>
-                )}
-              </div>
+              </button>
             </div>
+            
+            <div className="flex items-center space-x-4">
+              {/* Warning if there was a non-critical error */}
+              {loadError && league && (
+                <div className="flex items-center gap-2 px-3 py-1 rounded bg-yellow-500/20 text-yellow-400">
+                  <AlertCircle className="w-4 h-4" />
+                  <span className="text-sm">Limited Mode</span>
+                </div>
+              )}
 
-            {/* Navigation Sections */}
-            {getNavigationSections().map((section, sectionIndex) => (
-              <div key={sectionIndex} className="mb-6">
-                <h3 className={dynastyTheme.components.sidebar.sectionHeader}>
-                  {section.title}
-                </h3>
-                <nav className="space-y-1">
-                  {section.items.map((item) => {
-                    const Icon = item.icon;
-                    const isActive = activeSection === item.id;
-                    const needsAttention = item.needsAttention;
-                    
-                    return (
-                      <button
-                        key={item.id}
-                        onClick={() => {
-                          setActiveSection(item.id);
-                          setSidebarOpen(false);
-                          // Clear viewing team when navigating away
-                          setViewingTeamId(null);
-                          setViewingTeamName(null);
-                        }}
-                        className={`${dynastyTheme.components.sidebar.navItem.base} ${
-                          isActive
-                            ? dynastyTheme.components.sidebar.navItem.active
-                            : needsAttention
-                            ? dynastyTheme.components.sidebar.navItem.needsAttention
-                            : dynastyTheme.components.sidebar.navItem.inactive
-                        }`}
-                      >
-                        <Icon className="w-4 h-4 flex-shrink-0" />
-                        <span className="flex-1 text-left truncate">{item.label}</span>
-                        {isActive && <ChevronRight className="w-4 h-4 flex-shrink-0" />}
-                        {needsAttention && !isActive && (
-                          <AlertCircle className="w-4 h-4 flex-shrink-0 text-yellow-400" />
-                        )}
-                      </button>
-                    );
-                  })}
-                </nav>
-              </div>
-            ))}
+              {/* Team Name Display */}
+              {userTeam && (
+                <div className="hidden md:block text-right">
+                  <div className={`font-semibold ${dynastyTheme.classes.text.primary}`}>
+                    {userTeam.team_name}
+                  </div>
+                  <div className={`text-xs ${dynastyTheme.classes.text.neutralLight}`}>
+                    Your Team
+                  </div>
+                </div>
+              )}
+              
+              {/* League Status Badge */}
+              {league && (
+                <div className={`px-3 py-1 rounded-full text-sm font-medium ${
+                  league.league_status === 'active' ? 'bg-green-500/20 text-green-400' :
+                  league.league_status === 'draft_ready' ? 'bg-yellow-500/20 text-yellow-400' :
+                  league.league_status === 'drafting' ? 'bg-blue-500/20 text-blue-400' :
+                  'bg-gray-500/20 text-gray-400'
+                }`}>
+                  {league.league_status === 'setup' ? 'Setup Mode' :
+                   league.league_status === 'pricing' ? 'Setting Prices' :
+                   league.league_status === 'draft_ready' ? 'Ready to Draft' :
+                   league.league_status === 'drafting' ? 'Drafting' :
+                   'Active'}
+                </div>
+              )}
+              
+              <span className={`hidden md:block ${dynastyTheme.classes.text.neutralLight}`}>
+                Welcome, {userProfile?.firstName || user?.given_name || user?.firstName || 'User'}
+              </span>
+              <button
+                onClick={handleSignOut}
+                className={`flex items-center space-x-2 hover:text-white ${dynastyTheme.classes.transition} ${dynastyTheme.classes.text.neutralLight}`}
+              >
+                <LogOut className="w-5 h-5" />
+                <span className="hidden md:inline">Sign Out</span>
+              </button>
+            </div>
           </div>
-        </aside>
+        </header>
 
-        {/* Mobile Overlay */}
-        {sidebarOpen && (
-          <div 
-            className="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-30"
-            onClick={() => setSidebarOpen(false)}
-          />
-        )}
+        <div className="flex">
+          {/* Sidebar */}
+          <aside 
+            className={`${sidebarOpen ? 'translate-x-0' : '-translate-x-full'} lg:translate-x-0 fixed lg:static w-72 flex-shrink-0 min-h-screen border-r ${dynastyTheme.classes.transition} duration-300 ease-in-out z-40 ${dynastyTheme.components.card.base} ${dynastyTheme.classes.border.light}`}
+            style={{ minWidth: '18rem', maxWidth: '18rem' }}
+          >
+            <div className="p-4 h-full overflow-y-auto">
+              {/* League Info Card */}
+              <div className={`mb-6 p-4 rounded-lg ${dynastyTheme.classes.bg.darkLighter} border ${dynastyTheme.classes.border.light}`}>
+                <h3 className={`text-lg font-bold ${dynastyTheme.classes.text.white} mb-3`}>
+                  {league?.league_name || 'Loading...'}
+                </h3>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span className={dynastyTheme.classes.text.neutralLight}>Teams:</span>
+                    <span className={dynastyTheme.classes.text.white}>
+                      {teams.length || owners.filter(o => o.team_id).length}/{league?.max_teams || 12}
+                    </span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className={dynastyTheme.classes.text.neutralLight}>Your Role:</span>
+                    <span className={`font-semibold ${
+                      league?.role === 'commissioner' 
+                        ? dynastyTheme.classes.text.primary 
+                        : dynastyTheme.classes.text.success
+                    }`}>
+                      {league?.role === 'commissioner' ? 'Commissioner' : 'Owner'}
+                    </span>
+                  </div>
+                  {userTeam && (
+                    <div className="flex justify-between">
+                      <span className={dynastyTheme.classes.text.neutralLight}>Your Team:</span>
+                      <span className={`${dynastyTheme.classes.text.primary} truncate ml-2`}>
+                        {userTeam.team_name || 'Team 1'}
+                      </span>
+                    </div>
+                  )}
+                  {(league?.salary_cap_enabled || league?.use_salaries) && (
+                    <div className="flex justify-between">
+                      <span className={dynastyTheme.classes.text.neutralLight}>Salary Cap:</span>
+                      <span className={dynastyTheme.classes.text.success}>
+                        ${league?.salary_cap || 260}
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
 
-        {/* Main Content Area */}
-        <main className="flex-1 p-6 overflow-x-auto">
-          {renderContent()}
-        </main>
+              {/* Navigation Sections */}
+              {getNavigationSections().map((section, sectionIndex) => (
+                <div key={sectionIndex} className="mb-6">
+                  <h3 className={dynastyTheme.components.sidebar.sectionHeader}>
+                    {section.title}
+                  </h3>
+                  <nav className="space-y-1">
+                    {section.items.map((item) => {
+                      const Icon = item.icon;
+                      const isActive = activeSection === item.id;
+                      const needsAttention = item.needsAttention;
+                      
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => {
+                            setActiveSection(item.id);
+                            setSidebarOpen(false);
+                            // Clear viewing team when navigating away
+                            setViewingTeamId(null);
+                            setViewingTeamName(null);
+                          }}
+                          className={`${dynastyTheme.components.sidebar.navItem.base} ${
+                            isActive
+                              ? dynastyTheme.components.sidebar.navItem.active
+                              : needsAttention
+                              ? dynastyTheme.components.sidebar.navItem.needsAttention
+                              : dynastyTheme.components.sidebar.navItem.inactive
+                          }`}
+                        >
+                          <Icon className="w-4 h-4 flex-shrink-0" />
+                          <span className="flex-1 text-left truncate">{item.label}</span>
+                          {isActive && <ChevronRight className="w-4 h-4 flex-shrink-0" />}
+                          {needsAttention && !isActive && (
+                            <AlertCircle className="w-4 h-4 flex-shrink-0 text-yellow-400" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </nav>
+                </div>
+              ))}
+            </div>
+          </aside>
+
+          {/* Mobile Overlay */}
+          {sidebarOpen && (
+            <div 
+              className="lg:hidden fixed inset-0 bg-black bg-opacity-50 z-30"
+              onClick={() => setSidebarOpen(false)}
+            />
+          )}
+
+          {/* Main Content Area */}
+          <main className="flex-1 p-6 overflow-x-auto">
+            {renderContent()}
+          </main>
+        </div>
       </div>
-    </div>
+    </PlayerModalProvider>
   );
 };
 

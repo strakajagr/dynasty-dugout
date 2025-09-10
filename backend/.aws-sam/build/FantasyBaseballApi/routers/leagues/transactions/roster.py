@@ -1,7 +1,7 @@
 """
-Dynasty Dugout - Roster Management Module
+Dynasty Dugout - Roster Management Module FIXED
 Enhanced with Commissioner Mode and Team Browsing Support
-All roster management related endpoints
+FIXED: Added height/weight/birthdate fields and corrected rolling stats DB
 """
 
 from fastapi import APIRouter, HTTPException, Depends, Query
@@ -113,7 +113,7 @@ async def add_player_to_team(
                 'league_id': league_id,
                 'team_id': team_id,
                 'roster_status': request.roster_status,
-                'roster_position': request.roster_position,  # NOW INCLUDED
+                'roster_position': request.roster_position,
                 'salary': request.salary,
                 'contract_years': request.contract_years,
                 'acquisition_date': datetime.now(timezone.utc).isoformat(),
@@ -166,7 +166,7 @@ async def add_player_to_team(
             "salary": request.salary,
             "contract_years": request.contract_years,
             "roster_status": request.roster_status,
-            "roster_position": request.roster_position,  # Include in response
+            "roster_position": request.roster_position,
             "commissioner_action": is_commissioner_action
         }
         
@@ -403,6 +403,8 @@ async def get_my_roster(
             COALESCE(pss.batting_avg, 0.0) as batting_avg,
             COALESCE(pss.home_runs, 0) as home_runs,
             COALESCE(pss.rbi, 0) as rbi,
+            COALESCE(pss.runs, 0) as runs,
+            COALESCE(pss.stolen_bases, 0) as stolen_bases,
             COALESCE(pss.era, 0.0) as era,
             COALESCE(pss.wins, 0) as wins,
             COALESCE(pss.saves, 0) as saves,
@@ -449,7 +451,7 @@ async def get_my_roster(
             league_roster_lookup[mlb_player_id] = {
                 "league_player_id": get_value_from_field(record[0], 'string'),
                 "roster_status": get_value_from_field(record[2], 'string') or "active",
-                "roster_position": get_value_from_field(record[3], 'string'),  # NOW INCLUDED
+                "roster_position": get_value_from_field(record[3], 'string'),
                 "salary": get_value_from_field(record[4], 'decimal'),
                 "contract_years": get_value_from_field(record[5], 'long'),
                 "acquisition_date": get_value_from_field(record[6], 'string'),
@@ -457,14 +459,16 @@ async def get_my_roster(
                 "batting_avg": get_value_from_field(record[8], 'decimal'),
                 "home_runs": get_value_from_field(record[9], 'long'),
                 "rbi": get_value_from_field(record[10], 'long'),
-                "era": get_value_from_field(record[11], 'decimal'),
-                "wins": get_value_from_field(record[12], 'long'),
-                "saves": get_value_from_field(record[13], 'long'),
-                "strikeouts_pitched": get_value_from_field(record[14], 'long'),
-                "innings_pitched": get_value_from_field(record[15], 'decimal')
+                "runs": get_value_from_field(record[11], 'long'),
+                "stolen_bases": get_value_from_field(record[12], 'long'),
+                "era": get_value_from_field(record[13], 'decimal'),
+                "wins": get_value_from_field(record[14], 'long'),
+                "saves": get_value_from_field(record[15], 'long'),
+                "strikeouts_pitched": get_value_from_field(record[16], 'long'),
+                "innings_pitched": get_value_from_field(record[17], 'decimal')
             }
         
-        # Get MLB player info from main database
+        # Get MLB player info from main database - FIXED WITH ADDITIONAL FIELDS
         player_ids_str = ','.join(map(str, player_ids))
         
         mlb_roster_query = f"""
@@ -474,7 +478,10 @@ async def get_my_roster(
                 last_name,
                 position,
                 mlb_team,
-                jersey_number
+                jersey_number,
+                height_inches,
+                weight_pounds,
+                birthdate
             FROM mlb_players
             WHERE player_id IN ({player_ids_str})
             ORDER BY position, last_name, first_name
@@ -504,6 +511,10 @@ async def get_my_roster(
                     "position": get_value_from_field(record[3], 'string'),
                     "mlb_team": get_value_from_field(record[4], 'string') or "FA",
                     "jersey_number": get_value_from_field(record[5], 'string'),
+                    "height_inches": get_value_from_field(record[6], 'long'),
+                    "weight_pounds": get_value_from_field(record[7], 'long'),
+                    "birthdate": get_value_from_field(record[8], 'string'),
+                    "team_id": team_id,
                     **league_data
                 }
                 players.append(player)
@@ -626,7 +637,7 @@ async def get_team_roster(
             league_roster_lookup[mlb_player_id] = {
                 "league_player_id": get_value_from_field(record[0], 'string'),
                 "roster_status": get_value_from_field(record[2], 'string') or "active",
-                "roster_position": get_value_from_field(record[3], 'string'),  # NOW INCLUDED
+                "roster_position": get_value_from_field(record[3], 'string'),
                 "salary": get_value_from_field(record[4], 'decimal'),
                 "contract_years": get_value_from_field(record[5], 'long'),
                 "acquisition_date": get_value_from_field(record[6], 'string'),
@@ -643,7 +654,7 @@ async def get_team_roster(
                 "innings_pitched": get_value_from_field(record[17], 'decimal')
             }
         
-        # Get MLB player info from main database
+        # Get MLB player info from main database - FIXED WITH ADDITIONAL FIELDS
         if player_ids:
             player_ids_str = ','.join(map(str, player_ids))
             
@@ -654,7 +665,10 @@ async def get_team_roster(
                     last_name,
                     position,
                     mlb_team,
-                    jersey_number
+                    jersey_number,
+                    height_inches,
+                    weight_pounds,
+                    birthdate
                 FROM mlb_players
                 WHERE player_id IN ({player_ids_str})
                 ORDER BY position, last_name, first_name
@@ -684,6 +698,10 @@ async def get_team_roster(
                         "position": get_value_from_field(record[3], 'string'),
                         "mlb_team": get_value_from_field(record[4], 'string') or "FA",
                         "jersey_number": get_value_from_field(record[5], 'string'),
+                        "height_inches": get_value_from_field(record[6], 'long'),
+                        "weight_pounds": get_value_from_field(record[7], 'long'),
+                        "birthdate": get_value_from_field(record[8], 'string'),
+                        "team_id": team_id,
                         **league_data
                     }
                     players.append(player)
@@ -729,7 +747,7 @@ async def get_my_roster_with_accrued(
     """
     Enhanced roster with 3-row display (supports commissioner mode)
     Row 1: Season stats (from CACHED leagues DB)
-    Row 2: Last 14 days rolling stats (from leagues DB)
+    Row 2: Last 14 days rolling stats (from POSTGRES DB) - FIXED!
     Row 3: Accrued while ACTIVE on roster (from leagues DB)
     """
     try:
@@ -746,10 +764,9 @@ async def get_my_roster_with_accrued(
         player_ids = [p['mlb_player_id'] for p in players]
         
         if player_ids:
-            # 1. Get rolling stats from LEAGUES DB
+            # 1. Get rolling stats from POSTGRES DB - FIXED DATABASE!
             placeholders = ','.join([f':id_{i}' for i in range(len(player_ids))])
             parameters = {f'id_{i}': pid for i, pid in enumerate(player_ids)}
-            parameters['league_id'] = league_id
             
             rolling_result = execute_sql(
                 f"""SELECT player_id, games_played, batting_avg, home_runs, rbi, 
@@ -757,10 +774,9 @@ async def get_my_roster_with_accrued(
                     FROM player_rolling_stats
                     WHERE player_id IN ({placeholders})
                       AND period = 'last_14_days'
-                      AND as_of_date = CURRENT_DATE
-                      AND league_id = :league_id::uuid""",
+                      AND as_of_date = (SELECT MAX(as_of_date) FROM player_rolling_stats WHERE period = 'last_14_days')""",
                 parameters=parameters,
-                database_name='leagues'
+                database_name='postgres'  # FIXED: Changed from 'leagues' to 'postgres'
             )
             
             rolling_lookup = {}
@@ -779,8 +795,9 @@ async def get_my_roster_with_accrued(
                         'saves': get_value_from_field(record[9], 'long')
                     }
             
-            # 2. Get ACTIVE accrued stats from shared leagues DB
+            # 2. Get ACTIVE accrued stats from leagues DB
             parameters['team_id'] = team_id
+            parameters['league_id'] = league_id
             
             accrued_result = execute_sql(
                 f"""SELECT mlb_player_id, total_active_days, active_games_played,
@@ -792,7 +809,7 @@ async def get_my_roster_with_accrued(
                       AND mlb_player_id IN ({placeholders})
                       AND team_id = :team_id::uuid""",
                 parameters=parameters,
-                database_name='leagues'
+                database_name='leagues'  # Correct - accrued stats ARE in leagues DB
             )
             
             accrued_lookup = {}
@@ -801,15 +818,15 @@ async def get_my_roster_with_accrued(
                     player_id = get_value_from_field(record[0], 'long')
                     accrued_lookup[player_id] = {
                         'active_days': get_value_from_field(record[1], 'long'),
-                        'games': get_value_from_field(record[2], 'long'),
-                        'batting_avg': get_value_from_field(record[3], 'decimal'),
-                        'home_runs': get_value_from_field(record[4], 'long'),
-                        'rbi': get_value_from_field(record[5], 'long'),
-                        'runs': get_value_from_field(record[6], 'long'),
-                        'stolen_bases': get_value_from_field(record[7], 'long'),
-                        'era': get_value_from_field(record[8], 'decimal'),
-                        'wins': get_value_from_field(record[9], 'long'),
-                        'saves': get_value_from_field(record[10], 'long'),
+                        'active_games_played': get_value_from_field(record[2], 'long'),
+                        'active_batting_avg': get_value_from_field(record[3], 'decimal'),
+                        'active_home_runs': get_value_from_field(record[4], 'long'),
+                        'active_rbi': get_value_from_field(record[5], 'long'),
+                        'active_runs': get_value_from_field(record[6], 'long'),
+                        'active_stolen_bases': get_value_from_field(record[7], 'long'),
+                        'active_era': get_value_from_field(record[8], 'decimal'),
+                        'active_wins': get_value_from_field(record[9], 'long'),
+                        'active_saves': get_value_from_field(record[10], 'long'),
                         'first_active': get_value_from_field(record[11], 'string'),
                         'last_active': get_value_from_field(record[12], 'string')
                     }
@@ -827,21 +844,23 @@ async def get_my_roster_with_accrued(
                     'stolen_bases': player.get('stolen_bases', 0),
                     'era': player.get('era', 0.00),
                     'wins': player.get('wins', 0),
-                    'saves': player.get('saves', 0)
+                    'saves': player.get('saves', 0),
+                    'strikeouts_pitched': player.get('strikeouts_pitched', 0)
                 }
                 
-                # Row 2: Last 14 days
-                player['last_14_days'] = rolling_lookup.get(player_id, {})
+                # Row 2: Last 14 days (rolling stats)
+                player['rolling_14_day'] = rolling_lookup.get(player_id, {})
+                player['last_14_days'] = rolling_lookup.get(player_id, {})  # Alias for compatibility
                 
                 # Row 3: Accrued while active
-                player['active_accrued'] = accrued_lookup.get(player_id, {})
+                player['accrued_stats'] = accrued_lookup.get(player_id, {})
         
         return {
             **basic_result,
             "display_rows": ["Season Stats", "Last 14 Days", "Active on Roster"],
             "data_sources": {
                 "season": "leagues_db_cached",
-                "rolling": "leagues_db_cached",
+                "rolling": "postgres_db",
                 "accrued": "leagues_db"
             }
         }
@@ -858,7 +877,7 @@ async def get_team_roster_enhanced(
 ):
     """Get enhanced team roster with rolling stats (read-only for non-owners)"""
     try:
-        # Get basic roster first - FIXED SYNTAX ERROR HERE
+        # Get basic roster first
         basic_result = await get_team_roster(league_id, team_id, current_user)
         
         if not basic_result.get("success") or not basic_result.get("players"):
@@ -870,10 +889,9 @@ async def get_team_roster_enhanced(
         player_ids = [p['mlb_player_id'] for p in players]
         
         if player_ids:
-            # Get rolling stats from LEAGUES DB
+            # Get rolling stats from POSTGRES DB - FIXED!
             placeholders = ','.join([f':id_{i}' for i in range(len(player_ids))])
             parameters = {f'id_{i}': pid for i, pid in enumerate(player_ids)}
-            parameters['league_id'] = league_id
             
             rolling_result = execute_sql(
                 f"""SELECT player_id, games_played, batting_avg, home_runs, rbi, 
@@ -881,10 +899,9 @@ async def get_team_roster_enhanced(
                     FROM player_rolling_stats
                     WHERE player_id IN ({placeholders})
                       AND period = 'last_14_days'
-                      AND as_of_date = CURRENT_DATE
-                      AND league_id = :league_id::uuid""",
+                      AND as_of_date = (SELECT MAX(as_of_date) FROM player_rolling_stats WHERE period = 'last_14_days')""",
                 parameters=parameters,
-                database_name='leagues'
+                database_name='postgres'  # FIXED: Changed from 'leagues' to 'postgres'
             )
             
             rolling_lookup = {}
@@ -916,18 +933,20 @@ async def get_team_roster_enhanced(
                     'stolen_bases': player.get('stolen_bases', 0),
                     'era': player.get('era', 0.00),
                     'wins': player.get('wins', 0),
-                    'saves': player.get('saves', 0)
+                    'saves': player.get('saves', 0),
+                    'strikeouts_pitched': player.get('strikeouts_pitched', 0)
                 }
                 
                 # Last 14 days
-                player['last_14_days'] = rolling_lookup.get(player_id, {})
+                player['rolling_14_day'] = rolling_lookup.get(player_id, {})
+                player['last_14_days'] = rolling_lookup.get(player_id, {})  # Alias for compatibility
         
         return {
             **basic_result,
             "display_rows": ["Season Stats", "Last 14 Days"],
             "data_sources": {
                 "season": "leagues_db_cached",
-                "rolling": "leagues_db_cached"
+                "rolling": "postgres_db"
             },
             "note": "Accrued stats only available for own team"
         }

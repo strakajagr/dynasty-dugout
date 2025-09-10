@@ -1,6 +1,7 @@
 """
 Dynasty Dugout - Basic League Management Module - ENHANCED WITH FULL ROSTER CONFIGURATION
 ENHANCED with Teams List Endpoint for Team Browsing
+ENHANCED with Public Leagues endpoint for discovery
 EXTRACTED FROM: The massive leagues.py file (basic CRUD operations)
 PURPOSE: Simple league info retrieval, settings, health checks, teams management
 STATUS: Updated for shared database architecture with complete roster configuration support
@@ -77,6 +78,156 @@ def parse_league_settings(settings_records):
 # GLOBAL ENDPOINTS (Handled by global_router)
 # =============================================================================
 
+@global_router.get("/public")
+async def get_public_leagues():
+    """Get all public leagues that are accepting new teams"""
+    try:
+        logger.info("📢 Fetching public leagues for discovery")
+        
+        # Get public leagues from phone book with team counts
+        sql = """
+            SELECT 
+                ul.league_id,
+                ul.league_name,
+                ul.commissioner_user_id,
+                ul.created_at,
+                ul.invite_code,
+                COUNT(DISTINCT lm.user_id) as current_teams
+            FROM user_leagues ul
+            LEFT JOIN league_memberships lm ON ul.league_id = lm.league_id AND lm.is_active = true
+            WHERE ul.is_public = true 
+              AND ul.creation_status = 'completed'
+              AND ul.status != 'archived'
+            GROUP BY ul.league_id, ul.league_name, ul.commissioner_user_id, ul.created_at, ul.invite_code
+            ORDER BY ul.created_at DESC
+        """
+        
+        response = execute_sql(sql, database_name='postgres')
+        
+        leagues = []
+        if response.get('records'):
+            for record in response['records']:
+                league_id = get_value_from_field(record[0], 'string')
+                
+                # Get detailed settings from leagues database
+                settings_sql = """
+                    SELECT setting_name, setting_value, setting_type
+                    FROM league_settings 
+                    WHERE league_id = :league_id::uuid
+                      AND setting_name IN ('max_teams', 'scoring_system', 'salary_cap', 'commissioner_name')
+                """
+                settings_response = execute_sql(
+                    settings_sql, 
+                    {'league_id': league_id}, 
+                    database_name='leagues'
+                )
+                
+                # Parse settings with defaults
+                max_teams = 12
+                scoring_system = 'rotisserie_ytd'
+                salary_cap = 800.0
+                commissioner_name = 'Commissioner'
+                
+                if settings_response.get('records'):
+                    parsed = parse_league_settings(settings_response['records'])
+                    max_teams = parsed.get('max_teams', max_teams)
+                    scoring_system = parsed.get('scoring_system', scoring_system)
+                    salary_cap = parsed.get('salary_cap', salary_cap)
+                    commissioner_name = parsed.get('commissioner_name', commissioner_name)
+                
+                current_teams = get_value_from_field(record[5], 'long', 0)
+                
+                # Only include leagues with open spots
+                if current_teams < max_teams:
+                    leagues.append({
+                        'league_id': league_id,
+                        'league_name': get_value_from_field(record[1], 'string'),
+                        'commissioner_user_id': get_value_from_field(record[2], 'string'),
+                        'commissioner_name': commissioner_name,
+                        'created_at': get_value_from_field(record[3], 'string'),
+                        'current_teams': current_teams,
+                        'max_teams': max_teams,
+                        'scoring_system': scoring_system,
+                        'salary_cap': salary_cap,
+                        'spots_available': max_teams - current_teams
+                    })
+        
+        logger.info(f"✅ Found {len(leagues)} public leagues with open spots")
+        
+        return {
+            "success": True,
+            "leagues": leagues,
+            "count": len(leagues)
+        }
+        
+    except Exception as e:
+        logger.error(f"Error fetching public leagues: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@global_router.post("/join-private")
+async def join_private_league(
+    request: dict,
+    current_user: dict = Depends(get_current_user)
+):
+    """Join a private league using an invite code"""
+    try:
+        invite_code = request.get('invite_code', '').upper().strip()
+        user_id = current_user.get('sub')
+        
+        if not invite_code:
+            raise HTTPException(status_code=400, detail="Invite code is required")
+        
+        logger.info(f"User {user_id} attempting to join with code: {invite_code}")
+        
+        # Find league by invite code
+        result = execute_sql(
+            """SELECT league_id, league_name, is_public
+               FROM user_leagues 
+               WHERE invite_code = :code 
+                 AND creation_status = 'completed'
+                 AND status != 'archived'""",
+            {'code': invite_code},
+            database_name='postgres'
+        )
+        
+        if not result.get('records'):
+            raise HTTPException(status_code=404, detail="Invalid or expired invite code")
+        
+        league_id = result['records'][0][0].get('stringValue')
+        league_name = result['records'][0][1].get('stringValue')
+        
+        # Check if user is already a member
+        membership_check = execute_sql(
+            """SELECT user_id FROM league_memberships 
+               WHERE league_id = :league_id::uuid AND user_id = :user_id AND is_active = true""",
+            {'league_id': league_id, 'user_id': user_id},
+            database_name='postgres'
+        )
+        
+        if membership_check.get('records'):
+            return {
+                "success": True,
+                "league_id": league_id,
+                "league_name": league_name,
+                "already_member": True,
+                "message": "You are already a member of this league"
+            }
+        
+        # Return league info for join flow
+        return {
+            "success": True,
+            "league_id": league_id,
+            "league_name": league_name,
+            "already_member": False,
+            "message": "League found! Redirecting to team setup..."
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error joining league with code: {e}")
+        raise HTTPException(status_code=500, detail="Failed to join league")
+
 @global_router.get("/my-leagues")
 async def get_my_leagues(current_user: dict = Depends(get_current_user)):
     """Get all leagues for the current user with configuration details"""
@@ -86,7 +237,7 @@ async def get_my_leagues(current_user: dict = Depends(get_current_user)):
         sql = """
             SELECT 
                 ul.league_id, ul.league_name, ul.created_at, lm.role,
-                ul.commissioner_user_id
+                ul.commissioner_user_id, ul.is_public, ul.invite_code
             FROM user_leagues ul
             JOIN league_memberships lm ON ul.league_id = lm.league_id
             WHERE lm.user_id = :user_id AND lm.is_active = true
@@ -101,6 +252,8 @@ async def get_my_leagues(current_user: dict = Depends(get_current_user)):
                 # Basic league info from phone book
                 league_id = record[0].get('stringValue') if record[0] and not record[0].get('isNull') else None
                 commissioner_user_id = record[4].get('stringValue') if record[4] and not record[4].get('isNull') else None
+                is_public = record[5].get('booleanValue', True) if record[5] and not record[5].get('isNull') else True
+                invite_code = record[6].get('stringValue') if record[6] and not record[6].get('isNull') else None
                 
                 league = {
                     'league_id': league_id,
@@ -111,6 +264,8 @@ async def get_my_leagues(current_user: dict = Depends(get_current_user)):
                     'status': 'active',
                     'current_season': CURRENT_SEASON,
                     'is_commissioner': user_id == commissioner_user_id,
+                    'is_public': is_public,
+                    'invite_code': invite_code if not is_public else None,
                     # Default values for missing config
                     'scoring_system': 'rotisserie_ytd',
                     'player_pool': 'american_national',
@@ -197,7 +352,8 @@ async def league_health_check():
                 "data_pipeline": "operational (main DB stats)",
                 "season_management": f"✅ Dynamic season support ({current_season})",
                 "team_browsing": "✅ Enhanced with cross-team roster viewing",
-                "roster_configuration": "✅ Dynamic position requirements, bench/DL/minor slots"
+                "roster_configuration": "✅ Dynamic position requirements, bench/DL/minor slots",
+                "public_private_leagues": "✅ Public/private league support with invite codes"
             },
             "architecture": {
                 "main_database": "Single source of truth (all MLB stats)",
@@ -231,7 +387,8 @@ async def get_league(
         league_sql = """
             SELECT 
                 ul.league_id, ul.league_name, ul.commissioner_user_id, 
-                ul.created_at, lm.role, ul.creation_status
+                ul.created_at, lm.role, ul.creation_status,
+                ul.is_public, ul.invite_code
             FROM user_leagues ul
             LEFT JOIN league_memberships lm ON ul.league_id = lm.league_id AND lm.user_id = :user_id
             WHERE ul.league_id = :league_id::uuid
@@ -254,6 +411,8 @@ async def get_league(
         
         commissioner_user_id = safe_get(record[2], 'stringValue')
         creation_status = safe_get(record[5], 'stringValue', 'unknown')
+        is_public = safe_get(record[6], 'booleanValue', True)
+        invite_code = safe_get(record[7], 'stringValue')
         
         # Build initial league object with ALL fields including ROSTER CONFIGURATION
         league = {
@@ -267,6 +426,8 @@ async def get_league(
             'creation_status': creation_status,
             'current_week': "Week 17",
             'season': CURRENT_SEASON,
+            'is_public': is_public,
+            'invite_code': invite_code if not is_public and safe_get(record[4], 'stringValue') == 'commissioner' else None,
             
             # Basic league info
             'league_status': 'setup',
@@ -559,6 +720,19 @@ async def get_league_settings(
                 elif key in ['position_requirements', 'bench_slots', 'dl_slots', 'minor_league_slots', 'max_players_total']:
                     roster_config[key] = value
         
+        # Get privacy info from main database
+        privacy_sql = """
+            SELECT is_public, invite_code
+            FROM user_leagues
+            WHERE league_id = :league_id::uuid
+        """
+        privacy_result = execute_sql(privacy_sql, {'league_id': league_id}, database_name='postgres')
+        
+        if privacy_result and privacy_result.get('records'):
+            record = privacy_result['records'][0]
+            settings['is_public'] = get_value_from_field(record[0], 'boolean', True)
+            settings['invite_code'] = get_value_from_field(record[1], 'string')
+        
         return {
             "success": True,
             "league_id": league_id,
@@ -574,7 +748,8 @@ async def get_league_settings(
                 "transactions_enabled": settings.get('use_transactions', True),
                 "advanced_stats_enabled": settings.get('show_advanced_stats', True),
                 "team_browsing_enabled": True,
-                "dynamic_roster_enabled": True  # Always enabled now
+                "dynamic_roster_enabled": True,  # Always enabled now
+                "public_private_leagues": True
             },
             "roster_summary": {
                 "total_positions": len(roster_config.get('position_requirements', {})),
@@ -674,6 +849,24 @@ async def update_league_settings(
                     database_name='postgres'
                 )
                 logger.info(f"Updated league name to '{setting_value}' for league {league_id}")
+            
+            # Special handling for is_public - also update main database
+            if setting_name == 'is_public':
+                execute_sql(
+                    "UPDATE user_leagues SET is_public = :is_public WHERE league_id = :league_id::uuid",
+                    {'is_public': setting_value, 'league_id': league_id},
+                    database_name='postgres'
+                )
+                logger.info(f"Updated is_public to '{setting_value}' for league {league_id}")
+            
+            # Special handling for invite_code - also update main database
+            if setting_name == 'invite_code':
+                execute_sql(
+                    "UPDATE user_leagues SET invite_code = :invite_code WHERE league_id = :league_id::uuid",
+                    {'invite_code': setting_value, 'league_id': league_id},
+                    database_name='postgres'
+                )
+                logger.info(f"Updated invite_code to '{setting_value}' for league {league_id}")
             
             logger.debug(f"Updated setting {setting_name} = {stored_value} (type: {setting_type})")
         

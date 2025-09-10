@@ -1,9 +1,10 @@
-// src/components/LeagueSettings.js - FIXED WITH PRESIGNED URL UPLOAD
+// src/components/LeagueSettings.js - FIXED WITH PRESIGNED URL UPLOAD AND INVITE CODE DISPLAY
 import React, { useState, useEffect } from 'react';
 import { 
   Crown, Settings, Trash2, AlertTriangle, Shield, Users, 
   Check, X, Eye, EyeOff, Lock, Unlock, Upload, Save, 
-  AlertCircle, Trophy, DollarSign, Camera, Calendar
+  AlertCircle, Trophy, DollarSign, Camera, Calendar,
+  Globe, Copy, Share2
 } from 'lucide-react';
 import { leaguesAPI } from '../services/apiService';
 import { dynastyTheme } from '../services/colorService';
@@ -13,6 +14,7 @@ const LeagueSettings = ({ leagueId, user, onLeagueDeleted }) => {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState({ text: '', type: '' });
+  const [copiedInviteCode, setCopiedInviteCode] = useState(false);
   
   // New banner upload states
   const [uploadingBanner, setUploadingBanner] = useState(false);
@@ -28,6 +30,8 @@ const LeagueSettings = ({ leagueId, user, onLeagueDeleted }) => {
     league_status: '',
     created_date: '',
     league_banner_url: '',
+    is_public: true,
+    invite_code: '',
     
     // Scoring categories (from DB)
     scoring_categories: {
@@ -66,7 +70,7 @@ const LeagueSettings = ({ leagueId, user, onLeagueDeleted }) => {
       const response = await leaguesAPI.getLeagueDetails(leagueId);
       if (response.success) {
         setLeague(response.league);
-        setIsCommissioner(response.league.role === 'commissioner');
+        setIsCommissioner(response.league.role === 'commissioner' || response.league.is_commissioner);
         
         // Set basic settings from league object
         setSettings(prev => ({
@@ -80,7 +84,9 @@ const LeagueSettings = ({ leagueId, user, onLeagueDeleted }) => {
           created_date: response.league.created_at ? new Date(response.league.created_at).toLocaleDateString() : '',
           use_salaries: response.league.use_salaries || response.league.salary_cap_enabled || false,
           salary_cap: response.league.salary_cap || 260,
-          min_salary: response.league.min_salary || 1
+          min_salary: response.league.min_salary || 1,
+          is_public: response.league.is_public !== undefined ? response.league.is_public : true,
+          invite_code: response.league.invite_code || ''
         }));
         
         // Load banner if exists
@@ -133,11 +139,13 @@ const LeagueSettings = ({ leagueId, user, onLeagueDeleted }) => {
           }));
         }
         
-        // Update other settings
+        // Update other settings including privacy
         setSettings(prev => ({
           ...prev,
           max_teams: parseInt(dbSettings.max_teams) || prev.max_teams,
-          league_banner_url: dbSettings.league_banner_url || prev.league_banner_url
+          league_banner_url: dbSettings.league_banner_url || prev.league_banner_url,
+          is_public: dbSettings.is_public !== undefined ? dbSettings.is_public : prev.is_public,
+          invite_code: dbSettings.invite_code || prev.invite_code
         }));
         
         if (dbSettings.league_banner_url) {
@@ -146,6 +154,18 @@ const LeagueSettings = ({ leagueId, user, onLeagueDeleted }) => {
       }
     } catch (error) {
       console.log('Could not fetch league settings:', error);
+    }
+  };
+
+  const copyInviteCode = () => {
+    if (settings.invite_code) {
+      navigator.clipboard.writeText(settings.invite_code);
+      setCopiedInviteCode(true);
+      setMessage({ text: 'Invite code copied to clipboard!', type: 'success' });
+      setTimeout(() => {
+        setCopiedInviteCode(false);
+        setMessage({ text: '', type: '' });
+      }, 3000);
     }
   };
 
@@ -483,6 +503,43 @@ const LeagueSettings = ({ leagueId, user, onLeagueDeleted }) => {
           </p>
         </div>
 
+        {/* Private League Invite Code Display (visible to all members) */}
+        {!settings.is_public && settings.invite_code && (
+          <div className={`${dynastyTheme.components.card.base} p-6`}>
+            <div className="flex items-center space-x-3 mb-4">
+              <Lock className={`w-6 h-6 ${dynastyTheme.classes.text.primary}`} />
+              <h3 className={`text-xl font-bold ${dynastyTheme.classes.text.white}`}>Private League</h3>
+            </div>
+            
+            <div className={`p-4 rounded-lg ${dynastyTheme.classes.bg.darkLighter} border ${dynastyTheme.classes.border.primary}`}>
+              <p className={`text-sm ${dynastyTheme.classes.text.neutralLight} mb-3`}>
+                Share this invite code with players you want to join:
+              </p>
+              <div className="flex items-center gap-3">
+                <code className={`text-2xl font-bold ${dynastyTheme.classes.text.primary} tracking-wider`}>
+                  {settings.invite_code}
+                </code>
+                <button
+                  onClick={copyInviteCode}
+                  className={`${dynastyTheme.utils.getComponent('button', 'secondary', 'sm')} flex items-center gap-2`}
+                >
+                  {copiedInviteCode ? (
+                    <>
+                      <Check className="w-4 h-4" />
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4" />
+                      Copy
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Show read-only settings */}
         <div className={`${dynastyTheme.components.card.base} p-6`}>
           <div className="space-y-4">
@@ -545,6 +602,66 @@ const LeagueSettings = ({ leagueId, user, onLeagueDeleted }) => {
           <span>{message.text}</span>
         </div>
       )}
+
+      {/* Privacy Settings & Invite Code */}
+      <div className={`${dynastyTheme.components.card.base} p-6`}>
+        <div className="flex items-center space-x-3 mb-4">
+          {settings.is_public ? (
+            <>
+              <Globe className={`w-6 h-6 ${dynastyTheme.classes.text.primary}`} />
+              <h3 className={`text-xl font-bold ${dynastyTheme.classes.text.white}`}>Public League</h3>
+            </>
+          ) : (
+            <>
+              <Lock className={`w-6 h-6 ${dynastyTheme.classes.text.primary}`} />
+              <h3 className={`text-xl font-bold ${dynastyTheme.classes.text.white}`}>Private League</h3>
+            </>
+          )}
+        </div>
+        
+        {settings.is_public ? (
+          <div className={`p-4 rounded-lg ${dynastyTheme.classes.bg.darkLighter}`}>
+            <p className={`text-sm ${dynastyTheme.classes.text.white} mb-2`}>
+              This league is visible in public league discovery
+            </p>
+            <p className={`text-xs ${dynastyTheme.classes.text.neutralLight}`}>
+              Anyone can find and join this league through the browse leagues feature.
+            </p>
+          </div>
+        ) : (
+          <div className={`p-4 rounded-lg ${dynastyTheme.classes.bg.darkLighter} border ${dynastyTheme.classes.border.primary}`}>
+            <p className={`text-sm ${dynastyTheme.classes.text.white} mb-3`}>
+              Share this invite code with players you want to join:
+            </p>
+            <div className="flex items-center gap-3">
+              <code className={`text-2xl font-bold ${dynastyTheme.classes.text.primary} tracking-wider`}>
+                {settings.invite_code || 'GENERATING...'}
+              </code>
+              {settings.invite_code && (
+                <button
+                  onClick={copyInviteCode}
+                  className={`${dynastyTheme.utils.getComponent('button', 'secondary', 'sm')} flex items-center gap-2`}
+                >
+                  {copiedInviteCode ? (
+                    <>
+                      <Check className="w-4 h-4" />
+                      Copied!
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4" />
+                      Copy
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+            <p className={`text-xs ${dynastyTheme.classes.text.neutralLight} mt-3`}>
+              Only people with this code can join your league.
+            </p>
+          </div>
+        )}
+      </div>
 
       {/* League Banner Upload */}
       <div className={`${dynastyTheme.components.card.base} p-6`}>

@@ -1,4 +1,4 @@
-// src/pages/league-dashboard/MyRoster.js - Fixed Header and Button Issues
+// src/pages/league-dashboard/MyRoster.js - Fixed Header and Button Issues with Modal Integration
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -12,11 +12,13 @@ import {
 import { dynastyTheme } from '../../services/colorService';
 import { leaguesAPI } from '../../services/apiService';
 import { useCommissioner } from '../../contexts/CommissionerContext';
+import { usePlayerModal } from '../../contexts/PlayerModalContext';
 import CommissionerToggle from '../../components/commissioner/CommissionerToggle';
 import CommissionerModeBar from '../../components/commissioner/CommissionerModeBar';
 
 const MyRoster = ({ leagueId, league, user, onPlayerDropped, initialViewTeamId, initialViewTeamName }) => {
   const navigate = useNavigate();
+  const { openPlayerModal } = usePlayerModal();
   const { 
     isCommissionerMode, 
     activeTeamName, 
@@ -459,7 +461,7 @@ const organizeRosterByPosition = useMemo(() => {
 
   const handlePlayerClick = (player) => {
     const playerId = player.mlb_player_id || player.player_id;
-    navigate(`/player/${playerId}?leagueId=${leagueId}`);
+    openPlayerModal(playerId, player);
   };
 
   // ========================================
@@ -483,6 +485,16 @@ const organizeRosterByPosition = useMemo(() => {
       loadRoster(selectedTeamId || userTeamId);
     }
   }, [selectedTeamId, isCommissionerMode, activeTeamId, userTeamId]);
+
+  // Listen for roster updates from modal actions
+  useEffect(() => {
+    const handleRosterUpdate = () => {
+      loadRoster();
+    };
+
+    window.addEventListener('roster-updated', handleRosterUpdate);
+    return () => window.removeEventListener('roster-updated', handleRosterUpdate);
+  }, []);
 
   // ========================================
   // RENDER LINEUP SLOT

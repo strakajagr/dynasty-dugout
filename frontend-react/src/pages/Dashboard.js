@@ -1,4 +1,4 @@
-// src/pages/Dashboard.js - With Player Search and My Account Removed
+// src/pages/Dashboard.js - Complete working version with overlay system
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
@@ -22,6 +22,10 @@ import LeagueDiscoveryHub from '../components/dashboard/LeagueDiscoveryHub';
 import TrendingPlayersSection from '../components/dashboard/TrendingPlayersSection';
 import MLBNewsSection from '../components/dashboard/MLBNewsSection';
 import InjuryReportSection from '../components/dashboard/InjuryReportSection';
+
+// Import overlay components
+import DashboardPreviewOverlay from '../components/DashboardPreviewOverlay';
+import InteractionBlocker from '../components/InteractionBlocker';
 
 // Player Search Component
 const PlayerSearchBar = () => {
@@ -126,20 +130,23 @@ const PlayerSearchBar = () => {
 };
 
 const Dashboard = () => {
-  const { user, signOut } = useAuth();
+  const { user, signOut, isAuthenticated } = useAuth();
   const navigate = useNavigate();
   const [activeSection, setActiveSection] = useState('dashboard');
   const [leagues, setLeagues] = useState([]);
   const [leaguesLoading, setLeaguesLoading] = useState(true);
   const [userProfile, setUserProfile] = useState(null);
+  
+  // Overlay state
+  const [showPreviewOverlay, setShowPreviewOverlay] = useState(!isAuthenticated);
+  const [previewMode, setPreviewMode] = useState(false);
 
-  // Enhanced navigation sections - REMOVED My Account from MY ACCOUNT section
+  // Enhanced navigation sections
   const navigationSections = [
     {
       title: 'MY ACCOUNT',
       items: [
         { id: 'dashboard', label: 'My Dashboard', icon: BarChart3 },
-        // REMOVED: { id: 'account', label: 'My Account', icon: User },
         { id: 'my-leagues', label: 'My Leagues', icon: Crown },
         { id: 'watchlist', label: 'My Watchlist', icon: Star }
       ]
@@ -172,13 +179,18 @@ const Dashboard = () => {
   ];
 
   useEffect(() => {
+    setShowPreviewOverlay(!isAuthenticated);
+    setPreviewMode(false);
+    
     if (window.location.pathname === '/dashboard') {
       setActiveSection('dashboard');
     }
     
-    loadLeagues();
-    loadUserProfile();
-  }, [user]);
+    if (isAuthenticated) {
+      loadLeagues();
+      loadUserProfile();
+    }
+  }, [user, isAuthenticated]);
 
   const loadLeagues = async () => {
     try {
@@ -220,6 +232,12 @@ const Dashboard = () => {
   };
 
   const handleNavigation = (itemId) => {
+    // If not authenticated and in preview mode, show overlay instead
+    if (!isAuthenticated && previewMode) {
+      handleInteractionBlocked();
+      return;
+    }
+    
     if (itemId === 'create-league') {
       navigate('/create-league');
     } else if (itemId === 'join-league') {
@@ -231,9 +249,18 @@ const Dashboard = () => {
     }
   };
 
-  // ========================================
-  // USER PROFILE PICTURE COMPONENT - UPDATED WITH GLOW AND LABEL
-  // ========================================
+  // Overlay handlers
+  const handleCloseOverlay = () => {
+    setShowPreviewOverlay(false);
+    setPreviewMode(true);
+  };
+
+  const handleInteractionBlocked = () => {
+    setShowPreviewOverlay(true);
+    setPreviewMode(false);
+  };
+
+  // User Profile Picture Component for authenticated users
   const UserProfilePicture = () => {
     const handleProfileClick = () => {
       navigate('/my-account');
@@ -286,14 +313,50 @@ const Dashboard = () => {
     );
   };
 
+  // Guest Profile Picture Component for preview mode
+  const GuestProfilePicture = () => {
+    return (
+      <div className="flex items-center gap-2">
+        <div className="relative">
+          <div className="w-16 h-16 rounded-xl overflow-hidden border-2 border-gray-600 shadow-xl">
+            <div className="w-full h-full flex items-center justify-center text-xl font-bold bg-gradient-to-br from-gray-600 to-gray-700 text-gray-400">
+              <User className="w-8 h-8" />
+            </div>
+          </div>
+        </div>
+        <div className="flex flex-col items-start">
+          <span className="text-xs text-gray-400 font-semibold">
+            Preview Mode
+          </span>
+          <span className="text-[10px] text-neutral-500">
+            Sign in to continue
+          </span>
+        </div>
+      </div>
+    );
+  };
+
   const renderDashboardContent = () => {
     return (
       <div className="space-y-6">
-        {/* Welcome Banner */}
-        <WelcomeBanner user={user} />
+        {/* Welcome Banner - Show guest version if not authenticated */}
+        {isAuthenticated ? (
+          <WelcomeBanner user={user} />
+        ) : (
+          <div className={`${dynastyTheme.components.card.base} p-6`}>
+            <h2 className={`text-2xl font-bold ${dynastyTheme.classes.text.white} mb-2`}>
+              Welcome to Dynasty Dugout
+            </h2>
+            <p className={dynastyTheme.classes.text.neutralLight}>
+              Week 17 • 2025 Season • Preview Mode - Sign up to build your dynasty
+            </p>
+          </div>
+        )}
 
-        {/* My Leagues Section */}
-        <MyLeaguesSection leagues={leagues} leaguesLoading={leaguesLoading} />
+        {/* My Leagues Section - Only show if authenticated */}
+        {isAuthenticated && (
+          <MyLeaguesSection leagues={leagues} leaguesLoading={leaguesLoading} />
+        )}
 
         {/* Main Content Grid */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -325,6 +388,15 @@ const Dashboard = () => {
         return renderDashboardContent();
 
       case 'my-leagues':
+        if (!isAuthenticated) {
+          return (
+            <div className={`${dynastyTheme.components.card.base} p-6 text-center`}>
+              <Crown className={`w-16 h-16 mx-auto mb-4 ${dynastyTheme.classes.text.neutralLighter}`} />
+              <h3 className={`text-xl font-semibold mb-2 ${dynastyTheme.classes.text.white}`}>Sign In Required</h3>
+              <p className={dynastyTheme.classes.text.neutralLight}>You need to sign in to view your leagues</p>
+            </div>
+          );
+        }
         return <MyLeaguesSection leagues={leagues} leaguesLoading={leaguesLoading} />;
 
       case 'injury-tracker':
@@ -348,18 +420,19 @@ const Dashboard = () => {
     }
   };
 
+  // MAIN RENDER - Show full dashboard layout regardless of auth status
   return (
     <div className={dynastyTheme.components.page}>
-      {/* Ticker Bar */}
-      <TickerBar leagues={leagues} />
+      {/* Ticker Bar - Show for authenticated users only */}
+      {isAuthenticated && <TickerBar leagues={leagues} />}
       
       <header 
         className={`px-6 py-4 border-b ${dynastyTheme.components.card.base} ${dynastyTheme.classes.border.neutral}`}
       >
         <div className="flex items-center justify-between">
           <div className="flex items-center space-x-4">
-            {/* CLICKABLE USER PROFILE PICTURE - TOP LEFT */}
-            <UserProfilePicture />
+            {/* Show appropriate profile picture based on auth status */}
+            {isAuthenticated ? <UserProfilePicture /> : <GuestProfilePicture />}
             
             <div className="flex items-center space-x-3">
               <Crown className={`w-8 h-8 ${dynastyTheme.classes.text.primary}`} />
@@ -367,20 +440,32 @@ const Dashboard = () => {
             </div>
           </div>
           
-          {/* NEW PLAYER SEARCH BAR IN CENTER */}
+          {/* PLAYER SEARCH BAR */}
           <PlayerSearchBar />
           
           <div className="flex items-center space-x-4">
-            <span className={dynastyTheme.classes.text.neutralLight}>
-              Welcome, {userProfile?.firstName || user?.given_name || user?.firstName || 'User'}
-            </span>
-            <button
-              onClick={handleSignOut}
-              className={`flex items-center space-x-2 ${dynastyTheme.classes.text.neutralLight} hover:text-white ${dynastyTheme.classes.transition}`}
-            >
-              <LogOut className="w-5 h-5" />
-              <span>Sign Out</span>
-            </button>
+            {isAuthenticated ? (
+              <>
+                <span className={dynastyTheme.classes.text.neutralLight}>
+                  Welcome, {userProfile?.firstName || user?.given_name || user?.firstName || 'User'}
+                </span>
+                <button
+                  onClick={handleSignOut}
+                  className={`flex items-center space-x-2 ${dynastyTheme.classes.text.neutralLight} hover:text-white ${dynastyTheme.classes.transition}`}
+                >
+                  <LogOut className="w-5 h-5" />
+                  <span>Sign Out</span>
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={handleInteractionBlocked}
+                className={`${dynastyTheme.utils.getComponent('button', 'primary', 'sm')} flex items-center space-x-2`}
+              >
+                <UserPlus className="w-4 h-4" />
+                <span>Sign In</span>
+              </button>
+            )}
           </div>
         </div>
       </header>
@@ -425,6 +510,40 @@ const Dashboard = () => {
           {renderContent()}
         </main>
       </div>
+
+      {/* Overlay System */}
+      {showPreviewOverlay && !isAuthenticated && (
+        <DashboardPreviewOverlay 
+          onClose={handleCloseOverlay}
+          onInteractionBlocked={handleInteractionBlocked}
+        />
+      )}
+
+      {/* Interaction Blocker for preview mode */}
+      <InteractionBlocker
+        isActive={previewMode && !isAuthenticated}
+        onInteractionAttempt={handleInteractionBlocked}
+      />
+
+      {/* Preview Mode Indicator */}
+      {previewMode && !isAuthenticated && (
+        <div className="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-40">
+          <div className={`${dynastyTheme.components.card.base} px-4 py-2 border-l-4 border-yellow-500 shadow-2xl`}>
+            <div className="flex items-center space-x-3">
+              <span className="text-yellow-400 text-sm">👁️</span>
+              <span className={`text-sm ${dynastyTheme.classes.text.white}`}>
+                Preview Mode - Sign up to interact
+              </span>
+              <button
+                onClick={handleInteractionBlocked}
+                className={`text-xs ${dynastyTheme.classes.text.primary} hover:text-yellow-300 underline ml-2`}
+              >
+                Sign Up
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

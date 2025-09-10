@@ -22,13 +22,16 @@ function App() {
         <Router>
           <div className="App">
             <Routes>
-              {/* Public Routes */}
-              <Route path="/" element={<Landing />} />
+              {/* Main Dashboard Route - Shows overlay for non-auth, full dashboard for auth */}
+              <Route path="/" element={<Dashboard />} />
+              
+              {/* Landing page route if needed */}
+              <Route path="/landing" element={<Landing />} />
               
               {/* Public invitation acceptance route - no authentication required initially */}
               <Route path="/join-league" element={<JoinLeague />} />
               
-              {/* Protected Routes */}
+              {/* Protected Routes - Require Authentication */}
               <Route 
                 path="/dashboard" 
                 element={

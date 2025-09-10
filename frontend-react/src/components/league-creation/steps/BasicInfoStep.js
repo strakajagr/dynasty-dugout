@@ -1,6 +1,6 @@
 // src/components/league-creation/steps/BasicInfoStep.js
 import React from 'react';
-import { Crown } from 'lucide-react';
+import { Crown, Globe, Lock } from 'lucide-react';
 import { dynastyTheme } from '../../../services/colorService';
 
 const BasicInfoStep = ({ 
@@ -70,6 +70,74 @@ const BasicInfoStep = ({
           <p className={`${dynastyTheme.classes.text.neutralLight} text-sm mt-1`}>
             Choose how many teams can join your league
           </p>
+        </div>
+
+        {/* League Privacy Settings - NEW */}
+        <div style={{ marginBottom: dynastyTheme.tokens.spacing.lg }}>
+          <label className={`${dynastyTheme.components.label} ${dynastyTheme.classes.text.white} mb-3 block`}>
+            League Visibility
+          </label>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {/* Public Option */}
+            <button
+              type="button"
+              onClick={() => onInputChange('is_public', true)}
+              className={`p-4 rounded-lg border-2 transition-all ${
+                formData.is_public === true || formData.is_public === undefined
+                  ? `border-yellow-500 ${dynastyTheme.classes.bg.primaryDark}`
+                  : `border-gray-700 ${dynastyTheme.classes.bg.darkLighter} hover:border-gray-600`
+              }`}
+            >
+              <div className="flex items-center justify-center mb-2">
+                <Globe className={`w-8 h-8 ${
+                  formData.is_public === true || formData.is_public === undefined
+                    ? dynastyTheme.classes.text.primary
+                    : dynastyTheme.classes.text.neutralLight
+                }`} />
+              </div>
+              <h4 className={`font-semibold mb-1 ${dynastyTheme.classes.text.white}`}>
+                Public League
+              </h4>
+              <p className={`text-xs ${dynastyTheme.classes.text.neutralLight}`}>
+                Visible in league discovery. Anyone can join.
+              </p>
+            </button>
+
+            {/* Private Option */}
+            <button
+              type="button"
+              onClick={() => onInputChange('is_public', false)}
+              className={`p-4 rounded-lg border-2 transition-all ${
+                formData.is_public === false
+                  ? `border-yellow-500 ${dynastyTheme.classes.bg.primaryDark}`
+                  : `border-gray-700 ${dynastyTheme.classes.bg.darkLighter} hover:border-gray-600`
+              }`}
+            >
+              <div className="flex items-center justify-center mb-2">
+                <Lock className={`w-8 h-8 ${
+                  formData.is_public === false
+                    ? dynastyTheme.classes.text.primary
+                    : dynastyTheme.classes.text.neutralLight
+                }`} />
+              </div>
+              <h4 className={`font-semibold mb-1 ${dynastyTheme.classes.text.white}`}>
+                Private League
+              </h4>
+              <p className={`text-xs ${dynastyTheme.classes.text.neutralLight}`}>
+                Invite-only. You'll get a code to share.
+              </p>
+            </button>
+          </div>
+
+          {formData.is_public === false && (
+            <div className={`mt-4 p-3 rounded-lg ${dynastyTheme.classes.bg.primaryDark} border border-yellow-500/30`}>
+              <p className={`text-sm ${dynastyTheme.classes.text.white}`}>
+                <Lock className="inline w-4 h-4 mr-1 text-yellow-500" />
+                You'll receive a unique invite code after creating the league. Share this code with players you want to invite.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Player Pool */}

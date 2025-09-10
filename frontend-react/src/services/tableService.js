@@ -11,10 +11,14 @@ export {
   renderAvg 
 } from './tables/DynastyTable';
 
-// Dashboard table columns
+// Dashboard table columns - INCLUDING NEW PITCHER COLUMNS
 export { 
   createHotPlayersColumns, 
-  createColdPlayersColumns, 
+  createColdPlayersColumns,
+  createHotHittersColumns,     // NEW - explicit hitter columns
+  createColdHittersColumns,    // NEW - explicit hitter columns
+  createHotPitchersColumns,    // NEW - pitcher columns
+  createColdPitchersColumns,   // NEW - pitcher columns
   createWaiverAddsColumns, 
   createWaiverDropsColumns, 
   createInjuryReportColumns 
@@ -35,7 +39,7 @@ export {
   createPricePreviewColumns 
 } from './tables/pricingColumns';
 
-// Roster management columns - NEW MODULE
+// Roster management columns
 export {
   createCompactRosterBatterColumns,
   createCompactRosterPitcherColumns,

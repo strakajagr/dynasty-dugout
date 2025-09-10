@@ -1,100 +1,130 @@
 // src/components/dashboard/MLBNewsSection.js
+// Fixed version with proper table styling
+
 import React, { useState, useEffect } from 'react';
-import { Newspaper, Activity } from 'lucide-react';
+import { Newspaper, Activity, ExternalLink } from 'lucide-react';
 import { dynastyTheme } from '../../services/colorService';
+import { mlbAPI } from '../../services/apiService';
 import { DynastyTable } from '../../services/tableService';
 
 const MLBNewsSection = () => {
   const [mlbHeadlines, setMlbHeadlines] = useState([]);
   const [todaysGames, setTodaysGames] = useState([]);
   const [loadingNews, setLoadingNews] = useState(true);
+  const [loadingGames, setLoadingGames] = useState(true);
+  const [headlinesError, setHeadlinesError] = useState(null);
+  const [gamesError, setGamesError] = useState(null);
 
   useEffect(() => {
     loadMLBNews();
+    loadTodaysGames();
   }, []);
 
   const loadMLBNews = async () => {
     try {
       setLoadingNews(true);
+      setHeadlinesError(null);
       
-      // Format data for table display
-      setMlbHeadlines([
-        { 
-          id: 1,
-          headline: "Ohtani makes history with 50-50 season", 
-          date: '8/31/2025',
-          source: 'ESPN',
-          link: "https://espn.com"
-        },
-        { 
-          id: 2,
-          headline: "Yankees clinch AL East title", 
-          date: '8/31/2025',
-          source: 'MLB.com',
-          link: "https://mlb.com"
-        },
-        { 
-          id: 3,
-          headline: "Rookie sensation called up by Dodgers", 
-          date: '8/31/2025',
-          source: 'Athletic',
-          link: "https://theathletic.com"
-        },
-        { 
-          id: 4,
-          headline: "Trade deadline rumors heating up", 
-          date: '8/31/2025',
-          source: 'ESPN',
-          link: "https://espn.com"
-        },
-        { 
-          id: 5,
-          headline: "Injury update: Star pitcher to IL", 
-          date: '8/31/2025',
-          source: 'MLB.com',
-          link: "https://mlb.com"
-        }
-      ]);
+      console.log('📰 Loading MLB headlines from API...');
+      const response = await mlbAPI.getHeadlines();
       
-      // Format games for table display
-      setTodaysGames([
-        { 
-          id: 1,
-          away_team: 'NYY',
-          away_score: 5,
-          home_team: 'BOS',
-          home_score: 3,
-          status: 'Final',
-          time: ''
-        },
-        { 
-          id: 2,
-          away_team: 'LAD',
-          away_score: 7,
-          home_team: 'SF',
-          home_score: 4,
-          status: 'In Progress',
-          time: '7:10 PM ET'
-        },
-        { 
-          id: 3,
-          away_team: 'HOU',
-          away_score: null,
-          home_team: 'SEA',
-          home_score: null,
-          status: 'Scheduled',
-          time: '9:40 PM ET'
-        }
-      ]);
+      if (response.success && response.headlines) {
+        const formattedHeadlines = response.headlines.map(headline => ({
+          id: headline.headline + headline.date,
+          headline: headline.headline,
+          date: headline.date,
+          source: headline.source,
+          link: headline.link
+        }));
+        
+        setMlbHeadlines(formattedHeadlines);
+        console.log('✅ MLB headlines loaded successfully');
+      } else {
+        console.warn('⚠️ Headlines API returned unsuccessful response');
+        loadFallbackHeadlines();
+      }
       
     } catch (error) {
-      console.error('Error loading MLB news:', error);
+      console.error('❌ Error loading MLB headlines:', error);
+      setHeadlinesError(error.message);
+      loadFallbackHeadlines();
     } finally {
       setLoadingNews(false);
     }
   };
 
-  if (loadingNews) {
+  const loadTodaysGames = async () => {
+    try {
+      setLoadingGames(true);
+      setGamesError(null);
+      
+      console.log('⚾ Loading today\'s games from API...');
+      const response = await mlbAPI.getTodaysGames();
+      
+      if (response.success && response.games) {
+        const formattedGames = response.games.map(game => ({
+          id: game.game_id,
+          away_team: game.away_team,
+          away_score: game.away_score,
+          home_team: game.home_team,
+          home_score: game.home_score,
+          status: game.status,
+          abstract_state: game.abstract_state,
+          game_time: game.game_time,
+          away_pitcher: game.away_pitcher,
+          home_pitcher: game.home_pitcher,
+          inning: game.inning,
+          inning_state: game.inning_state
+        }));
+        
+        setTodaysGames(formattedGames);
+        console.log('✅ Today\'s games loaded successfully');
+      } else {
+        console.warn('⚠️ Games API returned unsuccessful response');
+        loadFallbackGames();
+      }
+      
+    } catch (error) {
+      console.error('❌ Error loading today\'s games:', error);
+      setGamesError(error.message);
+      loadFallbackGames();
+    } finally {
+      setLoadingGames(false);
+    }
+  };
+
+  const loadFallbackHeadlines = () => {
+    console.log('🔄 Loading fallback headlines data');
+    setMlbHeadlines([
+      { 
+        id: 1,
+        headline: "Playoff races heating up in final weeks", 
+        date: new Date().toLocaleDateString(),
+        source: 'ESPN',
+        link: "https://espn.com"
+      }
+    ]);
+  };
+
+  const loadFallbackGames = () => {
+    console.log('🔄 Loading fallback games data');
+    setTodaysGames([
+      { 
+        id: 'fallback-1',
+        away_team: 'NYY',
+        away_score: 5,
+        home_team: 'BOS',
+        home_score: 3,
+        status: 'Final',
+        abstract_state: 'Final',
+        game_time: '',
+        away_pitcher: { name: 'Gerrit Cole', era: 3.20 },
+        home_pitcher: { name: 'Brayan Bello', era: 4.49 }
+      }
+    ]);
+  };
+
+  if (loadingNews && loadingGames) {
     return (
       <div className="space-y-6">
         <div className={`${dynastyTheme.components.card.base} p-4`}>
@@ -103,7 +133,7 @@ const MLBNewsSection = () => {
               <div 
                 className={`w-6 h-6 border-2 border-t-transparent rounded-full animate-spin ${dynastyTheme.classes.border.primaryBright}`}
               />
-              <span className={dynastyTheme.classes.text.white}>Loading MLB news...</span>
+              <span className={dynastyTheme.classes.text.white}>Loading MLB data...</span>
             </div>
           </div>
         </div>
@@ -113,88 +143,151 @@ const MLBNewsSection = () => {
 
   return (
     <div className="space-y-6">
-      {/* MLB Headlines Table */}
+      {/* Error Messages */}
+      {headlinesError && (
+        <div className={`${dynastyTheme.components.card.base} p-3 border-l-4 border-yellow-500`}>
+          <div className="flex items-center justify-between">
+            <span className={`text-sm ${dynastyTheme.classes.text.white}`}>
+              Headlines API Error: {headlinesError}
+            </span>
+            <button
+              onClick={loadMLBNews}
+              className={`text-xs ${dynastyTheme.classes.text.primary} hover:text-yellow-300 underline`}
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      )}
+
+      {gamesError && (
+        <div className={`${dynastyTheme.components.card.base} p-3 border-l-4 border-yellow-500`}>
+          <div className="flex items-center justify-between">
+            <span className={`text-sm ${dynastyTheme.classes.text.white}`}>
+              Games API Error: {gamesError}
+            </span>
+            <button
+              onClick={loadTodaysGames}
+              className={`text-xs ${dynastyTheme.classes.text.primary} hover:text-yellow-300 underline`}
+            >
+              Retry
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MLB Headlines - IMPROVED STYLING */}
       <div className={`${dynastyTheme.components.card.base} p-4`}>
-        <div className="flex items-center space-x-2 mb-3">
+        <div className="flex items-center space-x-2 mb-4">
           <Newspaper className={`w-5 h-5 ${dynastyTheme.classes.text.primary}`} />
           <h3 className={`font-semibold ${dynastyTheme.classes.text.white}`}>MLB Headlines</h3>
+          <span className={`text-xs ${dynastyTheme.classes.text.neutralLight} bg-green-600/20 px-2 py-1 rounded`}>
+            LIVE DATA
+          </span>
+          {loadingNews && (
+            <div className={`w-4 h-4 border-2 border-t-transparent rounded-full animate-spin ${dynastyTheme.classes.border.primaryBright}`} />
+          )}
         </div>
-        <DynastyTable
-          data={mlbHeadlines}
-          columns={[
-            { 
-              key: 'headline', 
-              title: 'Headline', 
-              width: 250,
-              render: (v, row) => (
-                <a 
-                  href={row.link} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="text-white hover:text-yellow-400 text-sm block"
-                >
-                  {v}
-                </a>
-              )
-            },
-            { 
-              key: 'date', 
-              title: 'Date', 
-              width: 80,
-              render: (v) => <span className="text-gray-400 text-xs">{v}</span>
-            }
-          ]}
-          maxHeight="250px"
-          enableHorizontalScroll={false}
-          enableVerticalScroll={true}
-          stickyHeader={false}
-        />
+        
+        {/* Custom styled headlines list instead of table */}
+        <div className="space-y-3 max-h-80 overflow-y-auto">
+          {mlbHeadlines.map((headline) => (
+            <div
+              key={headline.id}
+              className={`${dynastyTheme.components.card.interactive} p-3 hover:bg-gray-700/50 transition-colors`}
+            >
+              <div className="flex items-start justify-between space-x-3">
+                <div className="flex-1 min-w-0">
+                  <a
+                    href={headline.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="block group"
+                  >
+                    <h4 className={`text-sm font-medium ${dynastyTheme.classes.text.white} group-hover:text-yellow-400 transition-colors line-clamp-2 mb-1`}>
+                      {headline.headline}
+                    </h4>
+                    <div className="flex items-center space-x-2 text-xs">
+                      <span className={`${dynastyTheme.classes.text.neutralLight}`}>
+                        {headline.source}
+                      </span>
+                      <span className="text-gray-500">•</span>
+                      <span className={`${dynastyTheme.classes.text.neutralLight}`}>
+                        {headline.date}
+                      </span>
+                    </div>
+                  </a>
+                </div>
+                <ExternalLink className="w-4 h-4 text-gray-500 flex-shrink-0 mt-0.5" />
+              </div>
+            </div>
+          ))}
+        </div>
       </div>
 
-      {/* Today's Games Table */}
+      {/* Today's Games - IMPROVED LAYOUT */}
       <div className={`${dynastyTheme.components.card.base} p-4`}>
-        <div className="flex items-center space-x-2 mb-3">
+        <div className="flex items-center space-x-2 mb-4">
           <Activity className={`w-5 h-5 ${dynastyTheme.classes.text.primary}`} />
           <h3 className={`font-semibold ${dynastyTheme.classes.text.white}`}>Today's Games</h3>
+          <span className={`text-xs ${dynastyTheme.classes.text.neutralLight} bg-green-600/20 px-2 py-1 rounded`}>
+            LIVE DATA
+          </span>
+          {loadingGames && (
+            <div className={`w-4 h-4 border-2 border-t-transparent rounded-full animate-spin ${dynastyTheme.classes.border.primaryBright}`} />
+          )}
         </div>
-        <DynastyTable
-          data={todaysGames}
-          columns={[
-            {
-              key: 'matchup',
-              title: 'Matchup',
-              width: 120,
-              render: (_, row) => (
-                <div className="text-sm">
-                  <div className="text-white">{row.away_team} {row.away_score !== null ? row.away_score : ''}</div>
-                  <div className="text-white">{row.home_team} {row.home_score !== null ? row.home_score : ''}</div>
+
+        {/* Custom styled games list */}
+        <div className="space-y-3 max-h-96 overflow-y-auto">
+          {todaysGames.map((game) => (
+            <div
+              key={game.id}
+              className={`${dynastyTheme.components.card.interactive} p-3`}
+            >
+              <div className="flex items-center justify-between">
+                {/* Teams and Score */}
+                <div className="flex-1">
+                  <div className="flex items-center space-x-3 mb-1">
+                    <div className="text-sm font-medium text-white">
+                      {game.away_team} {game.away_score !== null ? game.away_score : ''}
+                    </div>
+                    <div className="text-gray-500">@</div>
+                    <div className="text-sm font-medium text-white">
+                      {game.home_team} {game.home_score !== null ? game.home_score : ''}
+                    </div>
+                  </div>
+                  
+                  {/* Pitchers */}
+                  <div className="text-xs text-gray-400">
+                    {game.away_pitcher?.name || 'TBD'} vs {game.home_pitcher?.name || 'TBD'}
+                  </div>
                 </div>
-              )
-            },
-            {
-              key: 'status',
-              title: 'Status',
-              width: 100,
-              render: (v, row) => {
-                const isComplete = v === 'Final';
-                const isInProgress = v === 'In Progress';
-                return (
-                  <span className={`text-xs ${
-                    isComplete ? 'text-gray-400' : 
-                    isInProgress ? 'text-green-400' : 
+
+                {/* Status */}
+                <div className="text-right">
+                  <div className={`text-sm font-medium ${
+                    game.abstract_state === 'Final' ? 'text-gray-400' : 
+                    game.abstract_state === 'Live' ? 'text-green-400' : 
                     'text-yellow-400'
                   }`}>
-                    {v || row.time}
-                  </span>
-                );
-              }
-            }
-          ]}
-          maxHeight="200px"
-          enableHorizontalScroll={false}
-          enableVerticalScroll={true}
-          stickyHeader={false}
-        />
+                    {game.status}
+                  </div>
+                  {game.game_time && (
+                    <div className="text-xs text-gray-500">
+                      {game.game_time}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Refresh Info */}
+      <div className={`text-center text-xs ${dynastyTheme.classes.text.neutralLighter}`}>
+        Headlines refreshed every 30 minutes • Games refreshed every 10 minutes • Last updated: {new Date().toLocaleTimeString()}
       </div>
     </div>
   );

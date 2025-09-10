@@ -1,4 +1,4 @@
-# calculate_rolling_stats.py - FIXED VERSION
+# calculate_rolling_stats.py
 """
 Calculate rolling stats for ALL players in MAIN DB
 """
@@ -50,7 +50,7 @@ def lambda_handler(event, context):
     """Calculate rolling stats for all players"""
     try:
         today = date.today()
-        logger.info(f"🔄 Starting rolling stats calculation for {today}")
+        logger.info(f"Starting rolling stats calculation for {today}")
         
         # Define periods to calculate
         periods = [
@@ -64,7 +64,7 @@ def lambda_handler(event, context):
         for period_name, days in periods:
             start_date = today - timedelta(days=days)
             
-            logger.info(f"📊 Calculating {period_name} stats from {start_date} to {today}")
+            logger.info(f"Calculating {period_name} stats from {start_date} to {today}")
             
             # Calculate rolling stats from game logs
             sql = f"""
@@ -96,7 +96,7 @@ def lambda_handler(event, context):
                         THEN ROUND(SUM(hits)::NUMERIC / SUM(at_bats), 3)
                         ELSE 0.000 
                     END as batting_avg,
-                    -- OBP (no hit_by_pitch anymore)
+                    -- OBP
                     CASE WHEN (SUM(at_bats) + SUM(walks)) > 0 
                         THEN ROUND((SUM(hits) + SUM(walks))::NUMERIC / 
                                   (SUM(at_bats) + SUM(walks)), 3)
@@ -193,7 +193,7 @@ def lambda_handler(event, context):
             if count_result and count_result.get('records'):
                 period_count = count_result['records'][0][0].get('longValue', 0)
                 total_updated += period_count
-                logger.info(f"✅ Updated {period_count} player records for {period_name}")
+                logger.info(f"Updated {period_count} player records for {period_name}")
         
         # Clean up old data (keep last 45 days)
         cleanup_date = today - timedelta(days=45)
@@ -202,7 +202,7 @@ def lambda_handler(event, context):
             WHERE as_of_date < '{cleanup_date}'
         """, database_name='postgres')
         
-        logger.info(f"✅ Rolling stats calculation complete. Updated {total_updated} total records.")
+        logger.info(f"Rolling stats calculation complete. Updated {total_updated} total records.")
         
         return {
             'statusCode': 200,
@@ -214,7 +214,7 @@ def lambda_handler(event, context):
         }
         
     except Exception as e:
-        logger.error(f"❌ Error calculating rolling stats: {str(e)}")
+        logger.error(f"Error calculating rolling stats: {str(e)}")
         return {
             'statusCode': 500,
             'body': json.dumps({'success': False, 'error': str(e)})
