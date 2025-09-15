@@ -27,107 +27,8 @@ import InjuryReportSection from '../components/dashboard/InjuryReportSection';
 import DashboardPreviewOverlay from '../components/DashboardPreviewOverlay';
 import InteractionBlocker from '../components/InteractionBlocker';
 
-// Player Search Component
-const PlayerSearchBar = () => {
-  const navigate = useNavigate();
-  const [searchQuery, setSearchQuery] = useState('');
-  const [searchResults, setSearchResults] = useState([]);
-  const [isSearching, setIsSearching] = useState(false);
-  const [showResults, setShowResults] = useState(false);
-
-  useEffect(() => {
-    const delayDebounceFn = setTimeout(() => {
-      if (searchQuery.trim().length > 1) {
-        performSearch();
-      } else {
-        setSearchResults([]);
-        setShowResults(false);
-      }
-    }, 300);
-
-    return () => clearTimeout(delayDebounceFn);
-  }, [searchQuery]);
-
-  const performSearch = async () => {
-    setIsSearching(true);
-    try {
-      const response = await apiService.get(`/api/players/search?query=${searchQuery}`);
-      if (response.data && response.data.players) {
-        setSearchResults(response.data.players.slice(0, 8)); // Limit to 8 results
-        setShowResults(true);
-      }
-    } catch (error) {
-      console.error('Search error:', error);
-      // Mock data fallback for now
-      setSearchResults([
-        { player_id: 1, name: 'Mike Trout', team: 'LAA', position: 'OF' },
-        { player_id: 2, name: 'Ronald Acuña Jr.', team: 'ATL', position: 'OF' },
-        { player_id: 3, name: 'Shohei Ohtani', team: 'LAD', position: 'DH' }
-      ].filter(p => p.name.toLowerCase().includes(searchQuery.toLowerCase())));
-      setShowResults(true);
-    } finally {
-      setIsSearching(false);
-    }
-  };
-
-  const handlePlayerClick = (playerId) => {
-    setShowResults(false);
-    setSearchQuery('');
-    navigate(`/player/${playerId}`);
-  };
-
-  return (
-    <div className="relative flex-1 max-w-md">
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-neutral-400" />
-        <input
-          type="text"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Search players..."
-          className={`w-full pl-10 pr-4 py-2 rounded-lg ${dynastyTheme.classes.bg.darkLighter} ${dynastyTheme.classes.text.white} border ${dynastyTheme.classes.border.neutral} focus:border-yellow-400 focus:outline-none transition-colors`}
-          onFocus={() => searchQuery.length > 1 && setShowResults(true)}
-          onBlur={() => setTimeout(() => setShowResults(false), 200)}
-        />
-        {isSearching && (
-          <div className="absolute right-3 top-1/2 transform -translate-y-1/2">
-            <div className="w-4 h-4 border-2 border-yellow-400 border-t-transparent animate-spin rounded-full" />
-          </div>
-        )}
-      </div>
-
-      {/* Search Results Dropdown */}
-      {showResults && searchResults.length > 0 && (
-        <div className={`absolute top-full left-0 right-0 mt-2 ${dynastyTheme.components.card.base} rounded-lg shadow-xl z-50 max-h-96 overflow-y-auto`}>
-          {searchResults.map((player) => (
-            <button
-              key={player.player_id}
-              onClick={() => handlePlayerClick(player.player_id)}
-              className={`w-full px-4 py-3 flex items-center justify-between hover:bg-neutral-800 transition-colors text-left border-b ${dynastyTheme.classes.border.neutral} last:border-b-0`}
-            >
-              <div>
-                <div className={`font-semibold ${dynastyTheme.classes.text.white}`}>
-                  {player.name}
-                </div>
-                <div className={`text-sm ${dynastyTheme.classes.text.neutralLight}`}>
-                  {player.position} • {player.team}
-                </div>
-              </div>
-              <ChevronRight className="w-4 h-4 text-neutral-400" />
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* No Results */}
-      {showResults && searchQuery.length > 1 && searchResults.length === 0 && !isSearching && (
-        <div className={`absolute top-full left-0 right-0 mt-2 ${dynastyTheme.components.card.base} rounded-lg shadow-xl z-50 p-4 text-center`}>
-          <p className={dynastyTheme.classes.text.neutralLight}>No players found matching "{searchQuery}"</p>
-        </div>
-      )}
-    </div>
-  );
-};
+// Import the new enhanced player search component
+import PlayerSearchDropdown from '../components/PlayerSearchDropdown';
 
 const Dashboard = () => {
   const { user, signOut, isAuthenticated } = useAuth();
@@ -440,8 +341,8 @@ const Dashboard = () => {
             </div>
           </div>
           
-          {/* PLAYER SEARCH BAR */}
-          <PlayerSearchBar />
+          {/* PLAYER SEARCH BAR - Using the new enhanced component */}
+          <PlayerSearchDropdown />
           
           <div className="flex items-center space-x-4">
             {isAuthenticated ? (

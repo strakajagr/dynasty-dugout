@@ -1,6 +1,7 @@
 # calculate_rolling_stats.py
 """
 Calculate rolling stats for ALL players in MAIN DB
+FIXED: Quality starts are now summed from game_logs, not calculated inline
 """
 import json
 import logging
@@ -67,6 +68,7 @@ def lambda_handler(event, context):
             logger.info(f"Calculating {period_name} stats from {start_date} to {today}")
             
             # Calculate rolling stats from game logs
+            # FIXED: quality_starts now summed directly from game_logs
             sql = f"""
                 INSERT INTO player_rolling_stats (
                     player_id, period, as_of_date,
@@ -82,15 +84,15 @@ def lambda_handler(event, context):
                     '{period_name}',
                     '{today}',
                     COUNT(*) as games_played,
-                    SUM(at_bats) as at_bats,
-                    SUM(hits) as hits,
-                    SUM(home_runs) as home_runs,
-                    SUM(rbi) as rbi,
-                    SUM(runs) as runs,
-                    SUM(stolen_bases) as stolen_bases,
-                    SUM(caught_stealing) as caught_stealing,
-                    SUM(walks) as walks,
-                    SUM(strikeouts) as strikeouts,
+                    COALESCE(SUM(at_bats), 0) as at_bats,
+                    COALESCE(SUM(hits), 0) as hits,
+                    COALESCE(SUM(home_runs), 0) as home_runs,
+                    COALESCE(SUM(rbi), 0) as rbi,
+                    COALESCE(SUM(runs), 0) as runs,
+                    COALESCE(SUM(stolen_bases), 0) as stolen_bases,
+                    COALESCE(SUM(caught_stealing), 0) as caught_stealing,
+                    COALESCE(SUM(walks), 0) as walks,
+                    COALESCE(SUM(strikeouts), 0) as strikeouts,
                     -- Batting average
                     CASE WHEN SUM(at_bats) > 0 
                         THEN ROUND(SUM(hits)::NUMERIC / SUM(at_bats), 3)
@@ -112,12 +114,12 @@ def lambda_handler(event, context):
                     0.000 as ops,
                     -- Pitching stats
                     SUM(CASE WHEN innings_pitched > 0 THEN 1 ELSE 0 END) as games_started,
-                    SUM(innings_pitched) as innings_pitched,
-                    SUM(wins) as wins,
-                    SUM(losses) as losses,
-                    SUM(saves) as saves,
-                    SUM(blown_saves) as blown_saves,
-                    SUM(earned_runs) as earned_runs,
+                    COALESCE(SUM(innings_pitched), 0) as innings_pitched,
+                    COALESCE(SUM(wins), 0) as wins,
+                    COALESCE(SUM(losses), 0) as losses,
+                    COALESCE(SUM(saves), 0) as saves,
+                    COALESCE(SUM(blown_saves), 0) as blown_saves,
+                    COALESCE(SUM(earned_runs), 0) as earned_runs,
                     -- ERA
                     CASE WHEN SUM(innings_pitched) > 0 
                         THEN ROUND((SUM(earned_runs) * 9.0) / SUM(innings_pitched), 2)
@@ -129,15 +131,11 @@ def lambda_handler(event, context):
                                   SUM(innings_pitched), 3)
                         ELSE 0.000 
                     END as whip,
-                    -- Quality Starts
-                    SUM(CASE 
-                        WHEN innings_pitched >= 6.0 AND earned_runs <= 3 
-                        THEN 1 
-                        ELSE 0 
-                    END) as quality_starts,
-                    SUM(strikeouts_pitched) as strikeouts_pitched,
-                    SUM(hits_allowed) as hits_allowed,
-                    SUM(walks_allowed) as walks_allowed
+                    -- Quality Starts - NOW SUMMING FROM STORED VALUES!
+                    COALESCE(SUM(quality_starts), 0) as quality_starts,
+                    COALESCE(SUM(strikeouts_pitched), 0) as strikeouts_pitched,
+                    COALESCE(SUM(hits_allowed), 0) as hits_allowed,
+                    COALESCE(SUM(walks_allowed), 0) as walks_allowed
                 FROM player_game_logs
                 WHERE game_date >= '{start_date}'
                   AND game_date <= '{today}'

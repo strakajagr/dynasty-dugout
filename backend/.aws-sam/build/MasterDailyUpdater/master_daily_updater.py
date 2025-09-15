@@ -1,8 +1,8 @@
 # master_daily_updater.py
 """
-Master Daily Updater Lambda - COMPLETE VERSION
+Master Daily Updater Lambda - COMPLETE VERSION WITH GAMES STARTED TRACKING
 Includes MLB API ingestion, new player discovery, all stat calculations
-Rebuilt from fragments after corruption incident
+Fixed: Properly tracks starting pitchers with was_starter field
 """
 import json
 import logging
@@ -76,13 +76,20 @@ def execute_sql(sql, params=None, database_name='postgres'):
         if params:
             # Handle both dictionary and list parameter formats
             if isinstance(params, dict):
-                request['parameters'] = [
-                    {'name': k, 'value': {'longValue': v} if isinstance(v, int) 
-                     else {'doubleValue': v} if isinstance(v, float)
-                     else {'booleanValue': v} if isinstance(v, bool)
-                     else {'stringValue': str(v)}}
-                    for k, v in params.items()
-                ]
+                request['parameters'] = []
+                for k, v in params.items():
+                    param = {'name': k}
+                    if v is None:
+                        param['value'] = {'isNull': True}
+                    elif isinstance(v, bool):
+                        param['value'] = {'booleanValue': v}
+                    elif isinstance(v, int):
+                        param['value'] = {'longValue': v}
+                    elif isinstance(v, float):
+                        param['value'] = {'doubleValue': v}
+                    else:
+                        param['value'] = {'stringValue': str(v)}
+                    request['parameters'].append(param)
             else:
                 request['parameters'] = params
         return rds_client.execute_statement(**request)
@@ -97,13 +104,17 @@ def get_team_abbreviation(team_data):
         if team_id in MLB_TEAM_MAPPING:
             return MLB_TEAM_MAPPING[team_id]
         else:
+            # Try abbreviation field
+            abbr = team_data.get('abbreviation', '')
+            if abbr and len(abbr) <= 3:
+                return abbr
             name = team_data.get('name', '')
             logger.warning(f"Unknown team ID {team_id}: {name}")
-            return f"T{team_id}"
+            return f"T{team_id}"[:3]
     return ''
 
 # ============================================================================
-# SECTION 1: MLB API INGESTION
+# SECTION 1: MLB API INGESTION - WITH STARTING PITCHER DETECTION
 # ============================================================================
 
 def fetch_yesterdays_games(target_date=None):
@@ -152,39 +163,6 @@ def fetch_yesterdays_games(target_date=None):
         logger.error(f"Error fetching schedule: {e}")
         return []
 
-def fetch_player_game_log(mlb_id, target_date):
-    """Fetch a specific player's game log for a date"""
-    try:
-        url = f"https://statsapi.mlb.com/api/v1/people/{mlb_id}/stats"
-        params = {
-            'stats': 'gameLog',
-            'season': str(target_date.year),
-            'startDate': target_date.strftime('%Y-%m-%d'),
-            'endDate': target_date.strftime('%Y-%m-%d')
-        }
-        
-        response = requests.get(url, params=params, timeout=10)
-        
-        if response.status_code == 200:
-            data = response.json()
-            
-            for stat_group in data.get('stats', []):
-                for split in stat_group.get('splits', []):
-                    split_date = split.get('date', '')
-                    if split_date == target_date.strftime('%Y-%m-%d'):
-                        return {
-                            'date': target_date,
-                            'stat': split.get('stat', {}),
-                            'team': split.get('team', {}),
-                            'opponent': split.get('opponent', {})
-                        }
-            return None
-        else:
-            return None
-    except Exception as e:
-        logger.error(f"Error fetching game log for player {mlb_id}: {e}")
-        return None
-
 def discover_new_player(mlb_id):
     """Discover and add a new player from MLB API"""
     try:
@@ -198,18 +176,17 @@ def discover_new_player(mlb_id):
             if people:
                 player = people[0]
                 
-                # Insert new player into mlb_players table (player_id IS the MLB ID)
                 sql = """
                 INSERT INTO mlb_players (
-                    player_id, first_name, last_name, 
-                    position, mlb_team, jersey_number, 
+                    player_id, first_name, last_name,
+                    position, mlb_team, jersey_number,
                     birthdate, height_inches, weight_pounds,
-                    is_active, created_at
+                    is_active
                 ) VALUES (
                     :player_id, :first_name, :last_name,
                     :position, :mlb_team, :jersey_number,
-                    :birthdate, :height_inches, :weight_pounds,
-                    true, NOW()
+                    :birthdate::date, :height_inches, :weight_pounds,
+                    true
                 )
                 ON CONFLICT (player_id) DO UPDATE SET
                     first_name = EXCLUDED.first_name,
@@ -217,8 +194,7 @@ def discover_new_player(mlb_id):
                     position = EXCLUDED.position,
                     mlb_team = EXCLUDED.mlb_team,
                     jersey_number = EXCLUDED.jersey_number,
-                    is_active = true,
-                    updated_at = NOW()
+                    is_active = true
                 """
                 
                 # Calculate height in inches
@@ -232,8 +208,8 @@ def discover_new_player(mlb_id):
                     'last_name': player.get('lastName', ''),
                     'position': player.get('primaryPosition', {}).get('abbreviation', ''),
                     'mlb_team': get_team_abbreviation(player.get('currentTeam', {})),
-                    'jersey_number': player.get('primaryNumber', ''),
-                    'birthdate': player.get('birthDate', None),
+                    'jersey_number': int(player.get('primaryNumber')) if str(player.get('primaryNumber', '')).isdigit() else None,
+                    'birthdate': player.get('birthDate') if player.get('birthDate') else None,
                     'height_inches': height_inches,
                     'weight_pounds': player.get('weight', 0)
                 }
@@ -247,45 +223,238 @@ def discover_new_player(mlb_id):
         logger.error(f"Error discovering player {mlb_id}: {e}")
         return False
 
-def update_game_log(player_id, mlb_id, game_data):
-    """Insert/update a game log entry"""
+def process_boxscore_for_game_logs(game_pk, game_date, home_team_abbr, away_team_abbr):
+    """Process a game's boxscore and extract all player game logs with starting pitcher detection"""
     try:
-        game_date = game_data['date']
-        stat = game_data['stat']
-        team = game_data['team']
-        opponent = game_data['opponent']
+        url = f"https://statsapi.mlb.com/api/v1.1/game/{game_pk}/feed/live"
+        response = requests.get(url, timeout=15)
         
-        team_abbr = get_team_abbreviation(team)
-        opponent_abbr = get_team_abbreviation(opponent)
+        if response.status_code != 200:
+            logger.error(f"Failed to fetch boxscore for game {game_pk}")
+            return []
         
-        # Determine if hitting or pitching game
-        is_hitting = stat.get('atBats', 0) > 0 or stat.get('plateAppearances', 0) > 0
-        is_pitching = float(stat.get('inningsPitched', '0') or 0) > 0
+        game_data = response.json()
+        game_logs = []
         
-        # Common parameters
-        base_params = {
-            'player_id': player_id,
-            'game_date': str(game_date),
-            'team': team_abbr,
-            'opponent': opponent_abbr,
-            'games_played': 1
-        }
+        # Get starting pitchers from the game data
+        boxscore = game_data.get('liveData', {}).get('boxscore', {})
+        teams_data = boxscore.get('teams', {})
         
-        if is_hitting:
-            # Insert hitting stats
+        # Extract starting pitcher IDs
+        home_starter_id = None
+        away_starter_id = None
+        
+        # Method 1: Check pitchers array (first pitcher is usually the starter)
+        home_pitchers = teams_data.get('home', {}).get('pitchers', [])
+        away_pitchers = teams_data.get('away', {}).get('pitchers', [])
+        
+        if home_pitchers:
+            home_starter_id = home_pitchers[0]
+        if away_pitchers:
+            away_starter_id = away_pitchers[0]
+        
+        # Method 2: Also check gameData for probable pitchers (backup method)
+        game_info = game_data.get('gameData', {})
+        if not home_starter_id:
+            probable_home = game_info.get('probablePitchers', {}).get('home', {})
+            if probable_home:
+                home_starter_id = probable_home.get('id')
+        if not away_starter_id:
+            probable_away = game_info.get('probablePitchers', {}).get('away', {})
+            if probable_away:
+                away_starter_id = probable_away.get('id')
+        
+        logger.info(f"Game {game_pk} - Home starter: {home_starter_id}, Away starter: {away_starter_id}")
+        
+        # Process HOME team players
+        home_players = teams_data.get('home', {}).get('players', {})
+        for player_key, player_info in home_players.items():
+            mlb_id = player_info.get('person', {}).get('id')
+            if not mlb_id:
+                continue
+                
+            # Get position played
+            position_data = player_info.get('position', {})
+            position_played = position_data.get('abbreviation', '') if position_data else ''
+            if not position_played:
+                all_positions = player_info.get('allPositions', [])
+                if all_positions:
+                    position_played = all_positions[0].get('abbreviation', '')
+            
+            # Check if this player was the starting pitcher
+            was_starter = (mlb_id == home_starter_id) and position_played == 'P'
+            
+            # Get stats
+            stats = player_info.get('stats', {})
+            batting = stats.get('batting', {})
+            pitching = stats.get('pitching', {})
+            
+            game_log = {
+                'player_id': mlb_id,
+                'game_date': game_date,
+                'mlb_team': home_team_abbr,  # Player plays FOR home team
+                'opponent': away_team_abbr,   # Player plays AGAINST away team
+                'position_played': position_played,
+                'home_away': 'H',
+                'was_starter': was_starter  # NEW FIELD
+            }
+            
+            # Add batting stats if present
+            if batting:
+                game_log.update({
+                    'at_bats': batting.get('atBats', 0),
+                    'hits': batting.get('hits', 0),
+                    'runs': batting.get('runs', 0),
+                    'rbi': batting.get('rbi', 0),
+                    'home_runs': batting.get('homeRuns', 0),
+                    'doubles': batting.get('doubles', 0),
+                    'triples': batting.get('triples', 0),
+                    'stolen_bases': batting.get('stolenBases', 0),
+                    'caught_stealing': batting.get('caughtStealing', 0),
+                    'walks': batting.get('baseOnBalls', 0),
+                    'strikeouts': batting.get('strikeOuts', 0),
+                    'hit_by_pitch': batting.get('hitByPitch', 0)
+                })
+            
+            # Add pitching stats if present
+            if pitching and pitching.get('inningsPitched'):
+                ip_str = pitching.get('inningsPitched', '0.0')
+                # Convert IP string to decimal
+                if '.' in str(ip_str):
+                    innings, outs = str(ip_str).split('.')
+                    ip = float(innings) + (float(outs) / 3.0)
+                else:
+                    ip = float(ip_str)
+                
+                er = pitching.get('earnedRuns', 0)
+                quality_start = 1 if ip >= 6.0 and er <= 3 else 0
+                
+                game_log.update({
+                    'innings_pitched': ip,
+                    'wins': 1 if player_info.get('gameStatus', {}).get('isWin', False) else 0,
+                    'losses': 1 if player_info.get('gameStatus', {}).get('isLoss', False) else 0,
+                    'saves': 1 if player_info.get('gameStatus', {}).get('isSave', False) else 0,
+                    'blown_saves': 1 if player_info.get('gameStatus', {}).get('isBlownSave', False) else 0,
+                    'holds': 1 if player_info.get('gameStatus', {}).get('isHold', False) else 0,
+                    'earned_runs': er,
+                    'hits_allowed': pitching.get('hits', 0),
+                    'walks_allowed': pitching.get('baseOnBalls', 0),
+                    'strikeouts_pitched': pitching.get('strikeOuts', 0),
+                    'quality_starts': quality_start
+                })
+            
+            game_logs.append(game_log)
+        
+        # Process AWAY team players
+        away_players = teams_data.get('away', {}).get('players', {})
+        for player_key, player_info in away_players.items():
+            mlb_id = player_info.get('person', {}).get('id')
+            if not mlb_id:
+                continue
+                
+            # Get position played
+            position_data = player_info.get('position', {})
+            position_played = position_data.get('abbreviation', '') if position_data else ''
+            if not position_played:
+                all_positions = player_info.get('allPositions', [])
+                if all_positions:
+                    position_played = all_positions[0].get('abbreviation', '')
+            
+            # Check if this player was the starting pitcher
+            was_starter = (mlb_id == away_starter_id) and position_played == 'P'
+            
+            # Get stats
+            stats = player_info.get('stats', {})
+            batting = stats.get('batting', {})
+            pitching = stats.get('pitching', {})
+            
+            game_log = {
+                'player_id': mlb_id,
+                'game_date': game_date,
+                'mlb_team': away_team_abbr,  # Player plays FOR away team
+                'opponent': home_team_abbr,   # Player plays AGAINST home team
+                'position_played': position_played,
+                'home_away': 'A',
+                'was_starter': was_starter  # NEW FIELD
+            }
+            
+            # Add batting stats if present
+            if batting:
+                game_log.update({
+                    'at_bats': batting.get('atBats', 0),
+                    'hits': batting.get('hits', 0),
+                    'runs': batting.get('runs', 0),
+                    'rbi': batting.get('rbi', 0),
+                    'home_runs': batting.get('homeRuns', 0),
+                    'doubles': batting.get('doubles', 0),
+                    'triples': batting.get('triples', 0),
+                    'stolen_bases': batting.get('stolenBases', 0),
+                    'caught_stealing': batting.get('caughtStealing', 0),
+                    'walks': batting.get('baseOnBalls', 0),
+                    'strikeouts': batting.get('strikeOuts', 0),
+                    'hit_by_pitch': batting.get('hitByPitch', 0)
+                })
+            
+            # Add pitching stats if present
+            if pitching and pitching.get('inningsPitched'):
+                ip_str = pitching.get('inningsPitched', '0.0')
+                # Convert IP string to decimal
+                if '.' in str(ip_str):
+                    innings, outs = str(ip_str).split('.')
+                    ip = float(innings) + (float(outs) / 3.0)
+                else:
+                    ip = float(ip_str)
+                
+                er = pitching.get('earnedRuns', 0)
+                quality_start = 1 if ip >= 6.0 and er <= 3 else 0
+                
+                game_log.update({
+                    'innings_pitched': ip,
+                    'wins': 1 if player_info.get('gameStatus', {}).get('isWin', False) else 0,
+                    'losses': 1 if player_info.get('gameStatus', {}).get('isLoss', False) else 0,
+                    'saves': 1 if player_info.get('gameStatus', {}).get('isSave', False) else 0,
+                    'blown_saves': 1 if player_info.get('gameStatus', {}).get('isBlownSave', False) else 0,
+                    'holds': 1 if player_info.get('gameStatus', {}).get('isHold', False) else 0,
+                    'earned_runs': er,
+                    'hits_allowed': pitching.get('hits', 0),
+                    'walks_allowed': pitching.get('baseOnBalls', 0),
+                    'strikeouts_pitched': pitching.get('strikeOuts', 0),
+                    'quality_starts': quality_start
+                })
+            
+            game_logs.append(game_log)
+        
+        return game_logs
+        
+    except Exception as e:
+        logger.error(f"Error processing boxscore for game {game_pk}: {e}")
+        return []
+
+def insert_game_log(game_log):
+    """Insert a single game log into the database with was_starter field"""
+    try:
+        # Determine if this is primarily a batting or pitching appearance
+        is_batting = game_log.get('at_bats', 0) > 0 or game_log.get('hits', 0) > 0
+        is_pitching = game_log.get('innings_pitched', 0) > 0
+        
+        if is_batting:
             sql = """
             INSERT INTO player_game_logs (
-                player_id, game_date, mlb_team, opponent,
-                games_played, at_bats, hits, runs, rbi, home_runs, 
+                player_id, game_date, mlb_team, opponent, home_away, position_played,
+                at_bats, hits, runs, rbi, home_runs,
                 doubles, triples, stolen_bases, caught_stealing,
-                walks, strikeouts, batting_avg
+                walks, strikeouts, hit_by_pitch, was_starter
             ) VALUES (
-                :player_id, :game_date::date, :team, :opponent,
-                1, :at_bats, :hits, :runs, :rbi, :home_runs,
+                :player_id, :game_date::date, :mlb_team, :opponent, :home_away, :position_played,
+                :at_bats, :hits, :runs, :rbi, :home_runs,
                 :doubles, :triples, :stolen_bases, :caught_stealing,
-                :walks, :strikeouts, :batting_avg
+                :walks, :strikeouts, :hit_by_pitch, :was_starter
             )
             ON CONFLICT (player_id, game_date) DO UPDATE SET
+                mlb_team = EXCLUDED.mlb_team,
+                opponent = EXCLUDED.opponent,
+                home_away = EXCLUDED.home_away,
+                position_played = EXCLUDED.position_played,
                 at_bats = EXCLUDED.at_bats,
                 hits = EXCLUDED.hits,
                 runs = EXCLUDED.runs,
@@ -297,47 +466,27 @@ def update_game_log(player_id, mlb_id, game_data):
                 caught_stealing = EXCLUDED.caught_stealing,
                 walks = EXCLUDED.walks,
                 strikeouts = EXCLUDED.strikeouts,
-                batting_avg = EXCLUDED.batting_avg,
-                updated_at = NOW()
+                hit_by_pitch = EXCLUDED.hit_by_pitch,
+                was_starter = EXCLUDED.was_starter
             """
-            
-            ab = stat.get('atBats', 0)
-            h = stat.get('hits', 0)
-            avg = (h / ab) if ab > 0 else 0.0
-            
-            params = {**base_params, **{
-                'at_bats': stat.get('atBats', 0),
-                'hits': stat.get('hits', 0),
-                'runs': stat.get('runs', 0),
-                'rbi': stat.get('rbi', 0),
-                'home_runs': stat.get('homeRuns', 0),
-                'doubles': stat.get('doubles', 0),
-                'triples': stat.get('triples', 0),
-                'stolen_bases': stat.get('stolenBases', 0),
-                'caught_stealing': stat.get('caughtStealing', 0),
-                'walks': stat.get('baseOnBalls', 0),
-                'strikeouts': stat.get('strikeOuts', 0),
-                'batting_avg': avg
-            }}
-            
-            execute_sql(sql, params, 'postgres')
-            return 'hitting'
-            
         elif is_pitching:
-            # Insert pitching stats WITH quality_starts calculation
             sql = """
             INSERT INTO player_game_logs (
-                player_id, game_date, mlb_team, opponent,
-                games_played, innings_pitched, wins, losses, saves,
+                player_id, game_date, mlb_team, opponent, home_away, position_played,
+                innings_pitched, wins, losses, saves,
                 earned_runs, hits_allowed, walks_allowed, strikeouts_pitched,
-                era, whip, quality_starts, blown_saves, holds
+                quality_starts, blown_saves, holds, was_starter
             ) VALUES (
-                :player_id, :game_date::date, :team, :opponent,
-                1, :innings_pitched, :wins, :losses, :saves,
+                :player_id, :game_date::date, :mlb_team, :opponent, :home_away, :position_played,
+                :innings_pitched, :wins, :losses, :saves,
                 :earned_runs, :hits_allowed, :walks_allowed, :strikeouts_pitched,
-                :era, :whip, :quality_starts, :blown_saves, :holds
+                :quality_starts, :blown_saves, :holds, :was_starter
             )
             ON CONFLICT (player_id, game_date) DO UPDATE SET
+                mlb_team = EXCLUDED.mlb_team,
+                opponent = EXCLUDED.opponent,
+                home_away = EXCLUDED.home_away,
+                position_played = EXCLUDED.position_played,
                 innings_pitched = EXCLUDED.innings_pitched,
                 wins = EXCLUDED.wins,
                 losses = EXCLUDED.losses,
@@ -346,153 +495,129 @@ def update_game_log(player_id, mlb_id, game_data):
                 hits_allowed = EXCLUDED.hits_allowed,
                 walks_allowed = EXCLUDED.walks_allowed,
                 strikeouts_pitched = EXCLUDED.strikeouts_pitched,
-                era = EXCLUDED.era,
-                whip = EXCLUDED.whip,
                 quality_starts = EXCLUDED.quality_starts,
                 blown_saves = EXCLUDED.blown_saves,
                 holds = EXCLUDED.holds,
-                updated_at = NOW()
+                was_starter = EXCLUDED.was_starter
             """
-            
-            ip = float(stat.get('inningsPitched', '0') or 0)
-            er = stat.get('earnedRuns', 0)
-            ha = stat.get('hits', 0)
-            wa = stat.get('baseOnBalls', 0)
-            
-            era = (er * 9 / ip) if ip > 0 else 0.0
-            whip = ((ha + wa) / ip) if ip > 0 else 0.0
-            
-            # CRITICAL: Calculate Quality Start (6+ IP, 3 or fewer ER)
-            quality_start = 1 if ip >= 6.0 and er <= 3 else 0
-            
-            params = {**base_params, **{
-                'innings_pitched': ip,
-                'wins': stat.get('wins', 0),
-                'losses': stat.get('losses', 0),
-                'saves': stat.get('saves', 0),
-                'earned_runs': er,
-                'hits_allowed': ha,
-                'walks_allowed': wa,
-                'strikeouts_pitched': stat.get('strikeOuts', 0),
-                'era': era,
-                'whip': whip,
-                'quality_starts': quality_start,  # STORING QS!
-                'blown_saves': stat.get('blownSaves', 0),
-                'holds': stat.get('holds', 0)
-            }}
-            
-            execute_sql(sql, params, 'postgres')
-            return 'pitching'
+        else:
+            # Player appeared but didn't bat or pitch (pinch runner, defensive replacement)
+            sql = """
+            INSERT INTO player_game_logs (
+                player_id, game_date, mlb_team, opponent, home_away, position_played, was_starter
+            ) VALUES (
+                :player_id, :game_date::date, :mlb_team, :opponent, :home_away, :position_played, :was_starter
+            )
+            ON CONFLICT (player_id, game_date) DO UPDATE SET
+                mlb_team = EXCLUDED.mlb_team,
+                opponent = EXCLUDED.opponent,
+                home_away = EXCLUDED.home_away,
+                position_played = EXCLUDED.position_played,
+                was_starter = EXCLUDED.was_starter
+            """
         
-        return None
+        execute_sql(sql, game_log, 'postgres')
+        return True
         
     except Exception as e:
-        logger.error(f"Error updating game log: {e}")
-        return None
+        logger.error(f"Error inserting game log for player {game_log.get('player_id')}: {e}")
+        return False
 
 def ingest_mlb_game_logs(target_date=None):
-    """Main MLB API ingestion process"""
+    """Main MLB API ingestion process using boxscore pattern for proper team handling"""
     if not target_date:
         target_date = date.today() - timedelta(days=1)
     
     logger.info(f"🎮 Starting MLB game log ingestion for {target_date}")
+    date_str = target_date.strftime('%Y-%m-%d')
     
-    # Get yesterday's games
-    games = fetch_yesterdays_games(target_date)
-    if not games:
-        logger.info("No games to process")
-        return {'games': 0, 'players_updated': 0, 'new_players': 0}
-    
-    # Get all active players (no mlb_id column, player_id IS the MLB ID)
-    sql = """
-    SELECT player_id, first_name, last_name
-    FROM mlb_players 
-    WHERE is_active = true
-    """
-    
-    result = execute_sql(sql, database_name='postgres')
-    existing_players = {}
-    
-    for record in result.get('records', []):
-        player_id = record[0].get('longValue')
-        existing_players[player_id] = {
-            'player_id': player_id,
-            'mlb_id': player_id,  # player_id IS the MLB ID
-            'name': f"{record[1].get('stringValue', '')} {record[2].get('stringValue', '')}"
-        }
-    
-    players_updated = 0
-    new_players_added = 0
-    players_checked = set()
-    
-    # Process each game's box score to get player appearances
-    for game in games:
-        try:
-            # Get detailed box score
-            url = f"https://statsapi.mlb.com/api/v1.1/game/{game['game_pk']}/feed/live"
-            response = requests.get(url, timeout=15)
-            
-            if response.status_code == 200:
-                game_data = response.json()
-                
-                # Process all players in the game
-                all_players = game_data.get('liveData', {}).get('boxscore', {}).get('teams', {})
-                
-                for team_type in ['home', 'away']:
-                    team_players = all_players.get(team_type, {}).get('players', {})
-                    
-                    for player_key, player_info in team_players.items():
-                        mlb_id = player_info.get('person', {}).get('id')
-                        
-                        if mlb_id and mlb_id not in players_checked:
-                            players_checked.add(mlb_id)
-                            
-                            # Check if player exists
-                            if mlb_id not in existing_players:
-                                # New player discovered!
-                                if discover_new_player(mlb_id):
-                                    new_players_added += 1
-                                    existing_players[mlb_id] = {
-                                        'player_id': mlb_id,
-                                        'mlb_id': mlb_id
-                                    }
-                            
-                            # Get player's game log
-                            if mlb_id in existing_players:
-                                game_log = fetch_player_game_log(mlb_id, target_date)
-                                if game_log:
-                                    player_id = existing_players[mlb_id]['player_id']
-                                    if update_game_log(player_id, mlb_id, game_log):
-                                        players_updated += 1
-                
-                # Small delay between games
-                time.sleep(0.5)
-                
-        except Exception as e:
-            logger.error(f"Error processing game {game['game_pk']}: {e}")
-            continue
-    
-    logger.info(f"✅ MLB ingestion complete: {len(games)} games, {players_updated} players updated, {new_players_added} new players")
-    
-    return {
-        'games': len(games),
-        'players_updated': players_updated,
-        'new_players': new_players_added
+    # Get schedule for the date
+    url = "https://statsapi.mlb.com/api/v1/schedule"
+    params = {
+        'date': date_str,
+        'sportId': 1,
+        'hydrate': 'boxscore'
     }
+    
+    try:
+        response = requests.get(url, params=params, timeout=15)
+        if response.status_code != 200:
+            logger.error(f"MLB Schedule API error: {response.status_code}")
+            return {'games': 0, 'players_updated': 0, 'new_players': 0}
+        
+        data = response.json()
+        games_processed = 0
+        players_updated = 0
+        new_players_added = 0
+        
+        # Get existing players
+        sql = "SELECT player_id FROM mlb_players WHERE is_active = true"
+        result = execute_sql(sql, database_name='postgres')
+        existing_players = set()
+        for record in result.get('records', []):
+            player_id = record[0].get('longValue')
+            if player_id:
+                existing_players.add(player_id)
+        
+        # Process each date's games
+        for date_entry in data.get('dates', []):
+            for game in date_entry.get('games', []):
+                if game.get('status', {}).get('codedGameState') != 'F':
+                    continue
+                
+                game_pk = game['gamePk']
+                
+                # Get team abbreviations
+                home_team = get_team_abbreviation(game.get('teams', {}).get('home', {}).get('team', {}))
+                away_team = get_team_abbreviation(game.get('teams', {}).get('away', {}).get('team', {}))
+                
+                if not home_team or not away_team:
+                    logger.warning(f"Missing teams for game {game_pk}")
+                    continue
+                
+                # Process boxscore for this game with starter detection
+                game_logs = process_boxscore_for_game_logs(game_pk, date_str, home_team, away_team)
+                
+                for game_log in game_logs:
+                    player_id = game_log['player_id']
+                    
+                    # Check if player exists, if not discover them
+                    if player_id not in existing_players:
+                        if discover_new_player(player_id):
+                            new_players_added += 1
+                            existing_players.add(player_id)
+                    
+                    # Insert the game log with was_starter field
+                    if insert_game_log(game_log):
+                        players_updated += 1
+                
+                games_processed += 1
+                time.sleep(0.2)  # Rate limiting
+        
+        logger.info(f"✅ MLB ingestion complete: {games_processed} games, {players_updated} player logs, {new_players_added} new players")
+        
+        return {
+            'games': games_processed,
+            'players_updated': players_updated,
+            'new_players': new_players_added
+        }
+        
+    except Exception as e:
+        logger.error(f"Error in MLB ingestion: {e}")
+        return {'games': 0, 'players_updated': 0, 'new_players': 0}
 
 # ============================================================================
-# SECTION 2: SEASON STATS CALCULATION
+# SECTION 2: SEASON STATS CALCULATION WITH GAMES_STARTED
 # ============================================================================
 
 def calculate_season_stats():
-    """Calculate season stats from game logs"""
+    """Calculate season stats from game logs including games_started from was_starter field"""
     try:
         logger.info("📊 Calculating season stats from game logs")
         
-        # IMPORTANT: quality_starts is now stored in game logs and aggregated here
         sql = f"""
         INSERT INTO player_season_stats (
-            player_id, season, games_played, at_bats, runs, hits, 
+            player_id, season, games_played, at_bats, runs, hits,
             doubles, triples, home_runs, rbi, stolen_bases, caught_stealing,
             walks, strikeouts, batting_avg, obp, slg, ops,
             games_started, wins, losses, saves, innings_pitched,
@@ -532,8 +657,8 @@ def calculate_season_stats():
                 ELSE 0.000 
             END as slg,
             0.000 as ops, -- Will be calculated after
-            -- Pitching stats
-            SUM(CASE WHEN innings_pitched > 0 THEN 1 ELSE 0 END) as games_started,
+            -- Pitching stats with proper games_started from was_starter field
+            COUNT(*) FILTER (WHERE was_starter = true) as games_started,
             COALESCE(SUM(wins), 0) as wins,
             COALESCE(SUM(losses), 0) as losses,
             COALESCE(SUM(saves), 0) as saves,
@@ -590,8 +715,7 @@ def calculate_season_stats():
             whip = EXCLUDED.whip,
             quality_starts = EXCLUDED.quality_starts,
             blown_saves = EXCLUDED.blown_saves,
-            holds = EXCLUDED.holds,
-            last_updated = NOW()
+            holds = EXCLUDED.holds
         """
         
         execute_sql(sql, database_name='postgres')
@@ -603,22 +727,96 @@ def calculate_season_stats():
             WHERE season = {CURRENT_SEASON}
         """, database_name='postgres')
         
-        logger.info("✅ Season stats calculated successfully")
+        # Log games_started summary
+        result = execute_sql(f"""
+            SELECT COUNT(DISTINCT player_id) as pitchers,
+                   SUM(games_started) as total_starts,
+                   AVG(games_started) as avg_starts
+            FROM player_season_stats
+            WHERE season = {CURRENT_SEASON}
+              AND innings_pitched > 0
+        """, database_name='postgres')
+        
+        if result and result.get('records'):
+            record = result['records'][0]
+            pitchers = record[0].get('longValue', 0)
+            total_starts = record[1].get('longValue', 0)
+            avg_starts = record[2].get('doubleValue', 0)
+            logger.info(f"✅ Season stats calculated - {pitchers} pitchers, {total_starts} total starts, {avg_starts:.1f} avg starts")
+        
         return True
         
     except Exception as e:
         logger.error(f"Error calculating season stats: {e}")
         return False
 
+def calculate_position_eligibility():
+    """Calculate position eligibility from game logs"""
+    try:
+        logger.info("🎯 Calculating position eligibility from game logs")
+        
+        # Add season column if it doesn't exist
+        try:
+            execute_sql("""
+                ALTER TABLE position_eligibility 
+                ADD COLUMN IF NOT EXISTS season INTEGER
+            """, database_name='postgres')
+        except:
+            pass  # Column might already exist
+        
+        sql = f"""
+        INSERT INTO position_eligibility (player_id, position, games_played, season, last_updated)
+        SELECT 
+            player_id,
+            position_played,
+            COUNT(*) as games_played,
+            {CURRENT_SEASON},
+            NOW()
+        FROM player_game_logs
+        WHERE EXTRACT(YEAR FROM game_date) = {CURRENT_SEASON}
+          AND position_played IS NOT NULL
+          AND position_played != ''
+        GROUP BY player_id, position_played
+        ON CONFLICT (player_id, position) 
+        DO UPDATE SET
+            games_played = EXCLUDED.games_played,
+            season = EXCLUDED.season,
+            last_updated = EXCLUDED.last_updated
+        """
+        
+        execute_sql(sql, database_name='postgres')
+        
+        # Log eligibility summary
+        result = execute_sql(f"""
+            SELECT COUNT(DISTINCT player_id) as players,
+                   COUNT(*) as position_entries,
+                   SUM(CASE WHEN games_played >= 10 THEN 1 ELSE 0 END) as eligible_positions
+            FROM position_eligibility
+            WHERE season = {CURRENT_SEASON}
+        """, database_name='postgres')
+        
+        if result and result.get('records'):
+            record = result['records'][0]
+            players = record[0].get('longValue', 0)
+            entries = record[1].get('longValue', 0)
+            eligible = record[2].get('longValue', 0)
+            logger.info(f"✅ Position eligibility: {players} players, {entries} positions tracked, {eligible} eligible (10+ games)")
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"Error calculating position eligibility: {e}")
+        return False
+
 def sync_stats_to_leagues():
-    """Sync season stats to all active leagues"""
+    """Sync season stats to all active leagues including games_started"""
     try:
         logger.info("🔄 Syncing stats to league databases")
         
         # First get all season stats from postgres
         stats_query = f"""
         SELECT 
-            player_id, games_played, at_bats, runs, hits, 
+            player_id, games_played, at_bats, runs, hits,
             doubles, triples, home_runs, rbi, stolen_bases, caught_stealing,
             walks, strikeouts, batting_avg, obp, slg, ops,
             games_started, wins, losses, saves, innings_pitched,
@@ -711,8 +909,7 @@ def sync_stats_to_leagues():
                             whip = EXCLUDED.whip,
                             quality_starts = EXCLUDED.quality_starts,
                             blown_saves = EXCLUDED.blown_saves,
-                            holds = EXCLUDED.holds,
-                            last_updated = NOW()
+                            holds = EXCLUDED.holds
                         """
                         
                         params = {
@@ -767,6 +964,133 @@ def sync_stats_to_leagues():
         logger.error(f"Error syncing to leagues: {e}")
         return 0
 
+def sync_rolling_stats_to_leagues():
+    """Sync rolling stats to all active leagues including games_started"""
+    try:
+        logger.info("🔄 Syncing rolling stats to league databases")
+        
+        # Get today's rolling stats from postgres
+        today = date.today()
+        stats_query = f"""
+        SELECT 
+            player_id, period, as_of_date,
+            games_played, at_bats, hits, home_runs, rbi, runs,
+            stolen_bases, caught_stealing, walks, strikeouts,
+            batting_avg, obp, slg, ops,
+            games_started, innings_pitched, wins, losses, saves,
+            quality_starts, era, whip
+        FROM player_rolling_stats
+        WHERE as_of_date = '{today}'
+        """
+        
+        stats_result = execute_sql(stats_query, database_name='postgres')
+        
+        if not stats_result or not stats_result.get('records'):
+            logger.warning("No rolling stats to sync")
+            return 0
+        
+        # Get active leagues
+        leagues_query = "SELECT league_id FROM leagues WHERE is_active = true"
+        leagues_result = execute_sql(leagues_query, database_name='leagues')
+        
+        if not leagues_result or not leagues_result.get('records'):
+            logger.warning("No active leagues found")
+            return 0
+        
+        leagues_synced = 0
+        
+        for league_record in leagues_result['records']:
+            league_id = league_record[0].get('stringValue')
+            
+            try:
+                for stat_record in stats_result['records']:
+                    insert_sql = """
+                    INSERT INTO player_rolling_stats (
+                        player_id, league_id, period, as_of_date,
+                        games_played, at_bats, hits, home_runs, rbi, runs,
+                        stolen_bases, caught_stealing, walks, strikeouts,
+                        batting_avg, obp, slg, ops,
+                        games_started, innings_pitched, wins, losses, saves,
+                        quality_starts, era, whip
+                    ) VALUES (
+                        :player_id, :league_id::uuid, :period, :as_of_date::date,
+                        :games_played, :at_bats, :hits, :home_runs, :rbi, :runs,
+                        :stolen_bases, :caught_stealing, :walks, :strikeouts,
+                        :batting_avg, :obp, :slg, :ops,
+                        :games_started, :innings_pitched, :wins, :losses, :saves,
+                        :quality_starts, :era, :whip
+                    )
+                    ON CONFLICT (player_id, league_id, period, as_of_date)
+                    DO UPDATE SET
+                        games_played = EXCLUDED.games_played,
+                        at_bats = EXCLUDED.at_bats,
+                        hits = EXCLUDED.hits,
+                        home_runs = EXCLUDED.home_runs,
+                        rbi = EXCLUDED.rbi,
+                        runs = EXCLUDED.runs,
+                        stolen_bases = EXCLUDED.stolen_bases,
+                        caught_stealing = EXCLUDED.caught_stealing,
+                        walks = EXCLUDED.walks,
+                        strikeouts = EXCLUDED.strikeouts,
+                        batting_avg = EXCLUDED.batting_avg,
+                        obp = EXCLUDED.obp,
+                        slg = EXCLUDED.slg,
+                        ops = EXCLUDED.ops,
+                        games_started = EXCLUDED.games_started,
+                        innings_pitched = EXCLUDED.innings_pitched,
+                        wins = EXCLUDED.wins,
+                        losses = EXCLUDED.losses,
+                        saves = EXCLUDED.saves,
+                        quality_starts = EXCLUDED.quality_starts,
+                        era = EXCLUDED.era,
+                        whip = EXCLUDED.whip,
+                        last_calculated = NOW()
+                    """
+                    
+                    params = {
+                        'player_id': stat_record[0].get('longValue'),
+                        'league_id': league_id,
+                        'period': stat_record[1].get('stringValue'),
+                        'as_of_date': stat_record[2].get('stringValue'),
+                        'games_played': stat_record[3].get('longValue', 0),
+                        'at_bats': stat_record[4].get('longValue', 0),
+                        'hits': stat_record[5].get('longValue', 0),
+                        'home_runs': stat_record[6].get('longValue', 0),
+                        'rbi': stat_record[7].get('longValue', 0),
+                        'runs': stat_record[8].get('longValue', 0),
+                        'stolen_bases': stat_record[9].get('longValue', 0),
+                        'caught_stealing': stat_record[10].get('longValue', 0),
+                        'walks': stat_record[11].get('longValue', 0),
+                        'strikeouts': stat_record[12].get('longValue', 0),
+                        'batting_avg': stat_record[13].get('doubleValue', 0.0),
+                        'obp': stat_record[14].get('doubleValue', 0.0),
+                        'slg': stat_record[15].get('doubleValue', 0.0),
+                        'ops': stat_record[16].get('doubleValue', 0.0),
+                        'games_started': stat_record[17].get('longValue', 0),
+                        'innings_pitched': stat_record[18].get('doubleValue', 0.0),
+                        'wins': stat_record[19].get('longValue', 0),
+                        'losses': stat_record[20].get('longValue', 0),
+                        'saves': stat_record[21].get('longValue', 0),
+                        'quality_starts': stat_record[22].get('longValue', 0),
+                        'era': stat_record[23].get('doubleValue', 0.0),
+                        'whip': stat_record[24].get('doubleValue', 0.0)
+                    }
+                    
+                    execute_sql(insert_sql, params, database_name='leagues')
+                
+                leagues_synced += 1
+                
+            except Exception as e:
+                logger.error(f"Failed to sync rolling stats to league {league_id}: {e}")
+                continue
+        
+        logger.info(f"✅ Synced rolling stats to {leagues_synced} leagues")
+        return leagues_synced
+        
+    except Exception as e:
+        logger.error(f"Error syncing rolling stats: {e}")
+        return 0
+    
 def sync_new_players_to_leagues():
     """Sync new players to league databases"""
     try:
@@ -774,7 +1098,7 @@ def sync_new_players_to_leagues():
         
         # Get all players from postgres
         postgres_players_query = """
-        SELECT player_id, first_name, last_name, position, mlb_team, 
+        SELECT player_id, first_name, last_name, position, mlb_team,
                jersey_number, birthdate, height_inches, weight_pounds, is_active
         FROM mlb_players
         WHERE is_active = true
@@ -834,7 +1158,7 @@ def sync_new_players_to_leagues():
                         try:
                             insert_sql = """
                             INSERT INTO league_players (
-                                league_player_id, league_id, mlb_player_id, 
+                                league_player_id, league_id, mlb_player_id,
                                 player_name, position, mlb_team,
                                 availability_status, created_at
                             ) VALUES (
@@ -932,13 +1256,13 @@ def handle_season_transition():
                 player_id, season, games_played, at_bats, runs, hits,
                 doubles, triples, home_runs, rbi, stolen_bases,
                 batting_avg, ops, era, whip, quality_starts,
-                archived_date
+                games_started, archived_date
             )
             SELECT 
                 player_id, season, games_played, at_bats, runs, hits,
                 doubles, triples, home_runs, rbi, stolen_bases,
                 batting_avg, ops, era, whip, quality_starts,
-                CURRENT_DATE
+                games_started, CURRENT_DATE
             FROM player_season_stats
             WHERE season = {last_season}
             ON CONFLICT (player_id, season) DO NOTHING
@@ -951,7 +1275,6 @@ def handle_season_transition():
                 logger.error(f"Error archiving season stats: {e}")
             
             # Clear old season data from leagues database
-            # This needs to be done separately for leagues DB
             try:
                 leagues_cleanup_sql = f"""
                 DELETE FROM player_season_stats 
@@ -1069,6 +1392,21 @@ def lambda_handler(event, context):
             results['tasks']['season_stats'] = {'success': False, 'error': str(e)}
             results['errors'].append(f"Season stats: {e}")
         
+        # Task 2.5: Calculate Position Eligibility
+        logger.info("🎯 Task 2.5: Calculating Position Eligibility...")
+        try:
+            if calculate_position_eligibility():
+                results['tasks']['position_eligibility'] = {
+                    'success': True,
+                    'completed_at': datetime.now().isoformat()
+                }
+            else:
+                results['tasks']['position_eligibility'] = {'success': False}
+        except Exception as e:
+            logger.error(f"Position eligibility calculation failed: {e}")
+            results['tasks']['position_eligibility'] = {'success': False, 'error': str(e)}
+            results['errors'].append(f"Position eligibility: {e}")
+        
         # Task 3: Calculate Rolling Stats
         logger.info("📈 Task 3: Calculating Rolling Stats...")
         if calculate_rolling_stats:
@@ -1117,6 +1455,20 @@ def lambda_handler(event, context):
             results['tasks']['league_sync'] = {'success': False, 'error': str(e)}
             results['errors'].append(f"League sync: {e}")
         
+        # Task 5.5: Sync Rolling Stats to League Databases
+        logger.info("📈 Task 5.5: Syncing Rolling Stats to Leagues...")
+        try:
+            rolling_leagues_synced = sync_rolling_stats_to_leagues()
+            results['tasks']['rolling_stats_sync'] = {
+                'success': rolling_leagues_synced > 0,
+                'leagues_synced': rolling_leagues_synced,
+                'completed_at': datetime.now().isoformat()
+            }
+        except Exception as e:
+            logger.error(f"Rolling stats sync failed: {e}")
+            results['tasks']['rolling_stats_sync'] = {'success': False, 'error': str(e)}
+            results['errors'].append(f"Rolling stats sync: {e}")
+
         # Task 6: Sync New Players
         logger.info("👥 Task 6: Syncing New Players...")
         try:

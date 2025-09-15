@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
 """
-Dynasty Dugout FastAPI Application - Complete Version
-Forces proper route registration in Lambda environment with MLB debug
+Dynasty Dugout FastAPI Application - Updated to use global_stats
+All player endpoints now use the comprehensive global_stats module
 """
 import logging
 import sys
 from datetime import datetime, timedelta
 from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from mangum import Mangum
 from typing import Optional, List, Dict, Any
@@ -23,8 +24,8 @@ from core.database import execute_sql, test_database_connection
 # Create app FIRST before any imports that might use it
 app = FastAPI(
     title="Dynasty Dugout API",
-    version="7.1.1",
-    description="Complete serverless fantasy baseball platform with MLB debug"
+    version="7.2.0",
+    description="Complete serverless fantasy baseball platform with unified player endpoints"
 )
 
 # CORS Configuration
@@ -58,13 +59,13 @@ async def health_check():
     return {
         "status": "healthy", 
         "service": "Dynasty Dugout API", 
-        "version": "7.1.1",
+        "version": "7.2.0",
         "mlb_debug": "available",
         "routers": {
             "auth": "active",
             "account": "active",
             "leagues": "active",
-            "players": "active",
+            "players": "active (global_stats)",
             "analytics": "active",
             "mlb": "active",
             "mlb_debug": "active",
@@ -90,11 +91,10 @@ try:
     app.include_router(leagues.router, prefix="/api/leagues", tags=["Leagues"])
     logger.info("✅ Leagues router registered")
     
-    # Players router (now part of leagues structure)
-    from routers.leagues import players
-    app.include_router(players.global_router, prefix="/api/players", tags=["Players"])
-    logger.info("✅ Players router registered")
-    
+    # UPDATED: Use global_stats for ALL player endpoints
+    from routers.leagues.players import global_stats
+    app.include_router(global_stats.router, prefix="/api/players", tags=["Players"])
+    logger.info("✅ Players router (global_stats) registered - includes game-logs and analytics")
     
     from routers import invitations
     app.include_router(invitations.router, prefix="/api/invitation", tags=["Invitations"])
@@ -120,6 +120,8 @@ try:
         logger.error(f"❌ Failed to register MLB Debug router: {e}")
     
     logger.info("✅ All routers registered successfully")
+    logger.info("📊 Player endpoints now include: /complete (with game_logs), /game-logs, /recent-performance, /analytics")
+    
 except Exception as e:
     logger.error(f"❌ Failed to import routers: {e}", exc_info=True)
 
@@ -136,25 +138,34 @@ async def debug_routes():
             })
     return {
         "total_routes": len(routes), 
-        "routes": sorted(routes, key=lambda x: x["path"])
+        "routes": sorted(routes, key=lambda x: x["path"]),
+        "player_endpoints": [
+            "/api/players/search",
+            "/api/players/{player_id}",
+            "/api/players/{player_id}/complete",
+            "/api/players/{player_id}/career-stats",
+            "/api/players/{player_id}/game-logs",
+            "/api/players/{player_id}/recent-performance",
+            "/api/players/{player_id}/analytics"
+        ]
     }
 
 # Root endpoints
 @app.get("/")
 async def root():
-    return {"service": "Dynasty Dugout API", "status": "operational", "version": "7.1.1"}
+    return {"service": "Dynasty Dugout API", "status": "operational", "version": "7.2.0"}
 
 @app.get("/api")
 async def api_root():
     return {
-        "message": "Dynasty Dugout API v7.1.1",
+        "message": "Dynasty Dugout API v7.2.0",
         "status": "operational", 
         "endpoints": {
             "auth": "/api/auth",
             "account": "/api/account",
             "leagues": "/api/leagues",
-            "players": "/api/players", 
-            "analytics": "/api/analytics",
+            "players": "/api/players (comprehensive with game-logs)", 
+            "analytics": "/api/players/{id}/analytics",
             "mlb": "/api/mlb",
             "mlb_debug": "/api/mlb/trending-debug",
             "invitations": "/api/invitation",
@@ -165,22 +176,68 @@ async def api_root():
 
 # Global exception handlers
 @app.exception_handler(HTTPException)
-async def http_exception_handler(request, exc):
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Handle HTTP exceptions and return proper JSON response"""
     logger.error(f"HTTP Exception: {exc.status_code} - {exc.detail}")
-    return {
-        "statusCode": exc.status_code,
-        "body": f'{{"detail": "{exc.detail}", "status_code": {exc.status_code}}}',
-        "headers": {"Content-Type": "application/json"}
-    }
+    
+    # Special handling for auth errors to provide helpful messages
+    if exc.status_code == 404:
+        if "User not found" in str(exc.detail) or "User does not exist" in str(exc.detail):
+            return JSONResponse(
+                status_code=404,
+                content={
+                    "detail": "No account found with this email. Please sign up first!",
+                    "error_code": "USER_NOT_FOUND",
+                    "status_code": 404,
+                    "action": "signup_required"
+                }
+            )
+    
+    if exc.status_code == 403:
+        if "verify" in str(exc.detail).lower():
+            return JSONResponse(
+                status_code=403,
+                content={
+                    "detail": exc.detail,
+                    "error_code": "EMAIL_NOT_VERIFIED",
+                    "status_code": 403,
+                    "action": "verify_email"
+                }
+            )
+    
+    if exc.status_code == 401:
+        return JSONResponse(
+            status_code=401,
+            content={
+                "detail": exc.detail or "Invalid credentials",
+                "error_code": "INVALID_CREDENTIALS",
+                "status_code": 401
+            }
+        )
+    
+    # Default handling for other HTTP exceptions
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "detail": exc.detail,
+            "status_code": exc.status_code
+        }
+    )
 
 @app.exception_handler(Exception)
-async def general_exception_handler(request, exc):
+async def general_exception_handler(request: Request, exc: Exception):
+    """Handle general exceptions and return proper JSON response"""
     logger.error(f"Unhandled exception: {str(exc)}", exc_info=True)
-    return {
-        "statusCode": 500,
-        "body": '{"detail": "Internal server error", "status_code": 500}',
-        "headers": {"Content-Type": "application/json"}
-    }
+    
+    # Don't expose internal errors in production
+    return JSONResponse(
+        status_code=500,
+        content={
+            "detail": "An unexpected error occurred. Please try again later.",
+            "error_code": "INTERNAL_SERVER_ERROR",
+            "status_code": 500
+        }
+    )
 
 # Create handler with proper request logging
 _handler = Mangum(app, lifespan="off")
@@ -197,11 +254,11 @@ def handler(event, context):
         logger.error(f"❌ Handler error: {e}", exc_info=True)
         return {
             "statusCode": 500,
-            "body": '{"error": "Internal server error"}',
+            "body": '{"detail": "Internal server error", "error_code": "HANDLER_ERROR", "status_code": 500}',
             "headers": {"Content-Type": "application/json"}
         }
 
-logger.info("🎯 Handler ready")
+logger.info("🎯 Handler ready with comprehensive player endpoints")
 
 if __name__ == "__main__":
     import uvicorn

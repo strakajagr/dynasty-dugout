@@ -2,6 +2,7 @@
 """
 Update Active Accrued Stats
 Tracks stats accumulated while player is on active roster
+FIXED: Quality starts are now summed from game_logs, not calculated inline
 """
 import json
 import logging
@@ -84,14 +85,14 @@ def lambda_handler(event, context):
                     rsh.league_player_id,
                     lp.mlb_player_id,
                     lp.team_id,
-                    rsh.start_date,
+                    rsh.effective_date,
                     COALESCE(rsh.end_date, CURRENT_DATE) as end_date
                 FROM roster_status_history rsh
                 JOIN league_players lp ON rsh.league_player_id = lp.league_player_id
                 WHERE rsh.league_id = :league_id::uuid
                   AND rsh.roster_status = 'active'
-                  AND rsh.start_date IS NOT NULL
-                ORDER BY lp.mlb_player_id, rsh.start_date
+                  AND rsh.effective_date IS NOT NULL
+                ORDER BY lp.mlb_player_id, rsh.effective_date
             """
             
             roster_result = execute_sql(
@@ -138,7 +139,9 @@ def lambda_handler(event, context):
                             'losses': 0,
                             'saves': 0,
                             'earned_runs': 0,
-                            'quality_starts': 0
+                            'quality_starts': 0,
+                            'hits_allowed': 0,
+                            'walks_allowed': 0
                         }
                     }
                 
@@ -151,26 +154,26 @@ def lambda_handler(event, context):
             for mlb_player_id, player_data in player_stats.items():
                 for period in player_data['periods']:
                     # Get stats for this active period from postgres
+                    # FIXED: Now summing quality_starts directly from game_logs
                     period_stats_sql = """
                         SELECT 
                             COUNT(*) as games,
-                            SUM(at_bats) as at_bats,
-                            SUM(hits) as hits,
-                            SUM(home_runs) as home_runs,
-                            SUM(rbi) as rbi,
-                            SUM(runs) as runs,
-                            SUM(stolen_bases) as stolen_bases,
-                            SUM(walks) as walks,
-                            SUM(strikeouts) as strikeouts,
-                            SUM(innings_pitched) as innings_pitched,
-                            SUM(wins) as wins,
-                            SUM(losses) as losses,
-                            SUM(saves) as saves,
-                            SUM(earned_runs) as earned_runs,
-                            SUM(CASE 
-                                WHEN innings_pitched >= 6.0 AND earned_runs <= 3 
-                                THEN 1 ELSE 0 
-                            END) as quality_starts
+                            COALESCE(SUM(at_bats), 0) as at_bats,
+                            COALESCE(SUM(hits), 0) as hits,
+                            COALESCE(SUM(home_runs), 0) as home_runs,
+                            COALESCE(SUM(rbi), 0) as rbi,
+                            COALESCE(SUM(runs), 0) as runs,
+                            COALESCE(SUM(stolen_bases), 0) as stolen_bases,
+                            COALESCE(SUM(walks), 0) as walks,
+                            COALESCE(SUM(strikeouts), 0) as strikeouts,
+                            COALESCE(SUM(innings_pitched), 0) as innings_pitched,
+                            COALESCE(SUM(wins), 0) as wins,
+                            COALESCE(SUM(losses), 0) as losses,
+                            COALESCE(SUM(saves), 0) as saves,
+                            COALESCE(SUM(earned_runs), 0) as earned_runs,
+                            COALESCE(SUM(quality_starts), 0) as quality_starts,
+                            COALESCE(SUM(hits_allowed), 0) as hits_allowed,
+                            COALESCE(SUM(walks_allowed), 0) as walks_allowed
                         FROM player_game_logs
                         WHERE player_id = :player_id
                           AND game_date >= :start_date::date
@@ -205,6 +208,8 @@ def lambda_handler(event, context):
                         player_data['total_stats']['saves'] += record[12].get('longValue', 0)
                         player_data['total_stats']['earned_runs'] += record[13].get('longValue', 0)
                         player_data['total_stats']['quality_starts'] += record[14].get('longValue', 0)
+                        player_data['total_stats']['hits_allowed'] += record[15].get('longValue', 0)
+                        player_data['total_stats']['walks_allowed'] += record[16].get('longValue', 0)
             
             # Insert/update accrued stats in leagues database
             for mlb_player_id, player_data in player_stats.items():
@@ -219,7 +224,7 @@ def lambda_handler(event, context):
                 whip = 0.0
                 if stats['innings_pitched'] > 0:
                     era = round((stats['earned_runs'] * 9.0) / stats['innings_pitched'], 2)
-                    # Note: We'd need hits_allowed and walks_allowed for WHIP
+                    whip = round((stats['hits_allowed'] + stats['walks_allowed']) / stats['innings_pitched'], 3)
                 
                 # Calculate total active days
                 total_days = 0

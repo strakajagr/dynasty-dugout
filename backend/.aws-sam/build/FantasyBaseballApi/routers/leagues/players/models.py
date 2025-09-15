@@ -224,7 +224,7 @@ class ContractInfo(BaseModel):
 
 class CareerSeasonStats(BaseModel):
     """Single season career stats"""
-    season_year: int
+    season: int  # Changed from season_year to just season
     games_played: int
     at_bats: int
     runs: int
@@ -302,14 +302,14 @@ class CompletePlayerData(BaseModel):
     weight_pounds: Optional[int] = None
     birthdate: Optional[str] = None
     
-    # Current season stats
-    season_2025_stats: Optional[dict] = None
-    rolling_14_day_stats: Optional[dict] = None
+    # Current season stats - FIXED: removed year from field names
+    season_stats: Optional[dict] = None  # Was: season_2025_stats
+    rolling_14_day: Optional[dict] = None  # Was: rolling_14_day_stats
     
     # Historical
     career_stats: Optional[list] = None
     career_totals: Optional[dict] = None
-    game_logs_2025: Optional[list] = None
+    game_logs: Optional[list] = None  # Was: game_logs_2025
     
     # Contract (if in a league)
     contract_info: Optional[dict] = None

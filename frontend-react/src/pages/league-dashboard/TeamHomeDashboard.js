@@ -3,14 +3,17 @@ import React, { useState, useEffect } from 'react';
 import { dynastyTheme } from '../../services/colorService';
 import { DynastyTable } from '../../services/tableService';
 import { leaguesAPI } from '../../services/apiService';
-import { User, Shield, Star } from 'lucide-react';
+import { User, Shield, Star, Search, Plus, Minus, ArrowRightLeft, Crown } from 'lucide-react';
+import PlayerSearchDropdownLeague from '../../components/PlayerSearchDropdownLeague';
+import { useNavigate } from 'react-router-dom';
 
-const TeamHomeDashboard = ({ leagueId, teamId, currentUser }) => {
+const TeamHomeDashboard = ({ leagueId, teamId, currentUser, league, userTeam }) => {
   const [dashboardData, setDashboardData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [activeStatsTab, setActiveStatsTab] = useState('hitters');
   const [error, setError] = useState(null);
   const [teamInfo, setTeamInfo] = useState(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     fetchTeamDashboard();
@@ -80,6 +83,17 @@ const TeamHomeDashboard = ({ leagueId, teamId, currentUser }) => {
     return words.map(word => word[0]).join('').substring(0, 2).toUpperCase();
   };
 
+  // Handler for player transactions
+  const handlePlayerAdded = (player) => {
+    console.log('Player added to team:', player);
+    fetchTeamDashboard(); // Reload dashboard data
+  };
+
+  const handlePlayerDropped = (player) => {
+    console.log('Player dropped from team:', player);
+    fetchTeamDashboard(); // Reload dashboard data
+  };
+
   if (loading) {
     return (
       <div className={dynastyTheme.components.card.base}>
@@ -106,89 +120,88 @@ const TeamHomeDashboard = ({ leagueId, teamId, currentUser }) => {
 
   return (
     <div className="space-y-6">
-      {/* Enhanced Team Header with Logo */}
+      {/* Enhanced Header with Search Bar */}
       <div className={`${dynastyTheme.components.card.base} p-6`}>
-        <div className="flex items-start gap-6">
-          {/* Team Logo Section */}
-          <div className="flex-shrink-0">
-            {logoUrl ? (
-              <div className="relative group">
-                <img 
-                  src={logoUrl}
-                  alt={`${displayTeamName} Logo`}
-                  className="w-32 h-32 rounded-xl object-cover border-4 border-neutral-700 shadow-xl"
-                  onError={(e) => {
-                    e.target.style.display = 'none';
-                    e.target.nextElementSibling.style.display = 'flex';
-                  }}
-                />
+        <div className="flex items-start justify-between gap-6 mb-6">
+          {/* Left side: Logo and Team Info */}
+          <div className="flex items-start gap-6">
+            {/* Team Logo Section */}
+            <div className="flex-shrink-0">
+              {logoUrl ? (
+                <div className="relative group">
+                  <img 
+                    src={logoUrl}
+                    alt={`${displayTeamName} Logo`}
+                    className="w-32 h-32 rounded-xl object-cover border-4 border-neutral-700 shadow-xl"
+                    onError={(e) => {
+                      e.target.style.display = 'none';
+                      e.target.nextElementSibling.style.display = 'flex';
+                    }}
+                  />
+                  <div 
+                    className="w-32 h-32 rounded-xl border-4 border-neutral-700 shadow-xl hidden items-center justify-center text-3xl font-bold"
+                    style={{
+                      background: teamColors ? 
+                        `linear-gradient(135deg, ${teamColors.primary || '#FFD700'}, ${teamColors.secondary || '#8B7500'})` : 
+                        dynastyTheme.utils.getGradient('primary'),
+                      color: teamColors?.text || '#000000'
+                    }}
+                  >
+                    {getTeamInitials(displayTeamName)}
+                  </div>
+                  {/* Hover effect */}
+                  <div className="absolute inset-0 rounded-xl bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
+                    <Shield className="w-8 h-8 text-yellow-400" />
+                  </div>
+                </div>
+              ) : (
                 <div 
-                  className="w-32 h-32 rounded-xl border-4 border-neutral-700 shadow-xl hidden items-center justify-center text-3xl font-bold"
+                  className="w-32 h-32 rounded-xl border-4 border-neutral-700 shadow-xl flex items-center justify-center text-3xl font-bold"
                   style={{
                     background: teamColors ? 
                       `linear-gradient(135deg, ${teamColors.primary || '#FFD700'}, ${teamColors.secondary || '#8B7500'})` : 
-                      dynastyTheme.utils.getGradient('primary'),
+                      'linear-gradient(135deg, #FFD700, #8B7500)',
                     color: teamColors?.text || '#000000'
                   }}
                 >
                   {getTeamInitials(displayTeamName)}
                 </div>
-                {/* Hover effect */}
-                <div className="absolute inset-0 rounded-xl bg-black/50 opacity-0 group-hover:opacity-100 flex items-center justify-center transition-opacity">
-                  <Shield className="w-8 h-8 text-yellow-400" />
-                </div>
-              </div>
-            ) : (
-              <div 
-                className="w-32 h-32 rounded-xl border-4 border-neutral-700 shadow-xl flex items-center justify-center text-3xl font-bold"
-                style={{
-                  background: teamColors ? 
-                    `linear-gradient(135deg, ${teamColors.primary || '#FFD700'}, ${teamColors.secondary || '#8B7500'})` : 
-                    'linear-gradient(135deg, #FFD700, #8B7500)',
-                  color: teamColors?.text || '#000000'
-                }}
-              >
-                {getTeamInitials(displayTeamName)}
-              </div>
-            )}
-          </div>
+              )}
+            </div>
 
-          {/* Team Info Section */}
-          <div className="flex-1">
-            <div className="flex items-start justify-between">
-              <div>
-                <h1 className={`text-4xl font-bold ${dynastyTheme.classes.text.white} mb-2`}>
-                  {displayTeamName}
-                </h1>
-                {teamMotto && (
-                  <p className={`text-lg italic ${dynastyTheme.classes.text.neutralLight} mb-3`}>
-                    "{teamMotto}"
-                  </p>
-                )}
-                <div className="flex items-center gap-4">
+            {/* Team Info Section */}
+            <div className="flex-1">
+              <h1 className={`text-4xl font-bold ${dynastyTheme.classes.text.white} mb-2`}>
+                {displayTeamName}
+              </h1>
+              {teamMotto && (
+                <p className={`text-lg italic ${dynastyTheme.classes.text.neutralLight} mb-3`}>
+                  "{teamMotto}"
+                </p>
+              )}
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <User className={`w-4 h-4 ${dynastyTheme.classes.text.primary}`} />
+                  <span className={dynastyTheme.classes.text.neutralLight}>
+                    Manager: <span className={dynastyTheme.classes.text.white}>
+                      {teamInfo?.manager_name || currentUser?.firstName || 'Unknown'}
+                    </span>
+                  </span>
+                </div>
+                {roster_stats?.length > 0 && (
                   <div className="flex items-center gap-2">
-                    <User className={`w-4 h-4 ${dynastyTheme.classes.text.primary}`} />
+                    <Star className={`w-4 h-4 ${dynastyTheme.classes.text.primary}`} />
                     <span className={dynastyTheme.classes.text.neutralLight}>
-                      Manager: <span className={dynastyTheme.classes.text.white}>
-                        {teamInfo?.manager_name || currentUser?.firstName || 'Unknown'}
+                      Roster: <span className={dynastyTheme.classes.text.white}>
+                        {roster_stats.length} players
                       </span>
                     </span>
                   </div>
-                  {roster_stats?.length > 0 && (
-                    <div className="flex items-center gap-2">
-                      <Star className={`w-4 h-4 ${dynastyTheme.classes.text.primary}`} />
-                      <span className={dynastyTheme.classes.text.neutralLight}>
-                        Roster: <span className={dynastyTheme.classes.text.white}>
-                          {roster_stats.length} players
-                        </span>
-                      </span>
-                    </div>
-                  )}
-                </div>
+                )}
               </div>
               
               {/* Quick Actions */}
-              <div className="flex gap-2">
+              <div className="flex gap-2 mt-4">
                 <button 
                   onClick={() => window.location.href = `#/leagues/${leagueId}/team-setup`}
                   className={dynastyTheme.utils.getComponent('button', 'secondary', 'sm')}
@@ -204,13 +217,50 @@ const TeamHomeDashboard = ({ leagueId, teamId, currentUser }) => {
                   </button>
                 )}
               </div>
-            </div>
 
-            {roster_stats?.length === 0 && (
-              <div className={`${dynastyTheme.components.badge.warning} inline-block mt-4`}>
-                No players on roster yet - Add players from Free Agents
+              {roster_stats?.length === 0 && (
+                <div className={`${dynastyTheme.components.badge.warning} inline-block mt-4`}>
+                  No players on roster yet - Add players from Free Agents
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Right side: Player Search with Roster Status */}
+          <div className="flex-shrink-0">
+            <PlayerSearchDropdownLeague 
+              leagueId={leagueId}
+              league={league}
+              userTeam={userTeam || teamInfo}
+              onPlayerAdded={handlePlayerAdded}
+              onPlayerDropped={handlePlayerDropped}
+              showRosterStatus={true}
+              compact={false}
+            />
+          </div>
+        </div>
+
+        {/* Search Instructions */}
+        <div className={`mt-4 p-3 ${dynastyTheme.classes.bg.darkLighter} rounded-lg`}>
+          <div className={`text-xs ${dynastyTheme.classes.text.neutralLight} flex items-center gap-6`}>
+            <div className="flex items-center gap-2">
+              <div className={`w-6 h-6 rounded ${dynastyTheme.classes.bg.success} flex items-center justify-center`}>
+                <Plus className="w-4 h-4 text-black" />
               </div>
-            )}
+              <span>Add Free Agent</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className={`w-6 h-6 rounded ${dynastyTheme.classes.bg.error} flex items-center justify-center`}>
+                <Minus className="w-4 h-4 text-white" />
+              </div>
+              <span>Drop from Roster</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className={`w-6 h-6 rounded ${dynastyTheme.classes.bg.primary} flex items-center justify-center`}>
+                <ArrowRightLeft className="w-4 h-4 text-black" />
+              </div>
+              <span>Trade (On Another Team)</span>
+            </div>
           </div>
         </div>
       </div>

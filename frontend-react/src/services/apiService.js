@@ -1,5 +1,6 @@
 // frontend-react/src/services/apiService.js
 // Complete rewrite with MLB data endpoints and improved organization
+// UPDATED: Tile analytics endpoints now accept optional leagueId parameter
 
 import axios from 'axios';
 
@@ -913,14 +914,113 @@ export const playersAPI = {
     return response.data;
   },
 
-  searchPlayers: async (searchTerm) => {
-    const response = await api.get(`/api/players/search?q=${encodeURIComponent(searchTerm)}`);
-    return response.data;
+  searchPlayers: async (searchTerm, limit = 12) => {
+    try {
+      if (!searchTerm || searchTerm.trim().length < 2) {
+        return { success: false, players: [], message: 'Search term too short' };
+      }
+      
+      console.log('Calling /search_global with:', {
+        q: searchTerm.trim(),
+        limit: limit
+      });
+      
+      const response = await api.get('/api/players/search', {
+        params: {
+          q: searchTerm.trim(),
+          limit: limit
+        }
+      });
+      
+      return response.data;
+    } catch (error) {
+      console.error('Full error:', error.response);
+      throw error;
+    }
   },
 
   getCareerStats: async (playerId) => {
     const response = await api.get(`/api/players/${playerId}/career-stats`);
     return response.data;
+  },
+
+  getRecentPerformance: async (playerId, days = 7) => {
+    const response = await api.get(`/api/players/${playerId}/recent-performance`, {
+      params: { days }
+    });
+    return response.data;
+  },
+
+  getGameLogs: async (playerId, options = {}) => {
+    const params = new URLSearchParams();
+    if (options.limit) params.append('limit', options.limit);
+    if (options.days) params.append('days', options.days);
+    
+    const queryString = params.toString();
+    const url = queryString 
+      ? `/api/players/${playerId}/game-logs?${queryString}`
+      : `/api/players/${playerId}/game-logs`;
+    
+    const response = await api.get(url);
+    return response.data;
+  },
+
+  getAnalytics: async (playerId) => {
+    const response = await api.get(`/api/players/${playerId}/analytics`);
+    return response.data;
+  },
+
+  // UPDATED: Tile Analytics endpoints now accept optional leagueId
+  getPitcherTileAnalytics: async (playerId, leagueId = null) => {
+    try {
+      // Build URL with optional league_id parameter
+      const params = new URLSearchParams();
+      if (leagueId) {
+        params.append('league_id', leagueId);
+      }
+      
+      const url = `/api/players/${playerId}/pitcher-tile-analytics${params.toString() ? '?' + params.toString() : ''}`;
+      console.log(`📊 Fetching pitcher tile analytics: ${url}`);
+      
+      const response = await api.get(url);
+      console.log('✅ Pitcher tile analytics received:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Failed to fetch pitcher tile analytics:', error);
+      console.error('Error details:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        message: error.message
+      });
+      throw error;
+    }
+  },
+
+  getHitterTileAnalytics: async (playerId, leagueId = null) => {
+    try {
+      // Build URL with optional league_id parameter
+      const params = new URLSearchParams();
+      if (leagueId) {
+        params.append('league_id', leagueId);
+      }
+      
+      const url = `/api/players/${playerId}/hitter-tile-analytics${params.toString() ? '?' + params.toString() : ''}`;
+      console.log(`📊 Fetching hitter tile analytics: ${url}`);
+      
+      const response = await api.get(url);
+      console.log('✅ Hitter tile analytics received:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('❌ Failed to fetch hitter tile analytics:', error);
+      console.error('Error details:', {
+        status: error.response?.status,
+        statusText: error.response?.statusText,
+        data: error.response?.data,
+        message: error.message
+      });
+      throw error;
+    }
   }
 };
 
@@ -1048,4 +1148,4 @@ export default {
   mlb: mlbAPI  // NEW MLB API
 };
 
-// Build timestamp: MLB Data API Integration Complete
+// Build timestamp: MLB Data API Integration Complete - Tile Analytics Updated

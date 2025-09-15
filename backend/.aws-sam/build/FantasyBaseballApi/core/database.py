@@ -367,7 +367,7 @@ def setup_league_database_schema(league_id: str) -> dict:
                 rank INTEGER,
                 points INTEGER,
                 calculation_date TIMESTAMP DEFAULT NOW(),
-                season INTEGER DEFAULT 2025,
+                season INTEGER,
                 CONSTRAINT unique_team_category UNIQUE(team_id, category, season),
                 FOREIGN KEY (team_id) REFERENCES league_teams(team_id)
             );
@@ -444,6 +444,10 @@ def get_league_player_with_mlb_stats(league_id: str, mlb_player_id: int) -> dict
     This is how users see both historical stats AND league contract info
     """
     try:
+        # Get current season dynamically
+        from core.season_utils import get_current_season
+        current_season = get_current_season()
+        
         db_name = get_league_database_name(league_id)
         
         logger.info(f"Getting combined MLB + league data for player {mlb_player_id} in league {league_id}")
@@ -457,7 +461,7 @@ def get_league_player_with_mlb_stats(league_id: str, mlb_player_id: int) -> dict
         """
         league_response = execute_sql(
             league_query,
-            parameters={'player_id': mlb_player_id},
+            parameters={'player_id': mlb_player_id},  # No 'season' needed here
             database_name=db_name
         )
         
@@ -467,13 +471,13 @@ def get_league_player_with_mlb_stats(league_id: str, mlb_player_id: int) -> dict
                    s.batting_avg, s.home_runs, s.rbi, s.era, s.wins, s.saves, s.stolen_bases,
                    cs.career_batting_avg, cs.career_home_runs, cs.career_rbi
             FROM mlb_players p
-            LEFT JOIN player_stats s ON p.player_id = s.player_id AND s.season = 2025
+            LEFT JOIN player_stats s ON p.player_id = s.player_id AND s.season = :season
             LEFT JOIN player_career_stats cs ON p.player_id = cs.player_id
             WHERE p.player_id = :player_id
         """
         mlb_response = execute_sql(
             mlb_query,
-            parameters={'player_id': mlb_player_id},
+            parameters={'player_id': mlb_player_id, 'season': current_season},
             database_name="postgres"  # Main MLB database
         )
         
@@ -535,11 +539,15 @@ def get_team_roster_with_mlb_stats(league_id: str, team_id: str) -> list:
         # Create IN clause for batch query
         ids_placeholder = ','.join([str(pid) for pid in mlb_player_ids])
         
+        # Get current season dynamically
+        from core.season_utils import get_current_season
+        current_season = get_current_season()
+        
         mlb_query = f"""
             SELECT p.player_id, p.first_name, p.last_name, p.position, p.mlb_team,
                    s.batting_avg, s.home_runs, s.rbi, s.era, s.wins, s.saves
             FROM mlb_players p
-            LEFT JOIN player_stats s ON p.player_id = s.player_id AND s.season = 2025
+            LEFT JOIN player_stats s ON p.player_id = s.player_id AND s.season = {current_season}
             WHERE p.player_id IN ({ids_placeholder})
         """
         mlb_response = execute_sql(mlb_query, database_name="postgres")
@@ -574,6 +582,10 @@ def add_player_to_league(league_id: str, mlb_player_id: int, team_id: str = None
     Add a player to a league (creates league-specific data, references MLB data)
     """
     try:
+        # Get current season dynamically
+        from core.season_utils import get_current_season
+        current_season = get_current_season()
+
         db_name = get_league_database_name(league_id)
         
         logger.info(f"Adding MLB player {mlb_player_id} to league {league_id}")

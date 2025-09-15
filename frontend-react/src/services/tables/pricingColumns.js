@@ -108,7 +108,7 @@ export const createPricePreviewColumns = (params) => {
       title: 'AB', 
       width: 40,
       render: (v, player) => {
-        const stats = player.stats_2025 || player.stats || {};
+        const stats = player.season_stats || player.stats_2025 || player.stats || {};
         return renderDefault(stats.at_bats || stats.ab || 0);
       }
     });
@@ -118,7 +118,7 @@ export const createPricePreviewColumns = (params) => {
       title: 'GS', 
       width: 35,
       render: (v, player) => {
-        const stats = player.stats_2025 || player.stats || {};
+        const stats = player.season_stats || player.stats_2025 || player.stats || {};
         return renderDefault(stats.games_started || stats.gs || 0);
       }
     });
@@ -127,7 +127,7 @@ export const createPricePreviewColumns = (params) => {
       title: 'IP', 
       width: 40,
       render: (v, player) => {
-        const stats = player.stats_2025 || player.stats || {};
+        const stats = player.season_stats || player.stats_2025 || player.stats || {};
         return renderFloat1(stats.innings_pitched || stats.ip || 0);
       }
     });
@@ -170,7 +170,7 @@ export const createPricePreviewColumns = (params) => {
 
     if (['AVG', 'OBP', 'SLG', 'OPS'].includes(catUpper)) {
       render = (v, player) => {
-        const stats = player.stats_2025 || player.stats || {};
+        const stats = player.season_stats || player.stats_2025 || player.stats || {};
         for (const k of possibleKeys) {
           if (stats[k] !== undefined) {
             return renderAvg(stats[k]);
@@ -180,17 +180,17 @@ export const createPricePreviewColumns = (params) => {
       };
     } else if (['ERA'].includes(catUpper)) {
       render = (v, player) => {
-        const stats = player.stats_2025 || player.stats || {};
+        const stats = player.season_stats || player.stats_2025 || player.stats || {};
         return renderFloat2(stats.era || 0);
       };
     } else if (['WHIP'].includes(catUpper)) {
       render = (v, player) => {
-        const stats = player.stats_2025 || player.stats || {};
+        const stats = player.season_stats || player.stats_2025 || player.stats || {};
         return renderFloat3(stats.whip || 0);
       };
     } else {
       render = (v, player) => {
-        const stats = player.stats_2025 || player.stats || {};
+        const stats = player.season_stats || player.stats_2025 || player.stats || {};
         for (const k of possibleKeys) {
           if (stats[k] !== undefined) {
             return renderDefault(stats[k]);

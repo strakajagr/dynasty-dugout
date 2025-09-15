@@ -1,9 +1,12 @@
 """
-League Creation Worker Lambda - UPDATED WITH PLAYER INFO COLUMNS
+League Creation Worker Lambda - COMPLETE WITH STATS POPULATION
 Fixes DECIMAL field extraction, removes hit_by_pitch, ensures rolling stats work
 NOW SAVES: position_requirements, bench_slots, dl_slots, minor_league_slots, etc.
 FIXED: Handles existing tables and missing columns properly
 NEW: Adds player_name, position, mlb_team to league_players table
+ADDED: Creates leagues registry entry for daily stat syncing
+ADDED: Ensures mlb_team column exists in player_game_logs
+RESTORED: Full stats population from postgres to leagues database
 """
 import json
 import logging
@@ -73,7 +76,7 @@ def execute_sql(sql, parameters=None, database_name='postgres'):
         raise
 
 def update_league_status(league_id, status, error_message=None):
-    """Update league creation status"""
+    """Update league creation status in postgres phone book"""
     try:
         execute_sql(
             """UPDATE user_leagues 
@@ -85,20 +88,60 @@ def update_league_status(league_id, status, error_message=None):
                 'league_id': league_id, 
                 'status': status, 
                 'error_message': error_message
-            }
+            },
+            database_name='postgres'
         )
         logger.info(f"Updated league {league_id} status to {status}")
     except Exception as e:
         logger.error(f"Failed to update league status: {e}")
 
-def ensure_shared_tables_exist():
-    """Ensure all required tables exist in the shared 'leagues' database with proper columns"""
+def ensure_postgres_tables_have_correct_columns():
+    """Ensure postgres database tables have all required columns"""
     try:
-        logger.info("📦 Ensuring shared tables exist with correct schema in 'leagues' database...")
+        logger.info("🔧 Checking postgres database schema...")
         
-        # Create all tables with proper schema
+        # Check if mlb_team column exists in player_game_logs
+        column_check = execute_sql(
+            """SELECT column_name FROM information_schema.columns 
+               WHERE table_name = 'player_game_logs' 
+               AND table_schema = 'public' 
+               AND column_name = 'mlb_team'""",
+            database_name='postgres'
+        )
+        
+        if not column_check.get('records'):
+            logger.info("➕ Adding mlb_team column to player_game_logs...")
+            execute_sql(
+                "ALTER TABLE player_game_logs ADD COLUMN mlb_team VARCHAR(3)",
+                database_name='postgres'
+            )
+            logger.info("✅ Added mlb_team column to player_game_logs")
+        else:
+            logger.info("✅ mlb_team column already exists in player_game_logs")
+            
+    except Exception as e:
+        logger.warning(f"Could not check/add postgres columns: {e}")
+
+def ensure_shared_tables_exist():
+    """Ensure all required tables exist in the shared 'leagues' database"""
+    try:
+        logger.info("📦 Ensuring shared tables exist in 'leagues' database...")
+        
+        # CRITICAL: Create the leagues registry table first
+        execute_sql("""
+            CREATE TABLE IF NOT EXISTS leagues (
+                league_id UUID PRIMARY KEY,
+                league_name VARCHAR(255) NOT NULL,
+                league_status VARCHAR(50) DEFAULT 'setup',
+                is_active BOOLEAN DEFAULT true,
+                created_at TIMESTAMP DEFAULT NOW(),
+                updated_at TIMESTAMP DEFAULT NOW()
+            )
+        """, database_name='leagues')
+        logger.info("✅ Leagues registry table ensured")
+        
+        # Create all other tables
         tables = [
-            # Core tables (settings, teams, players, etc.)
             """CREATE TABLE IF NOT EXISTS league_settings (
                 setting_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 league_id UUID NOT NULL,
@@ -128,7 +171,6 @@ def ensure_shared_tables_exist():
                 CONSTRAINT unique_league_slot UNIQUE(league_id, slot_number)
             )""",
             
-            # UPDATED: league_players now includes player info columns
             """CREATE TABLE IF NOT EXISTS league_players (
                 league_player_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 league_id UUID NOT NULL,
@@ -163,7 +205,6 @@ def ensure_shared_tables_exist():
                 notes TEXT
             )""",
             
-            # Current season stats table - NO hit_by_pitch
             """CREATE TABLE IF NOT EXISTS player_season_stats (
                 season_stat_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 league_id UUID NOT NULL,
@@ -204,7 +245,6 @@ def ensure_shared_tables_exist():
                 CONSTRAINT unique_league_player_season UNIQUE(league_id, player_id, season)
             )""",
             
-            # Rolling stats table
             """CREATE TABLE IF NOT EXISTS player_rolling_stats (
                 rolling_stat_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 league_id UUID NOT NULL,
@@ -242,7 +282,6 @@ def ensure_shared_tables_exist():
                 CONSTRAINT unique_league_rolling UNIQUE(league_id, player_id, period, as_of_date)
             )""",
             
-            # Other tables
             """CREATE TABLE IF NOT EXISTS league_invitations (
                 invitation_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                 league_id UUID NOT NULL,
@@ -370,6 +409,28 @@ def ensure_shared_tables_exist():
         
     except Exception as e:
         logger.error(f"Failed to ensure shared tables exist: {e}")
+        return False
+
+def register_league_in_registry(league_id, league_name):
+    """Register the league in the leagues table for daily stat syncing"""
+    try:
+        logger.info(f"[{league_id[:8]}] 📝 Registering league in leagues registry...")
+        
+        execute_sql(
+            """INSERT INTO leagues (league_id, league_name, is_active, league_status) 
+               VALUES (:league_id::uuid, :league_name, true, 'setup')
+               ON CONFLICT (league_id) DO UPDATE SET
+                   league_name = EXCLUDED.league_name,
+                   updated_at = NOW()""",
+            {'league_id': league_id, 'league_name': league_name},
+            database_name='leagues'
+        )
+        
+        logger.info(f"[{league_id[:8]}] ✅ League registered for stat syncing")
+        return True
+        
+    except Exception as e:
+        logger.error(f"[{league_id[:8]}] Failed to register league: {e}")
         return False
 
 def get_value_safe(record, index, value_type='long'):
@@ -662,7 +723,6 @@ def populate_league_stats(league_id, current_season):
         logger.error(f"[{league_id[:8]}] ❌ Failed to populate stats: {e}", exc_info=True)
         return False
 
-
 def lambda_handler(event, context):
     """Main worker function with STATS POPULATION AND FULL ROSTER CONFIGURATION"""
     league_id = event.get('league_id')
@@ -674,7 +734,10 @@ def lambda_handler(event, context):
     logger.info(f"[{league_id[:8]}] ROSTER CONFIG: {league_data.get('position_requirements', 'NOT PROVIDED')}")
     
     try:
-        # Step 0: Ensure leagues database exists
+        # Step 0: Ensure postgres tables have correct columns
+        ensure_postgres_tables_have_correct_columns()
+        
+        # Step 1: Check if 'leagues' database exists
         logger.info("Checking if 'leagues' database exists...")
         try:
             db_check = execute_sql(
@@ -691,15 +754,19 @@ def lambda_handler(event, context):
         except Exception as e:
             logger.error(f"Error checking/creating leagues database: {e}")
         
-        # Step 1: Ensure shared tables exist WITH PROPER COLUMN HANDLING
+        # Step 2: Ensure shared tables exist WITH PROPER COLUMN HANDLING
         if not ensure_shared_tables_exist():
             raise Exception("Failed to ensure shared tables exist")
         
-        # Step 2: Load MLB players WITH FULL INFO for this league
+        # Step 3: CRITICAL - Register league in leagues table for stat syncing
+        if not register_league_in_registry(league_id, league_data.get('league_name', 'Unnamed League')):
+            logger.warning(f"[{league_id[:8]}] Failed to register league but continuing...")
+        
+        # Step 4: Load MLB players WITH FULL INFO for this league
         if not populate_league_players(league_id):
             logger.error(f"[{league_id[:8]}] Failed to populate players, continuing anyway...")
         
-        # Step 3: Insert ALL league settings including ROSTER CONFIGURATION
+        # Step 5: Insert ALL league settings including ROSTER CONFIGURATION
         logger.info(f"[{league_id[:8]}] Saving complete league settings including roster config...")
         
         # CRITICAL: Now includes ALL roster configuration settings
@@ -790,7 +857,7 @@ def lambda_handler(event, context):
         
         logger.info(f"[{league_id[:8]}] ✅ Inserted {settings_inserted} league settings ({settings_failed} failed)")
         
-        # Step 4: Create commissioner's team
+        # Step 6: Create commissioner's team
         execute_sql(
             """INSERT INTO league_teams (league_id, user_id, team_name, is_commissioner, slot_number)
                VALUES (:league_id::uuid, :user_id, 'Team 1', true, 1)
@@ -799,11 +866,11 @@ def lambda_handler(event, context):
             database_name='leagues'
         )
         
-        # Step 5: CRITICAL - POPULATE STATS
+        # Step 7: CRITICAL - POPULATE STATS (RESTORED FROM OLD FILE)
         if not populate_league_stats(league_id, current_season):
             logger.error(f"[{league_id[:8]}] Failed to populate stats but continuing...")
         
-        # Step 6: Mark as completed
+        # Step 8: Mark as completed
         update_league_status(league_id, 'completed')
         logger.info(f"[{league_id[:8]}] ✅ League creation successful with full roster config and stats!")
         

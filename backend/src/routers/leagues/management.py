@@ -414,6 +414,9 @@ async def get_league(
         is_public = safe_get(record[6], 'booleanValue', True)
         invite_code = safe_get(record[7], 'stringValue')
         
+        # Get current season dynamically
+        current_season = get_current_season()
+        
         # Build initial league object with ALL fields including ROSTER CONFIGURATION
         league = {
             'league_id': safe_get(record[0], 'stringValue'),
@@ -425,7 +428,7 @@ async def get_league(
             'role': safe_get(record[4], 'stringValue'),
             'creation_status': creation_status,
             'current_week': "Week 17",
-            'season': CURRENT_SEASON,
+            'season': current_season,  # DYNAMIC!
             'is_public': is_public,
             'invite_code': invite_code if not is_public and safe_get(record[4], 'stringValue') == 'commissioner' else None,
             
@@ -483,8 +486,8 @@ async def get_league(
             'include_minor_leagues': False,
             'transaction_deadline': 'monday',
             'use_waivers': False,
-            'season_start_date': '2025-03-28',
-            'season_end_date': '2025-09-28',
+            'season_start_date': f'{current_season}-03-28',  # DYNAMIC!
+            'season_end_date': f'{current_season}-09-28',    # DYNAMIC!
             'season_started_at': None
         }
         

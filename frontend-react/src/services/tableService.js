@@ -11,6 +11,12 @@ export {
   renderAvg 
 } from './tables/DynastyTable';
 
+// Tile grid components for game logs page
+export {
+  TilePerformanceGrid,
+  TileHitterGrid
+} from './tables/tileGridComponent';
+
 // Dashboard table columns - INCLUDING NEW PITCHER COLUMNS
 export { 
   createHotPlayersColumns, 

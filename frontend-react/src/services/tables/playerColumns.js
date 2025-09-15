@@ -1,4 +1,4 @@
-// src/services/tables/playerColumns.js - PLAYER DATA TABLE COLUMNS WITH NARROW WIDTHS
+// src/services/tables/playerColumns.js - FIXED TO USE BACKEND FIELD NAMES
 
 import { dynastyTheme } from '../colorService';
 import { renderDefault, renderFloat1, renderFloat2, renderFloat3, renderAvg } from './DynastyTable';
@@ -532,107 +532,92 @@ export const createRosterPitcherColumns = (onPlayerDrop, onPlayerMove) => {
 };
 
 // =============================================================================
-// CAREER STATS COLUMNS - NARROW LIKE FREE AGENTS
+// CAREER STATS COLUMNS - FIXED TO USE BACKEND FIELD NAMES
 // =============================================================================
 export const createCareerStatsColumns = (isPitcher = false) => {
   if (isPitcher) {
     return [
-      { key: 'season_year', title: 'Year', width: 35, render: (v) => v || '-' },
-      { key: 'team_abbreviation', title: 'Tm', width: 30, render: (v) => v || '-' },
-      { key: 'games_played', title: 'G', width: 25, render: renderDefault },
-      { key: 'games_started', title: 'GS', width: 30, render: renderDefault },
-      { key: 'innings_pitched', title: 'IP', width: 35, render: (v) => v ? parseFloat(v).toFixed(1) : '0.0' },
-      { key: 'era', title: 'ERA', width: 35, render: (v) => v ? parseFloat(v).toFixed(2) : '0.00' },
-      { key: 'whip', title: 'WHIP', width: 40, render: (v) => v ? parseFloat(v).toFixed(3) : '0.000' },
-      { key: 'wins', title: 'W', width: 25, render: renderDefault },
-      { key: 'losses', title: 'L', width: 25, render: renderDefault },
-      { key: 'saves', title: 'SV', width: 25, render: renderDefault },
-      { key: 'quality_starts', title: 'QS', width: 25, render: renderDefault },
-      { key: 'strikeouts_pitched', title: 'SO', width: 25, render: renderDefault }
+      { key: 'season', title: 'Year', width: 40, render: (v) => v || '-' },
+      { key: 'mlb_team', title: 'Tm', width: 35, render: (v) => v || '-' },
+      { key: 'games_played', title: 'G', width: 28, render: renderDefault },
+      { key: 'games_started', title: 'GS', width: 32, render: renderDefault },
+      { key: 'innings_pitched', title: 'IP', width: 42, render: (v) => parseFloat(v || 0).toFixed(1) },
+      { key: 'era', title: 'ERA', width: 42, render: (v) => v ? parseFloat(v).toFixed(2) : '0.00' },
+      { key: 'whip', title: 'WHIP', width: 48, render: (v) => v ? parseFloat(v).toFixed(3) : '0.000' },
+      { key: 'wins', title: 'W', width: 28, render: renderDefault },
+      { key: 'losses', title: 'L', width: 28, render: renderDefault },
+      { key: 'saves', title: 'SV', width: 32, render: renderDefault },
+      { key: 'quality_starts', title: 'QS', width: 32, render: renderDefault },
+      { key: 'strikeouts_pitched', title: 'SO', width: 32, render: renderDefault }
     ];
   }
 
   return [
-    { key: 'season_year', title: 'Year', width: 35, render: (v) => v || '-' },
-    { key: 'team_abbreviation', title: 'Tm', width: 30, render: (v) => v || '-' },
-    { key: 'games_played', title: 'G', width: 25, render: renderDefault },
-    { key: 'at_bats', title: 'AB', width: 30, render: renderDefault },
-    { key: 'runs', title: 'R', width: 25, render: renderDefault },
-    { key: 'hits', title: 'H', width: 25, render: renderDefault },
-    { key: 'doubles', title: '2B', width: 25, render: renderDefault },
-    { key: 'triples', title: '3B', width: 25, render: renderDefault },
-    { key: 'home_runs', title: 'HR', width: 25, render: renderDefault },
-    { key: 'rbi', title: 'RBI', width: 30, render: renderDefault },
-    { key: 'stolen_bases', title: 'SB', width: 25, render: renderDefault },
-    { key: 'walks', title: 'BB', width: 25, render: renderDefault },
-    { key: 'strikeouts', title: 'K', width: 25, render: renderDefault },
-    { key: 'avg', title: 'AVG', width: 35, render: (v) => v ? parseFloat(v).toFixed(3) : '.000' },
-    { key: 'obp', title: 'OBP', width: 35, render: (v) => v ? parseFloat(v).toFixed(3) : '.000' },
-    { key: 'slg', title: 'SLG', width: 35, render: (v) => v ? parseFloat(v).toFixed(3) : '.000' },
-    { key: 'ops', title: 'OPS', width: 35, render: (v) => v ? parseFloat(v).toFixed(3) : '.000' }
+    { key: 'season', title: 'Year', width: 40, render: (v) => v || '-' },
+    { key: 'mlb_team', title: 'Tm', width: 35, render: (v) => v || '-' },
+    { key: 'games_played', title: 'G', width: 28, render: renderDefault },
+    { key: 'at_bats', title: 'AB', width: 32, render: renderDefault },
+    { key: 'runs', title: 'R', width: 28, render: renderDefault },
+    { key: 'hits', title: 'H', width: 28, render: renderDefault },
+    { key: 'doubles', title: '2B', width: 28, render: renderDefault },
+    { key: 'triples', title: '3B', width: 28, render: renderDefault },
+    { key: 'home_runs', title: 'HR', width: 28, render: renderDefault },
+    { key: 'rbi', title: 'RBI', width: 32, render: renderDefault },
+    { key: 'stolen_bases', title: 'SB', width: 28, render: renderDefault },
+    { key: 'walks', title: 'BB', width: 28, render: renderDefault },
+    { key: 'strikeouts', title: 'K', width: 28, render: renderDefault },
+    { key: 'batting_avg', title: 'AVG', width: 40, render: (v) => v ? parseFloat(v).toFixed(3) : '.000' },
+    { key: 'obp', title: 'OBP', width: 40, render: (v) => v ? parseFloat(v).toFixed(3) : '.000' },
+    { key: 'slg', title: 'SLG', width: 40, render: (v) => v ? parseFloat(v).toFixed(3) : '.000' },
+    { key: 'ops', title: 'OPS', width: 40, render: (v) => v ? parseFloat(v).toFixed(3) : '.000' }
   ];
 };
 
 // =============================================================================
-// GAME LOGS COLUMNS - NARROW LIKE FREE AGENTS
+// GAME LOGS COLUMNS - ULTRA CONDENSED FOR TILES LAYOUT
 // =============================================================================
 export const createGameLogsColumns = (isPitcher = false) => {
   const dateRender = (value) => {
     if (!value) return '-';
     const date = new Date(value);
-    return `${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')}`;
+    return `${(date.getMonth() + 1)}/${date.getDate()}`;  // Shorter format
   };
 
   const oppRender = (value, row) => {
-    const homeAway = row.home_away === 'HOME' ? 'vs' : '@';
-    return value ? `${homeAway} ${value}` : '-';
+    if (!value) return '-';
+    const homeAway = row.home_away === 'H' ? 'v' : '@';  // Shorter prefix
+    return `${homeAway}${value}`;
   };
 
   if (isPitcher) {
     return [
-      { key: 'game_date', title: 'Date', width: 40, render: dateRender },
-      { key: 'opponent_abbreviation', title: 'Opp', width: 45, render: oppRender },
-      { key: 'team_abbreviation', title: 'Tm', width: 30, render: (v) => v || '-' },
-      { key: 'innings_pitched', title: 'IP', width: 30, render: (v) => v ? parseFloat(v).toFixed(1) : '0.0' },
-      { key: 'hits_allowed', title: 'H', width: 25, render: renderDefault },
-      { key: 'earned_runs', title: 'ER', width: 25, render: renderDefault },
-      { key: 'walks_allowed', title: 'BB', width: 25, render: renderDefault },
-      { key: 'strikeouts_pitched', title: 'SO', width: 25, render: renderDefault },
-      {
-        key: 'quality_start',
-        title: 'QS',
-        width: 25,
-        render: (_, row) => {
-          const innings = parseFloat(row.innings_pitched) || 0;
-          const earnedRuns = parseInt(row.earned_runs) || 0;
-          const isQS = innings >= 6.0 && earnedRuns <= 3;
-          return (
-            <span className={isQS ? `${dynastyTheme.classes.text.success} font-bold` : ''}>
-              {isQS ? '1' : '0'}
-            </span>
-          );
-        }
-      },
-      { key: 'pitch_count', title: 'PC', width: 30, render: (v) => v || '-' },
-      { key: 'game_score', title: 'GS', width: 25, render: (v) => v || '-' }
+      { key: 'game_date', title: 'Date', width: 35, render: dateRender },
+      { key: 'opponent', title: 'Opp', width: 40, render: oppRender },
+      { key: 'mlb_team', title: 'Tm', width: 28, render: (v) => v || '-' },
+      { key: 'innings_pitched', title: 'IP', width: 28, render: (v) => parseFloat(v || 0).toFixed(1) },
+      { key: 'hits_allowed', title: 'H', width: 20, render: renderDefault },
+      { key: 'earned_runs', title: 'ER', width: 22, render: renderDefault },
+      { key: 'walks_allowed', title: 'BB', width: 22, render: renderDefault },
+      { key: 'strikeouts_pitched', title: 'K', width: 20, render: renderDefault },
+      { key: 'quality_starts', title: 'QS', width: 22, render: (v) => v ? '1' : '0' },
+      { key: 'was_starter', title: 'GS', width: 22, render: (v) => v ? '1' : '0' }
     ];
   }
 
   return [
-    { key: 'game_date', title: 'Date', width: 40, render: dateRender },
-    { key: 'opponent_abbreviation', title: 'Opp', width: 45, render: oppRender },
-    { key: 'team_abbreviation', title: 'Tm', width: 30, render: (v) => v || '-' },
-    { key: 'position_played', title: 'Pos', width: 30, render: (v) => v || '-' }, // For position eligibility
-    { key: 'at_bats', title: 'AB', width: 25, render: renderDefault },
-    { key: 'runs', title: 'R', width: 25, render: renderDefault },
-    { key: 'hits', title: 'H', width: 25, render: renderDefault },
-    { key: 'doubles', title: '2B', width: 25, render: renderDefault },
-    { key: 'triples', title: '3B', width: 25, render: renderDefault },
-    { key: 'home_runs', title: 'HR', width: 25, render: renderDefault },
-    { key: 'rbi', title: 'RBI', width: 25, render: renderDefault },
-    { key: 'stolen_bases', title: 'SB', width: 25, render: renderDefault },
-    { key: 'caught_stealing', title: 'CS', width: 25, render: renderDefault },
-    { key: 'walks', title: 'BB', width: 25, render: renderDefault },
-    { key: 'strikeouts', title: 'K', width: 25, render: renderDefault }
+    { key: 'game_date', title: 'Date', width: 35, render: dateRender },
+    { key: 'opponent', title: 'Opp', width: 40, render: oppRender },
+    { key: 'mlb_team', title: 'Tm', width: 28, render: (v) => v || '-' },
+    { key: 'at_bats', title: 'AB', width: 22, render: renderDefault },
+    { key: 'runs', title: 'R', width: 18, render: renderDefault },
+    { key: 'hits', title: 'H', width: 18, render: renderDefault },
+    { key: 'doubles', title: '2B', width: 20, render: renderDefault },
+    { key: 'triples', title: '3B', width: 20, render: renderDefault },
+    { key: 'home_runs', title: 'HR', width: 22, render: renderDefault },
+    { key: 'rbi', title: 'RBI', width: 24, render: renderDefault },
+    { key: 'stolen_bases', title: 'SB', width: 20, render: renderDefault },
+    { key: 'caught_stealing', title: 'CS', width: 20, render: renderDefault },
+    { key: 'walks', title: 'BB', width: 20, render: renderDefault },
+    { key: 'strikeouts', title: 'K', width: 18, render: renderDefault }
   ];
 };

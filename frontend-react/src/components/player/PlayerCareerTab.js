@@ -1,8 +1,9 @@
-// src/components/player/PlayerCareerTab.js - FIXED WITH COLOR SERVICE
+// src/components/player/PlayerCareerTab.js - FIXED TO USE BACKEND FIELD NAMES AND CALCULATE WIDTH
 import React from 'react';
 import { Award } from 'lucide-react';
 import { dynastyTheme } from '../../services/colorService';
-import { DynastyTable, createCareerStatsColumns } from '../../services/tableService';
+import { DynastyTable } from '../../services/tableService';
+import { createCareerStatsColumns } from '../../services/tables/playerColumns';
 
 const PlayerCareerTab = ({ historicalStats, careerTotals, isPitcher }) => {
   if (!historicalStats || historicalStats.length === 0) {
@@ -19,10 +20,14 @@ const PlayerCareerTab = ({ historicalStats, careerTotals, isPitcher }) => {
     );
   }
 
-  // Combine historical stats with career totals
+  // Combine historical stats with career totals - USING BACKEND FIELD NAMES
   const tableData = careerTotals 
-    ? [...historicalStats, { ...careerTotals, season_year: 'TOTAL', team_abbreviation: 'Career' }]
+    ? [...historicalStats, { ...careerTotals, season: 'TOTAL', mlb_team: 'Career' }]
     : historicalStats;
+
+  // Get columns and calculate actual width needed
+  const columns = createCareerStatsColumns(isPitcher);
+  const totalTableWidth = columns.reduce((sum, col) => sum + (col.width || 50), 0) + 50; // Add buffer
 
   return (
     <div className={dynastyTheme.components.section}>
@@ -34,9 +39,10 @@ const PlayerCareerTab = ({ historicalStats, careerTotals, isPitcher }) => {
         <DynastyTable
           title={`Career Stats (${historicalStats.length} seasons)`}
           data={tableData}
-          columns={createCareerStatsColumns(isPitcher)}
-          initialSort={{ key: 'season_year', direction: 'desc' }}
+          columns={columns}
+          initialSort={{ key: 'season', direction: 'desc' }}
           maxHeight="500px"
+          minWidth={`${totalTableWidth}px`} // Use calculated width from column definitions
           showTotals={false} // We're adding totals manually
           stickyHeader={true}
         />

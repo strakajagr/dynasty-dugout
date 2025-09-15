@@ -1,8 +1,9 @@
 """
-Dynasty Dugout - League Lifecycle Management Module - SHARED DATABASE VERSION
+Dynasty Dugout - League Lifecycle Management Module - COMPLETE VERSION
 Creates new leagues using an asynchronous pattern to avoid API Gateway timeouts.
-Now includes public/private league support with invite codes
-FIXED: Pydantic model now includes ALL roster configuration fields
+Includes public/private league support with invite codes.
+FIXED: Ensures leagues table exists and is populated for daily stat syncs.
+FIXED: Dynamic season dates instead of hardcoded 2025
 """
 
 import logging
@@ -51,7 +52,7 @@ def generate_invite_code(length=8):
         logger.info(f"Invite code collision detected: {code}, generating new one")
 
 # =============================================================================
-# PYDANTIC MODELS - FIXED WITH ALL ROSTER CONFIGURATION FIELDS + PRIVACY
+# PYDANTIC MODELS - COMPLETE WITH ALL ROSTER FIELDS
 # =============================================================================
 
 class LeagueCreateRequest(BaseModel):
@@ -61,7 +62,7 @@ class LeagueCreateRequest(BaseModel):
     player_pool: str = Field(default='american_national')
     include_minor_leagues: bool = Field(default=False)
     
-    # Privacy Settings - NEW
+    # Privacy Settings
     is_public: bool = Field(default=True, description="Whether league appears in public listings")
     
     # Scoring Configuration
@@ -71,7 +72,7 @@ class LeagueCreateRequest(BaseModel):
         'pitchers': ['W', 'SV', 'ERA', 'WHIP', 'SO', 'QS']
     })
     
-    # ROSTER CONFIGURATION - CRITICAL FOR MYROSTER (ALL FIELDS INCLUDED)
+    # ROSTER CONFIGURATION - ALL FIELDS INCLUDED
     max_players_total: int = Field(default=23, ge=15, le=40)
     min_hitters: int = Field(default=13, ge=8, le=20)
     max_pitchers: int = Field(default=10, ge=5, le=15)
@@ -88,7 +89,6 @@ class LeagueCreateRequest(BaseModel):
         'UTIL': {'slots': 1},
         'P': {'slots': 10}
     })
-    # CRITICAL FIX: These fields were missing from Pydantic model
     bench_slots: int = Field(default=5, ge=0, le=15)
     dl_slots: int = Field(default=0, ge=0, le=5)
     minor_league_slots: int = Field(default=0, ge=0, le=15)
@@ -106,11 +106,11 @@ class LeagueCreateRequest(BaseModel):
     standard_contract_length: int = Field(default=2, ge=1, le=6)
     draft_cap_usage: float = Field(default=0.75, ge=0.5, le=1.0)
     
-    # Advanced Configuration
+    # Advanced Configuration - FIXED: Dynamic season dates
     transaction_deadline: str = Field(default='monday')
     use_waivers: bool = Field(default=False)
-    season_start_date: str = Field(default='2025-03-28')
-    season_end_date: str = Field(default='2025-09-28')
+    season_start_date: str = Field(default_factory=lambda: f'{get_current_season()}-03-28')
+    season_end_date: str = Field(default_factory=lambda: f'{get_current_season()}-09-28')
 
 # =============================================================================
 # ASYNCHRONOUS API ENDPOINTS
@@ -121,15 +121,11 @@ async def create_league_async(league_data: LeagueCreateRequest, current_user: di
     """
     Initiates league creation. Creates an immediate record and triggers a background worker.
     Returns a 202 Accepted response with a URL to poll for status.
-    Now includes public/private support with invite codes for private leagues.
+    Includes public/private support with invite codes for private leagues.
     """
     logger.info("🚀 CREATE LEAGUE ENDPOINT HIT")
     logger.info(f"League data received: {league_data.league_name}")
     logger.info(f"Privacy setting: {'PUBLIC' if league_data.is_public else 'PRIVATE'}")
-    logger.info(f"Roster config: {league_data.position_requirements}")
-    logger.info(f"Bench slots: {league_data.bench_slots}")
-    logger.info(f"DL slots: {league_data.dl_slots}")
-    logger.info(f"Minor slots: {league_data.minor_league_slots}")
     logger.info(f"Current user: {current_user.get('sub')}")
     
     user_id = current_user.get('sub')
@@ -141,9 +137,8 @@ async def create_league_async(league_data: LeagueCreateRequest, current_user: di
     logger.info(f"[{league_id[:8]}] Initiating async league creation for '{league_data.league_name}'")
     if invite_code:
         logger.info(f"[{league_id[:8]}] Private league - Invite code: {invite_code}")
-    logger.info(f"[{league_id[:8]}] Worker Lambda Name: {LEAGUE_WORKER_LAMBDA_NAME}")
 
-    # 1. Create the "phone book" entry with 'pending' status and privacy settings
+    # 1. Create the "phone book" entry with 'pending' status
     try:
         execute_sql(
             """INSERT INTO user_leagues (
@@ -163,39 +158,33 @@ async def create_league_async(league_data: LeagueCreateRequest, current_user: di
             },
             database_name='postgres'
         )
-        # Explicitly set is_active to true for the new membership record
+        
+        # Create membership record
         execute_sql(
             """INSERT INTO league_memberships (league_id, user_id, role, is_active)
                VALUES (:league_id::uuid, :user_id, 'commissioner', true)""",
             {'league_id': league_id, 'user_id': user_id}, 
             database_name='postgres'
         )
-        logger.info(f"[{league_id[:8]}] ✅ Phone book entry created with privacy settings")
+        
+        logger.info(f"[{league_id[:8]}] ✅ Phone book entry created")
         
     except Exception as e:
         logger.error(f"[{league_id[:8]}] Failed to create initial league record: {e}")
         raise HTTPException(status_code=500, detail="Failed to initiate league creation")
 
-    # 2. Trigger the background worker Lambda with COMPLETE roster configuration
+    # 2. Trigger the background worker Lambda
     payload = {
         'league_id': league_id,
         'user_id': user_id,
-        'league_data': league_data.model_dump(),  # Now includes is_public
+        'league_data': league_data.model_dump(),
         'current_season': CURRENT_SEASON,
-        'invite_code': invite_code  # Pass to worker for settings table
+        'invite_code': invite_code
     }
     
-    # Log the complete payload being sent to worker for debugging
-    logger.info(f"[{league_id[:8]}] Worker payload includes:")
-    logger.info(f"  - is_public: {payload['league_data'].get('is_public', True)}")
-    logger.info(f"  - invite_code: {payload.get('invite_code', 'N/A')}")
-    logger.info(f"  - position_requirements: {payload['league_data'].get('position_requirements', 'MISSING')}")
-    logger.info(f"  - bench_slots: {payload['league_data'].get('bench_slots', 'MISSING')}")
-    logger.info(f"  - dl_slots: {payload['league_data'].get('dl_slots', 'MISSING')}")
-    logger.info(f"  - minor_league_slots: {payload['league_data'].get('minor_league_slots', 'MISSING')}")
+    logger.info(f"[{league_id[:8]}] Invoking worker Lambda: {LEAGUE_WORKER_LAMBDA_NAME}")
 
     try:
-        logger.info(f"[{league_id[:8]}] Invoking worker Lambda: {LEAGUE_WORKER_LAMBDA_NAME}")
         response = lambda_client.invoke(
             FunctionName=LEAGUE_WORKER_LAMBDA_NAME,
             InvocationType='Event',  # Asynchronous invocation
@@ -223,13 +212,7 @@ async def create_league_async(league_data: LeagueCreateRequest, current_user: di
         "status": "pending",
         "message": "League creation has started. Poll the status URL for updates.",
         "status_url": status_url,
-        "is_public": league_data.is_public,
-        "roster_config_included": {
-            "position_requirements": bool(league_data.position_requirements),
-            "bench_slots": league_data.bench_slots,
-            "dl_slots": league_data.dl_slots,
-            "minor_league_slots": league_data.minor_league_slots
-        }
+        "is_public": league_data.is_public
     }
     
     # Include invite code in response for private leagues
@@ -257,7 +240,7 @@ async def get_league_creation_status(league_id: str, current_user: dict = Depend
     if not membership.get('records'):
         raise HTTPException(status_code=404, detail="League not found")
 
-    # Get status from the now-guaranteed-to-exist columns
+    # Get status
     result = execute_sql(
         """SELECT creation_status, creation_error_message, is_public, invite_code 
            FROM user_leagues WHERE league_id = :league_id::uuid""",
@@ -272,8 +255,6 @@ async def get_league_creation_status(league_id: str, current_user: dict = Depend
     error_message = record[1].get('stringValue') if len(record) > 1 and not record[1].get('isNull') else None
     is_public = record[2].get('booleanValue', True) if len(record) > 2 else True
     invite_code = record[3].get('stringValue') if len(record) > 3 and not record[3].get('isNull') else None
-    
-    logger.info(f"[{league_id[:8]}] Status: {status}, Public: {is_public}")
     
     response = {
         "league_id": league_id,
@@ -431,7 +412,6 @@ async def join_league_with_code(
             }
         
         # TODO: Add logic to create team and add member
-        # For now, just return the league info for the join flow
         
         return {
             "success": True,
@@ -469,6 +449,17 @@ async def delete_league(league_id: str, current_user: dict = Depends(get_current
         if not membership_result.get('records') or membership_result['records'][0][0].get('stringValue') != 'commissioner':
             raise HTTPException(status_code=403, detail="Only the commissioner can delete this league.")
 
+        # Delete from leagues registry table FIRST
+        logger.info(f"[{league_id[:8]}] Removing from leagues registry...")
+        try:
+            execute_sql(
+                "DELETE FROM leagues WHERE league_id = :league_id::uuid",
+                {'league_id': league_id},
+                database_name='leagues'
+            )
+        except Exception as e:
+            logger.warning(f"[{league_id[:8]}] Could not remove from leagues registry: {e}")
+        
         # Delete all league data from shared 'leagues' database
         logger.info(f"[{league_id[:8]}] Deleting league data from shared database...")
         
@@ -581,6 +572,16 @@ async def cleanup_orphaned_league_data(current_user: dict = Depends(get_current_
         
         total_cleaned = 0
         for league_id in orphaned_leagues:
+            # Also remove from leagues registry if exists
+            try:
+                execute_sql(
+                    "DELETE FROM leagues WHERE league_id = :league_id::uuid",
+                    {'league_id': league_id},
+                    database_name='leagues'
+                )
+            except:
+                pass
+            
             for table in tables_to_clean:
                 try:
                     result = execute_sql(

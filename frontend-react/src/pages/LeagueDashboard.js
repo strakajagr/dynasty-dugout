@@ -1,4 +1,4 @@
-// src/pages/LeagueDashboard.js - COMPLETE WITH ALL FIXES + PLAYER MODAL INTEGRATION
+// src/pages/LeagueDashboard.js - COMPLETE WITH LEAGUE PLAYER SEARCH
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { 
@@ -15,6 +15,9 @@ import apiService from '../services/apiService';
 import { dynastyTheme } from '../services/colorService';
 import { useCommissioner } from '../contexts/CommissionerContext';
 import LeagueSettings from '../components/LeagueSettings';
+
+// Import the league-specific player search
+import PlayerSearchDropdownLeague from '../components/PlayerSearchDropdownLeague';
 
 // Import the modular components
 import LeagueHome from './league-dashboard/LeagueHome';
@@ -57,6 +60,7 @@ const LeagueDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [reloadTrigger, setReloadTrigger] = useState(0);
   
   // Track team being viewed from TeamLinkDropdown navigation
   const [viewingTeamId, setViewingTeamId] = useState(null);
@@ -225,7 +229,7 @@ const LeagueDashboard = () => {
     if (leagueId) {
       loadLeagueData();
     }
-  }, [leagueId]);
+  }, [leagueId, reloadTrigger]);
 
   const loadLeagueData = async () => {
     try {
@@ -371,12 +375,14 @@ const LeagueDashboard = () => {
 
   const handlePlayerAdded = (player) => {
     console.log('Player added to team:', player);
-    loadLeagueData();
+    // Trigger a reload of league data
+    setReloadTrigger(prev => prev + 1);
   };
 
   const handlePlayerDropped = (player) => {
     console.log('Player dropped from team:', player);
-    loadLeagueData();
+    // Trigger a reload of league data
+    setReloadTrigger(prev => prev + 1);
   };
 
   const handleStatusChange = () => {
@@ -508,7 +514,7 @@ const LeagueDashboard = () => {
       case 'league-owners':
         return <LeagueOwners {...sharedProps} />;
       
-      case 'team-home':
+      case 'team-home': {
         const teamToUse = userTeam || {
           team_id: `team-${user?.user_id}`,
           team_name: `${user?.firstName || user?.given_name || 'My'} Team`,
@@ -520,8 +526,11 @@ const LeagueDashboard = () => {
             teamId={teamToUse.team_id}
             leagueId={leagueId}
             currentUser={user}
+            league={league}
+            userTeam={teamToUse}
           />
         );
+      }
 
       case 'free-agents':
         return (
@@ -638,7 +647,7 @@ const LeagueDashboard = () => {
       isCommissionerMode={league?.role === 'commissioner'}
     >
       <div className={dynastyTheme.components.page}>
-        {/* Header with User Profile Picture */}
+        {/* Header with User Profile Picture and Player Search */}
         <header 
           className={`px-6 py-4 border-b ${dynastyTheme.components.card.base} ${dynastyTheme.classes.border.light}`}
         >
@@ -664,6 +673,15 @@ const LeagueDashboard = () => {
                 </div>
               </button>
             </div>
+            
+            {/* PLAYER SEARCH - LEAGUE VERSION WITH PRICING & TRANSACTIONS */}
+            <PlayerSearchDropdownLeague 
+              leagueId={leagueId}
+              league={league}
+              userTeam={userTeam}
+              onPlayerAdded={handlePlayerAdded}
+              onPlayerDropped={handlePlayerDropped}
+            />
             
             <div className="flex items-center space-x-4">
               {/* Warning if there was a non-critical error */}
