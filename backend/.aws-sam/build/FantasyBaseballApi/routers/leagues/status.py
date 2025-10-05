@@ -69,7 +69,7 @@ def verify_commissioner(league_id: str, user_id: str) -> bool:
         )
         
         if result and result.get('records'):
-            count = result['records'][0][0].get('longValue', 0)
+            count = result['records'][0].get('count', 0)
             if count > 0:
                 return True
         
@@ -80,7 +80,7 @@ def verify_commissioner(league_id: str, user_id: str) -> bool:
             database_name='postgres'
         )
         if result and result.get('records'):
-            commissioner_id = result['records'][0][0].get('stringValue')
+            commissioner_id = result['records'][0].get('commissioner_user_id')
             return commissioner_id == user_id
         
         return False
@@ -104,8 +104,8 @@ async def get_league_status(
             database_name='leagues'  # SHARED DATABASE
         )
         current_status = 'setup'
-        if result and result.get('records') and result['records'][0][0]:
-            current_status = result['records'][0][0].get('stringValue', 'setup')
+        if result and result.get('records') and result['records'][0]:
+            current_status = result['records'][0].get('setting_value', 'setup')
         
         # Get additional status info from shared database
         info = execute_sql(
@@ -123,9 +123,9 @@ async def get_league_status(
         
         if info and info.get('records'):
             for record in info['records']:
-                if record[0] and record[1]:
-                    name = record[0].get('stringValue')
-                    value = record[1].get('stringValue')
+                name = record.get('setting_name')
+                value = record.get('setting_value')
+                if name and value:
                     if name == 'draft_type':
                         draft_type = value
                     elif name == 'prices_generated_at':
@@ -143,7 +143,7 @@ async def get_league_status(
         )
         prices_set = False
         if price_check and price_check.get('records'):
-            count = price_check['records'][0][0].get('longValue', 0)
+            count = price_check['records'][0].get('count', 0)
             prices_set = count > 0
         
         # Get valid next statuses
@@ -192,7 +192,7 @@ async def check_price_status(
         player_count = 0
         
         if price_check and price_check.get('records'):
-            player_count = price_check['records'][0][0].get('longValue', 0)
+            player_count = price_check['records'][0].get('count', 0)
             prices_set = player_count > 0
         
         # Get price generation timestamp if available
@@ -204,8 +204,8 @@ async def check_price_status(
         )
         
         prices_generated_at = None
-        if timestamp_result and timestamp_result.get('records') and timestamp_result['records'][0][0]:
-            prices_generated_at = timestamp_result['records'][0][0].get('stringValue')
+        if timestamp_result and timestamp_result.get('records') and timestamp_result['records'][0]:
+            prices_generated_at = timestamp_result['records'][0].get('setting_value')
         
         return {
             "success": True,
@@ -247,8 +247,8 @@ async def update_league_status(
             database_name='leagues'  # SHARED DATABASE
         )
         current_status = 'setup'
-        if result and result.get('records') and result['records'][0][0]:
-            current_status = result['records'][0][0].get('stringValue', 'setup')
+        if result and result.get('records') and result['records'][0]:
+            current_status = result['records'][0].get('setting_value', 'setup')
         
         # Determine if this is a backward transition
         status_order = ['setup', 'pricing', 'draft_ready', 'drafting', 'active', 'completed']
@@ -274,7 +274,7 @@ async def update_league_status(
                 database_name='leagues'  # SHARED DATABASE
             )
             if price_result and price_result.get('records'):
-                count = price_result['records'][0][0].get('longValue', 0)
+                count = price_result['records'][0].get('count', 0)
                 if count == 0:
                     raise HTTPException(status_code=400, detail="Cannot move to draft_ready without setting prices")
         
@@ -437,8 +437,8 @@ async def notify_owners(
         owner_count = 0
         if owners and owners.get('records'):
             for record in owners['records']:
-                if record[0] and not record[0].get('isNull'):
-                    owner_id = record[0].get('stringValue')
+                owner_id = record.get('user_id')
+                if owner_id:
                     message_content = f"[{notification.notification_type.upper()}] {notification.subject}: {notification.message}"
                     
                     # Insert into shared database
@@ -485,8 +485,8 @@ async def log_transaction(
             database_name='leagues'  # SHARED DATABASE
         )
         current_status = 'setup'
-        if result and result.get('records') and result['records'][0][0]:
-            current_status = result['records'][0][0].get('stringValue', 'setup')
+        if result and result.get('records') and result['records'][0]:
+            current_status = result['records'][0].get('setting_value', 'setup')
         
         # Check if transaction type is allowed in current status
         allowed_transactions = TRANSACTION_PERMISSIONS.get(current_status, [])

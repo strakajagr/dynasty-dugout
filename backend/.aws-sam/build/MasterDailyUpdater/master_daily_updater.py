@@ -1096,12 +1096,11 @@ def sync_new_players_to_leagues():
     try:
         logger.info("👥 Syncing new players to leagues")
         
-        # Get all players from postgres
+        # Get ALL players from postgres (active and inactive for dynasty)
         postgres_players_query = """
         SELECT player_id, first_name, last_name, position, mlb_team,
                jersey_number, birthdate, height_inches, weight_pounds, is_active
         FROM mlb_players
-        WHERE is_active = true
         """
         
         postgres_result = execute_sql(postgres_players_query, database_name='postgres')

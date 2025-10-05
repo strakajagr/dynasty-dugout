@@ -10,7 +10,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 # Import sub-modules with RENAMED team_stats
-from . import team_stats, free_agents, global_stats
+from . import team_stats, free_agents, global_stats, all_league_players
 
 # Create routers matching the original structure
 router = APIRouter()
@@ -39,6 +39,12 @@ router.include_router(
 router.include_router(
     free_agents.router,
     tags=["Free Agents"]
+)
+
+# All league players (owned + free agents for search)
+router.include_router(
+    all_league_players.router,
+    tags=["League Players"]
 )
 
 # =============================================================================

@@ -6,17 +6,62 @@ import { dynastyTheme } from '../colorService';
 import { headerTooltips } from './tableHelpers';
 
 // =============================================================================
-// BASIC RENDER HELPERS
+// UTILITY HELPERS
+// =============================================================================
+
+/**
+ * Get nested value from object using dot notation path
+ * @param {Object} obj - Object to extract value from
+ * @param {string} path - Dot notation path (e.g., 'stats.season.batting_avg')
+ * @returns {*} Value at path, or undefined if not found
+ */
+export const getNestedValue = (obj, path) => {
+  if (!obj || !path) return undefined;
+  
+  // Handle direct property access (no dots)
+  if (!path.includes('.')) {
+    return obj[path];
+  }
+  
+  // Handle nested path
+  return path.split('.').reduce((current, key) => {
+    return current?.[key];
+  }, obj);
+};
+
+// =============================================================================
+// BASIC RENDER HELPERS - ALL REMOVE LEADING ZEROS FOR DECIMALS < 1
 // =============================================================================
 export const renderDefault = (v) => v || 0;
-export const renderFloat1 = (v) => (parseFloat(v) || 0).toFixed(1);
-export const renderFloat2 = (v) => (parseFloat(v) || 0).toFixed(2);
-export const renderFloat3 = (v) => (parseFloat(v) || 0).toFixed(3);
+
+export const renderFloat1 = (v) => {
+  const val = parseFloat(v) || 0;
+  if (val === 0) return '.0';
+  const formatted = val.toFixed(1);
+  return val < 1 && val > 0 ? formatted.substring(1) : formatted;
+};
+
+export const renderFloat2 = (v) => {
+  const val = parseFloat(v) || 0;
+  if (val === 0) return '.00';
+  const formatted = val.toFixed(2);
+  return val < 1 && val > 0 ? formatted.substring(1) : formatted;
+};
+
+export const renderFloat3 = (v) => {
+  const val = parseFloat(v) || 0;
+  if (val === 0) return '.000';
+  const formatted = val.toFixed(3);
+  return val < 1 && val > 0 ? formatted.substring(1) : formatted;
+};
+
 export const renderAvg = (v) => {
   const val = parseFloat(v) || 0;
   if (val === 0) return '.000';
   if (val >= 1) return val.toFixed(3);
-  return `.${Math.round(val * 1000).toString().padStart(3, '0')}`;
+  // Remove leading zero for decimals < 1
+  const formatted = val.toFixed(3);
+  return formatted.startsWith('0') ? formatted.substring(1) : formatted;
 };
 
 // =============================================================================
@@ -89,12 +134,9 @@ const HeaderTooltip = ({ title, children, columnKey }) => {
         ref={containerRef}
         onMouseEnter={shouldShowTooltip ? handleMouseEnter : undefined}
         onMouseLeave={shouldShowTooltip ? handleMouseLeave : undefined}
-        className="inline-flex items-center gap-1"
+        className="inline-flex items-center"
       >
         {children}
-        {shouldShowTooltip && (
-          <Info className="w-3 h-3 opacity-30 group-hover:opacity-60 transition-opacity" />
-        )}
       </div>
       
       {showTooltip && shouldShowTooltip && (
@@ -151,7 +193,8 @@ export const DynastyTable = ({
   totalsRow = null,
   enableHorizontalScroll = true,
   enableVerticalScroll = true,
-  twoRowMode = false
+  twoRowMode = false,
+  defaultCellPadding = 'py-1 px-1'
 }) => {
   const [sortConfig, setSortConfig] = useState(initialSort);
   const [columnWidths, setColumnWidths] = useState({});
@@ -194,8 +237,9 @@ export const DynastyTable = ({
         aValue = `${a.last_name || ''} ${a.first_name || ''}`.trim() || a.name || a.player_name;
         bValue = `${b.last_name || ''} ${b.first_name || ''}`.trim() || b.name || b.player_name;
       } else {
-        aValue = a[sortConfig.key];
-        bValue = b[sortConfig.key];
+        // Use getNestedValue to support nested paths like 'season_stats.batting_avg'
+        aValue = getNestedValue(a, sortConfig.key);
+        bValue = getNestedValue(b, sortConfig.key);
       }
 
       // Early returns for performance
@@ -360,7 +404,11 @@ export const DynastyTable = ({
                           {column.title}
                         </span>
                       </HeaderTooltip>
-                      {column.sortable !== false && getSortIcon(column.key)}
+                      {column.sortable !== false && (
+                        <div className="absolute right-0">
+                          {getSortIcon(column.key)}
+                        </div>
+                      )}
                     </div>
                     
                     {/* Resize handle */}
@@ -383,18 +431,24 @@ export const DynastyTable = ({
                 <React.Fragment key={row.league_player_id || row.player_id || row.id || index}>
                   {/* Main player row */}
                   <tr className="dynasty-main-row">
-                    {columns.map((column) => (
+                    {columns.map((column) => {
+                      // Remove ALL padding for player name columns to eliminate spacing
+                      const isPlayerColumn = column.key === 'player_name' || column.key === 'player' || column.allowOverflow;
+                      const cellPadding = column.cellPadding || (isPlayerColumn ? 'p-0' : defaultCellPadding);
+                      
+                      return (
                       <td
                         key={column.key}
-                        className={`py-1 px-1 text-center text-xs border-r border-neutral-700
-                          text-gray-300 ${column.className || ''}`}
+                        className={`${cellPadding} text-center text-xs border-r border-neutral-700
+                          text-gray-300 ${typeof column.className === 'function' ? column.className(row, index) : (column.className || '')}`}
                         style={{ width: memoizedColumnWidths[column.key] }}
                       >
                         <div className={column.allowOverflow ? '' : 'truncate'}>
-                          {column.render ? column.render(row[column.key], row, index) : (row[column.key] ?? '-')}
+                          {column.render ? column.render(getNestedValue(row, column.key), row, index) : (getNestedValue(row, column.key) ?? '-')}
                         </div>
                       </td>
-                    ))}
+                      );
+                    })}
                   </tr>
                   
                   {/* Last 14 days row */}
@@ -403,7 +457,7 @@ export const DynastyTable = ({
                       {columns.map((column) => (
                         <td
                           key={`l14-${column.key}`}
-                          className="py-0.5 px-1 text-center text-xs border-r border-neutral-700 text-gray-400 italic"
+                          className={`${column.cellPaddingL14 || 'py-0.5 px-1'} text-center text-xs border-r border-neutral-700 text-gray-400 italic`}
                           style={{ width: memoizedColumnWidths[column.key] }}
                         >
                           {column.key === 'player_name' ? (
@@ -411,9 +465,9 @@ export const DynastyTable = ({
                               <span className={dynastyTheme.classes.text.primary}>↳</span> Last 14 days
                             </div>
                           ) : column.renderL14 ? (
-                            column.renderL14(row.last_14_days[column.key], row.last_14_days)
+                            column.renderL14(getNestedValue(row.last_14_days, column.key), row.last_14_days)
                           ) : column.isStatColumn ? (
-                            row.last_14_days[column.key] ?? '-'
+                            getNestedValue(row.last_14_days, column.key) ?? '-'
                           ) : (
                             ''
                           )}
@@ -427,18 +481,24 @@ export const DynastyTable = ({
               {showTotals && totalsRow && (
                 <tr className={`font-bold border-t-2 ${dynastyTheme.classes.border.primaryBright} 
                   bg-yellow-400/10 backdrop-blur-sm sticky bottom-0`}>
-                  {columns.map((column) => (
+                  {columns.map((column) => {
+                    // Remove ALL padding for player name columns to eliminate spacing
+                    const isPlayerColumn = column.key === 'player_name' || column.key === 'player' || column.allowOverflow;
+                    const cellPadding = column.cellPadding || (isPlayerColumn ? 'p-0' : defaultCellPadding);
+                    
+                    return (
                     <td
                       key={column.key}
-                      className={`py-1 px-1 text-center text-xs border-r border-yellow-400
+                      className={`${cellPadding} text-center text-xs border-r border-yellow-400
                         ${dynastyTheme.classes.text.primary}`}
                       style={{ width: memoizedColumnWidths[column.key] }}
                     >
                       <div className="truncate">
-                        {column.render ? column.render(totalsRow[column.key], totalsRow) : (totalsRow[column.key] ?? '-')}
+                        {column.render ? column.render(getNestedValue(totalsRow, column.key), totalsRow) : (getNestedValue(totalsRow, column.key) ?? '-')}
                       </div>
                     </td>
-                  ))}
+                    );
+                  })}
                 </tr>
               )}
             </tbody>

@@ -7,6 +7,7 @@ import logging
 from fastapi import APIRouter, HTTPException, Depends
 from core.auth_utils import get_current_user
 from core.database import execute_sql
+from core.cache import cached
 from .models import TeamSalaryInfo, PlayerContract
 from .settings import validate_league_membership, get_salary_settings
 
@@ -18,11 +19,15 @@ router = APIRouter()
 # =============================================================================
 
 @router.get("/{league_id}/salaries/teams")
+@cached(ttl_seconds=600, key_prefix='team_salaries', key_params=['league_id'])
 async def get_all_team_salaries(
     league_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get salary information for all teams in the league"""
+    """Get salary information for all teams in the league
+    
+    CACHED: 10 minute TTL
+    """
     try:
         user_id = current_user.get('sub') or current_user.get('username')
         
@@ -107,13 +112,13 @@ async def get_team_salary_details(
         if not await validate_league_membership(league_id, user_id):
             raise HTTPException(status_code=403, detail="Not a member of this league")
         
-        # Get team info and contracts
+        # Get team info and contracts (using cached player data from league_players)
         contracts_query = """
             SELECT 
                 lp.league_player_id,
                 lp.mlb_player_id,
-                mp.first_name || ' ' || mp.last_name as player_name,
-                mp.position,
+                lp.player_name,
+                lp.position,
                 lt.team_id,
                 lt.team_name,
                 lp.salary,
@@ -121,7 +126,6 @@ async def get_team_salary_details(
                 lp.acquisition_method,
                 lp.acquisition_date
             FROM league_players lp
-            JOIN postgres.mlb_players mp ON lp.mlb_player_id = mp.player_id
             JOIN league_teams lt ON lp.team_id = lt.team_id AND lp.league_id = lt.league_id
             WHERE lp.league_id = :league_id::uuid
                 AND lp.team_id = :team_id::uuid

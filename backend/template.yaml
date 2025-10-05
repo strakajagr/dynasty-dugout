@@ -5,7 +5,7 @@ Description: Dynasty Dugout FastAPI Application with Complete Daily MLB Updates
 Globals:
   Function:
     Timeout: 30
-    MemorySize: 512
+    MemorySize: 2048  # Increased from 512MB -> 2048MB for 4x faster cold starts (more CPU)
     Runtime: python3.12
     Environment:
       Variables:
@@ -81,6 +81,14 @@ Resources:
           Action:
             - lambda:InvokeFunction
           Resource: !GetAtt LeagueCreationWorker.Arn
+        - Effect: Allow
+          Action:
+            - dynamodb:GetItem
+            - dynamodb:PutItem
+            - dynamodb:DeleteItem
+            - dynamodb:Query
+            - dynamodb:Scan
+          Resource: !GetAtt DynastyDugoutCacheTable.Arn
       Events:
         ApiGateway:
           Type: Api
@@ -218,10 +226,37 @@ Resources:
               - logs:PutLogEvents
             Resource: '*'
 
+  # DynamoDB Cache Table (Tier 2 Persistent Cache)
+  DynastyDugoutCacheTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: dynasty-dugout-cache
+      BillingMode: PAY_PER_REQUEST  # Auto-scales, no capacity planning needed
+      AttributeDefinitions:
+        - AttributeName: cache_key
+          AttributeType: S
+      KeySchema:
+        - AttributeName: cache_key
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true  # Automatically delete expired cache entries
+      Tags:
+        - Key: Purpose
+          Value: API Response Caching
+        - Key: Tier
+          Value: Tier2-Persistent
+
 Outputs:
   DynastyDugoutApiUrl:
     Description: "Dynasty Dugout API Gateway endpoint URL"
     Value: !Sub "https://${ApiGatewayApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/"
+  CacheTableName:
+    Description: "DynamoDB Cache Table Name"
+    Value: !Ref DynastyDugoutCacheTable
+  FantasyBaseballApiArn:
+    Description: "ARN of the main Fantasy Baseball API Lambda function"
+    Value: !GetAtt FantasyBaseballApi.Arn
   MasterDailyUpdaterArn:
     Description: "ARN of the Master Daily Updater Lambda function"
     Value: !GetAtt MasterDailyUpdater.Arn

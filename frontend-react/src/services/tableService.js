@@ -55,6 +55,28 @@ export {
   validateRosterCompliance
 } from './tables/rosterColumns';
 
+// Watch list table columns
+export {
+  createWatchListColumns
+} from './tables/watchListColumns';
+
+// My Roster table columns - CANONICAL VERSION
+export {
+  createActiveLineupColumns,
+  createReservePlayersColumns,
+  getStatValue,
+  formatStatValue
+} from './tables/myRosterColumns';
+
+// Team Stats table columns - 3-LINE FORMAT WITH POSITION SLOTS
+export {
+  createTeamStatsActiveLineupColumns,
+  createTeamStatsReserveColumns,
+  transformPositionSlotsToThreeLineFormat,
+  transformPlayersToThreeLineFormat,
+  separateCurrentAndHistorical
+} from './tables/teamStatsColumns';
+
 // Shared utilities and helpers
 export { 
   calculateCareerTotals, 

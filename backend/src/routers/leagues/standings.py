@@ -44,8 +44,8 @@ def calculate_rotisserie_standings(league_id: str, season: int = None) -> Dict[s
             'pitching': ['W', 'SV', 'ERA', 'WHIP', 'SO', 'QS']
         }
         
-        if categories_result.get('records') and categories_result['records'][0][0]:
-            categories_json = categories_result['records'][0][0].get('stringValue')
+        if categories_result.get('records') and categories_result['records'][0]:
+            categories_json = categories_result['records'][0].get('setting_value')
             if categories_json:
                 try:
                     parsed = json.loads(categories_json)
@@ -81,15 +81,15 @@ def calculate_rotisserie_standings(league_id: str, season: int = None) -> Dict[s
         
         if teams_result.get('records'):
             for record in teams_result['records']:
-                team_id = record[0].get('stringValue')
+                team_id = record.get('team_id')
                 if team_id:
                     team_info = {
                         'team_id': team_id,
-                        'team_name': record[1].get('stringValue', 'Unknown Team'),
-                        'manager_name': record[2].get('stringValue'),
-                        'team_logo_url': record[3].get('stringValue'),
-                        'team_colors': record[4].get('stringValue'),
-                        'user_id': record[5].get('stringValue')
+                        'team_name': record.get('team_name', 'Unknown Team'),
+                        'manager_name': record.get('manager_name'),
+                        'team_logo_url': record.get('team_logo_url'),
+                        'team_colors': record.get('team_colors'),
+                        'user_id': record.get('user_id')
                     }
                     teams.append(team_info)
                     team_stats[team_id] = {
@@ -132,7 +132,7 @@ def calculate_rotisserie_standings(league_id: str, season: int = None) -> Dict[s
             player_ids = []
             if roster_result.get('records'):
                 for record in roster_result['records']:
-                    player_id = record[0].get('longValue')
+                    player_id = record.get('mlb_player_id')
                     if player_id:
                         player_ids.append(player_id)
             
@@ -195,14 +195,12 @@ def calculate_rotisserie_standings(league_id: str, season: int = None) -> Dict[s
                     
                     if hitting_result.get('records') and hitting_result['records'][0]:
                         record = hitting_result['records'][0]
-                        for i, cat in enumerate(scoring_categories['hitting']):
-                            if record[i]:
-                                value = record[i].get('doubleValue') or record[i].get('longValue') or record[i].get('stringValue', 0)
-                                try:
-                                    team_stats[team_id]['hitting'][cat] = float(value)
-                                except:
-                                    team_stats[team_id]['hitting'][cat] = 0.0
-                            else:
+                        for cat in scoring_categories['hitting']:
+                            # Access by column alias (e.g., 'R', 'HR', 'AVG') instead of index
+                            value = record.get(cat, 0)
+                            try:
+                                team_stats[team_id]['hitting'][cat] = float(value) if value is not None else 0.0
+                            except:
                                 team_stats[team_id]['hitting'][cat] = 0.0
             
             # Get aggregated pitching stats
@@ -252,14 +250,12 @@ def calculate_rotisserie_standings(league_id: str, season: int = None) -> Dict[s
                     
                     if pitching_result.get('records') and pitching_result['records'][0]:
                         record = pitching_result['records'][0]
-                        for i, cat in enumerate(scoring_categories['pitching']):
-                            if record[i]:
-                                value = record[i].get('doubleValue') or record[i].get('longValue') or record[i].get('stringValue', 0)
-                                try:
-                                    team_stats[team_id]['pitching'][cat] = float(value)
-                                except:
-                                    team_stats[team_id]['pitching'][cat] = 0.0
-                            else:
+                        for cat in scoring_categories['pitching']:
+                            # Access by column alias (e.g., 'W', 'SV', 'ERA') instead of index
+                            value = record.get(cat, 0)
+                            try:
+                                team_stats[team_id]['pitching'][cat] = float(value) if value is not None else 0.0
+                            except:
                                 team_stats[team_id]['pitching'][cat] = 0.0
         
         # 4. Calculate rankings for each category
@@ -366,7 +362,7 @@ async def get_league_standings(league_id: str, current_user: dict = Depends(get_
         if not membership_result.get('records'):
             raise HTTPException(status_code=404, detail="League not found or access denied")
         
-        user_role = membership_result['records'][0][0].get('stringValue')
+        user_role = membership_result['records'][0].get('role')
         
         # Check league type
         league_info_sql = """
@@ -395,8 +391,8 @@ async def get_league_standings(league_id: str, current_user: dict = Depends(get_
         )
         
         scoring_system = 'rotisserie_ytd'  # Default
-        if scoring_result.get('records') and scoring_result['records'][0][0]:
-            scoring_system = scoring_result['records'][0][0].get('stringValue', 'rotisserie_ytd')
+        if scoring_result.get('records') and scoring_result['records'][0]:
+            scoring_system = scoring_result['records'][0].get('setting_value', 'rotisserie_ytd')
         
         # For rotisserie leagues, calculate real standings
         if 'rotisserie' in scoring_system or 'roto' in scoring_system:
@@ -442,12 +438,12 @@ async def get_league_standings(league_id: str, current_user: dict = Depends(get_
                 for i, team_record in enumerate(teams_result['records'], 1):
                     team = {
                         "position": i,
-                        "team_id": team_record[0].get('stringValue'),
-                        "team_name": team_record[1].get('stringValue', "Unnamed Team"),
-                        "manager_name": team_record[2].get('stringValue'),
-                        "team_colors": team_record[3].get('stringValue'),
-                        "team_logo_url": team_record[4].get('stringValue'),
-                        "user_id": team_record[5].get('stringValue'),
+                        "team_id": team_record.get('team_id'),
+                        "team_name": team_record.get('team_name', "Unnamed Team"),
+                        "manager_name": team_record.get('manager_name'),
+                        "team_colors": team_record.get('team_colors'),
+                        "team_logo_url": team_record.get('team_logo_url'),
+                        "user_id": team_record.get('user_id'),
                         "wins": 0,
                         "losses": 0,
                         "ties": 0,

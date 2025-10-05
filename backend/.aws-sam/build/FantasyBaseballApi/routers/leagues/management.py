@@ -22,36 +22,16 @@ logger = logging.getLogger(__name__)
 global_router = APIRouter()  # For routes without a league_id prefix
 router = APIRouter()  # For routes that require a league_id prefix
 
-def get_value_from_field(field, value_type='string', default=None):
-    """Safely extract value from RDS Data API field"""
-    if not field or field.get('isNull'):
-        return default
-    
-    if value_type == 'string':
-        return field.get('stringValue', default)
-    elif value_type == 'long':
-        return field.get('longValue', default or 0)
-    elif value_type == 'decimal':
-        # Handle decimal values that come as stringValue
-        if 'stringValue' in field:
-            try:
-                return float(field['stringValue'])
-            except:
-                return default or 0.0
-        return field.get('doubleValue', default or 0.0)
-    elif value_type == 'boolean':
-        return field.get('booleanValue', default or False)
-    else:
-        return field.get('stringValue', default)
+# Helper function removed - now using dictionary access directly
 
 def parse_league_settings(settings_records):
     """Parse league settings from database records into organized structure"""
     settings = {}
     
     for record in settings_records:
-        setting_name = get_value_from_field(record[0], 'string')
-        setting_value = get_value_from_field(record[1], 'string')
-        setting_type = get_value_from_field(record[2], 'string', 'string')
+        setting_name = record.get('setting_name')
+        setting_value = record.get('setting_value')
+        setting_type = record.get('setting_type', 'string')
         
         if not setting_name or not setting_value:
             continue
@@ -107,7 +87,7 @@ async def get_public_leagues():
         leagues = []
         if response.get('records'):
             for record in response['records']:
-                league_id = get_value_from_field(record[0], 'string')
+                league_id = record.get('league_id')
                 
                 # Get detailed settings from leagues database
                 settings_sql = """
@@ -135,16 +115,16 @@ async def get_public_leagues():
                     salary_cap = parsed.get('salary_cap', salary_cap)
                     commissioner_name = parsed.get('commissioner_name', commissioner_name)
                 
-                current_teams = get_value_from_field(record[5], 'long', 0)
+                current_teams = record.get('current_teams', 0)
                 
                 # Only include leagues with open spots
                 if current_teams < max_teams:
                     leagues.append({
                         'league_id': league_id,
-                        'league_name': get_value_from_field(record[1], 'string'),
-                        'commissioner_user_id': get_value_from_field(record[2], 'string'),
+                        'league_name': record.get('league_name'),
+                        'commissioner_user_id': record.get('commissioner_user_id'),
                         'commissioner_name': commissioner_name,
-                        'created_at': get_value_from_field(record[3], 'string'),
+                        'created_at': record.get('created_at'),
                         'current_teams': current_teams,
                         'max_teams': max_teams,
                         'scoring_system': scoring_system,
@@ -193,8 +173,8 @@ async def join_private_league(
         if not result.get('records'):
             raise HTTPException(status_code=404, detail="Invalid or expired invite code")
         
-        league_id = result['records'][0][0].get('stringValue')
-        league_name = result['records'][0][1].get('stringValue')
+        league_id = result['records'][0].get('league_id')
+        league_name = result['records'][0].get('league_name')
         
         # Check if user is already a member
         membership_check = execute_sql(
@@ -249,18 +229,18 @@ async def get_my_leagues(current_user: dict = Depends(get_current_user)):
         leagues = []
         if response.get('records'):
             for record in response['records']:
-                # Basic league info from phone book
-                league_id = record[0].get('stringValue') if record[0] and not record[0].get('isNull') else None
-                commissioner_user_id = record[4].get('stringValue') if record[4] and not record[4].get('isNull') else None
-                is_public = record[5].get('booleanValue', True) if record[5] and not record[5].get('isNull') else True
-                invite_code = record[6].get('stringValue') if record[6] and not record[6].get('isNull') else None
+                # Basic league info from phone book (now formatted as dict)
+                league_id = record.get('league_id')
+                commissioner_user_id = record.get('commissioner_user_id')
+                is_public = record.get('is_public', True)
+                invite_code = record.get('invite_code')
                 
                 league = {
                     'league_id': league_id,
-                    'league_name': record[1].get('stringValue') if record[1] and not record[1].get('isNull') else None,
+                    'league_name': record.get('league_name'),
                     'database_name': 'leagues',  # Always shared database
-                    'created_at': record[2].get('stringValue') if record[2] and not record[2].get('isNull') else None,
-                    'role': record[3].get('stringValue') if record[3] and not record[3].get('isNull') else 'member',
+                    'created_at': record.get('created_at'),
+                    'role': record.get('role', 'member'),
                     'status': 'active',
                     'current_season': CURRENT_SEASON,
                     'is_commissioner': user_id == commissioner_user_id,
@@ -297,7 +277,7 @@ async def get_my_leagues(current_user: dict = Depends(get_current_user)):
                         database_name='leagues'
                     )
                     if price_check and price_check.get('records'):
-                        count = price_check['records'][0][0].get('longValue', 0)
+                        count = price_check['records'][0].get('count', 0)
                         league['prices_set'] = count > 0
                         
                 except Exception as settings_error:
@@ -332,7 +312,7 @@ async def league_health_check():
         
         player_count = 0
         if response.get('records') and response['records'][0]:
-            player_count = response['records'][0][0].get('longValue', 0)
+            player_count = response['records'][0].get('count', 0)
         
         return {
             "status": "healthy",
@@ -404,33 +384,28 @@ async def get_league(
         
         record = league_response['records'][0]
         
-        def safe_get(record_item, value_type, default=None):
-            if not record_item or record_item.get('isNull'):
-                return default
-            return record_item.get(value_type, default)
-        
-        commissioner_user_id = safe_get(record[2], 'stringValue')
-        creation_status = safe_get(record[5], 'stringValue', 'unknown')
-        is_public = safe_get(record[6], 'booleanValue', True)
-        invite_code = safe_get(record[7], 'stringValue')
+        commissioner_user_id = record.get('commissioner_user_id')
+        creation_status = record.get('creation_status', 'unknown')
+        is_public = record.get('is_public', True)
+        invite_code = record.get('invite_code')
         
         # Get current season dynamically
         current_season = get_current_season()
         
         # Build initial league object with ALL fields including ROSTER CONFIGURATION
         league = {
-            'league_id': safe_get(record[0], 'stringValue'),
-            'league_name': safe_get(record[1], 'stringValue'),
+            'league_id': record.get('league_id'),
+            'league_name': record.get('league_name'),
             'commissioner_user_id': commissioner_user_id,
             'database_name': 'leagues',  # Always shared database
             'status': 'active',
-            'created_at': safe_get(record[3], 'stringValue'),
-            'role': safe_get(record[4], 'stringValue'),
+            'created_at': record.get('created_at'),
+            'role': record.get('role'),
             'creation_status': creation_status,
             'current_week': "Week 17",
             'season': current_season,  # DYNAMIC!
             'is_public': is_public,
-            'invite_code': invite_code if not is_public and safe_get(record[4], 'stringValue') == 'commissioner' else None,
+            'invite_code': invite_code if not is_public and record.get('role') == 'commissioner' else None,
             
             # Basic league info
             'league_status': 'setup',
@@ -538,7 +513,7 @@ async def get_league(
                 database_name='leagues'
             )
             if comm_check and comm_check.get('records'):
-                count = comm_check['records'][0][0].get('longValue', 0)
+                count = comm_check['records'][0].get('count', 0)
                 if count > 0:
                     league['is_commissioner'] = True
             
@@ -551,7 +526,7 @@ async def get_league(
                 database_name='leagues'
             )
             if price_check and price_check.get('records'):
-                count = price_check['records'][0][0].get('longValue', 0)
+                count = price_check['records'][0].get('count', 0)
                 league['prices_set'] = count > 0
             
             # Get current team count
@@ -561,7 +536,7 @@ async def get_league(
                 database_name='leagues'
             )
             if team_count_result and team_count_result.get('records'):
-                league['current_teams'] = team_count_result['records'][0][0].get('longValue', 0)
+                league['current_teams'] = team_count_result['records'][0].get('count', 0)
         
         except Exception as settings_error:
             logger.warning(f"Could not get league settings: {settings_error}")
@@ -649,21 +624,21 @@ async def get_league_teams(
         user_team_found = False
         
         for record in teams_result["records"]:
-            team_user_id = get_value_from_field(record[2], 'string')
+            team_user_id = record.get('user_id')
             is_user_team = user_id == team_user_id
             
             if is_user_team:
                 user_team_found = True
             
             team = {
-                "team_id": get_value_from_field(record[0], 'string'),
-                "team_name": get_value_from_field(record[1], 'string') or "Unnamed Team",
+                "team_id": record.get('team_id'),
+                "team_name": record.get('team_name') or "Unnamed Team",
                 "user_id": team_user_id,
-                "is_commissioner": get_value_from_field(record[3], 'boolean', False),
+                "is_commissioner": record.get('is_commissioner', False),
                 "is_user_team": is_user_team,
-                "manager_name": get_value_from_field(record[4], 'string') or "Unknown Manager",
-                "salary_used": get_value_from_field(record[5], 'decimal', 0.0),
-                "total_players": get_value_from_field(record[6], 'long', 0),
+                "manager_name": record.get('manager_name') or "Unknown Manager",
+                "salary_used": record.get('salary_used', 0.0),
+                "total_players": record.get('total_players', 0),
                 "salary_cap": 800.0  # Default value
             }
             
@@ -733,8 +708,8 @@ async def get_league_settings(
         
         if privacy_result and privacy_result.get('records'):
             record = privacy_result['records'][0]
-            settings['is_public'] = get_value_from_field(record[0], 'boolean', True)
-            settings['invite_code'] = get_value_from_field(record[1], 'string')
+            settings['is_public'] = record.get('is_public', True)
+            settings['invite_code'] = record.get('invite_code')
         
         return {
             "success": True,
@@ -789,7 +764,7 @@ async def update_league_settings(
         
         is_commissioner = False
         if comm_check and comm_check.get('records'):
-            count = comm_check['records'][0][0].get('longValue', 0)
+            count = comm_check['records'][0].get('count', 0)
             is_commissioner = count > 0
         
         # Fallback to original commissioner check
@@ -800,7 +775,7 @@ async def update_league_settings(
                 database_name='postgres'
             )
             if result and result.get('records'):
-                commissioner_id = result['records'][0][0].get('stringValue')
+                commissioner_id = result['records'][0].get('commissioner_user_id')
                 is_commissioner = commissioner_id == user_id
         
         if not is_commissioner:
@@ -903,7 +878,7 @@ async def check_league_stats(
             database_name='leagues'
         )
         
-        if not team_check or not team_check.get("records") or not team_check["records"][0][0]["booleanValue"]:
+        if not team_check or not team_check.get("records") or not team_check["records"][0].get('is_commissioner'):
             raise HTTPException(status_code=403, detail="Only commissioners can check stats")
         
         # Check if stats exist in main database for current season
@@ -915,7 +890,7 @@ async def check_league_stats(
         
         stats_count = 0
         if stats_check and stats_check.get('records'):
-            stats_count = stats_check['records'][0][0].get('longValue', 0)
+            stats_count = stats_check['records'][0].get('count', 0)
         
         # Get some sample players with stats
         sample_sql = f"""
@@ -935,11 +910,11 @@ async def check_league_stats(
         if sample_result and sample_result.get('records'):
             for record in sample_result['records']:
                 sample_players.append({
-                    "name": f"{record[0]['stringValue']} {record[1]['stringValue']}",
-                    "position": record[2]['stringValue'],
-                    "avg": record[3]['doubleValue'] if record[3].get('doubleValue') else 0,
-                    "home_runs": record[4]['longValue'] if record[4].get('longValue') else 0,
-                    "wins": record[7]['longValue'] if record[7].get('longValue') else 0
+                    "name": f"{record.get('first_name', '')} {record.get('last_name', '')}",
+                    "position": record.get('position', ''),
+                    "avg": float(record.get('batting_avg', 0)),
+                    "home_runs": record.get('home_runs', 0),
+                    "wins": record.get('wins', 0)
                 })
         
         return {
@@ -980,12 +955,12 @@ async def get_my_team(
         team = result['records'][0]
         return {
             "success": True,
-            "team_id": team[0].get('stringValue'),
-            "team_name": team[1].get('stringValue'),
-            "team_logo_url": team[2].get('stringValue') if team[2] and not team[2].get('isNull') else '',
-            "team_colors": json.loads(team[3].get('stringValue', '{}')) if team[3] and not team[3].get('isNull') else {},
-            "team_motto": team[4].get('stringValue') if team[4] and not team[4].get('isNull') else '',
-            "manager_name": team[5].get('stringValue') if team[5] and not team[5].get('isNull') else ''
+            "team_id": team.get('team_id'),
+            "team_name": team.get('team_name'),
+            "team_logo_url": team.get('team_logo_url', ''),
+            "team_colors": json.loads(team.get('team_colors', '{}')) if team.get('team_colors') else {},
+            "team_motto": team.get('team_motto', ''),
+            "manager_name": team.get('manager_name', '')
         }
         
     except HTTPException:

@@ -93,16 +93,16 @@ async def get_free_agents(
         basic_players = {}
         
         for record in players_result["records"]:
-            player_id = get_value_from_field(record[0], 'long')
+            player_id = record.get('player_id')
             if player_id:
                 player_ids.append(player_id)
                 basic_players[player_id] = {
                     "mlb_player_id": player_id,
-                    "first_name": get_value_from_field(record[1], 'string'),
-                    "last_name": get_value_from_field(record[2], 'string'),
-                    "position": get_value_from_field(record[3], 'string'),
-                    "mlb_team": get_value_from_field(record[4], 'string') or 'FA',
-                    "jersey_number": get_value_from_field(record[5], 'string')
+                    "first_name": record.get('first_name'),
+                    "last_name": record.get('last_name'),
+                    "position": record.get('position'),
+                    "mlb_team": record.get('mlb_team') or 'FA',
+                    "jersey_number": record.get('jersey_number')
                 }
 
         if not player_ids:
@@ -188,53 +188,53 @@ async def get_free_agents(
         logger.info(f"Querying league data from leagues database")
         league_result = execute_sql(league_query, parameters=league_params, database_name="leagues")
         
-        # STEP 3: Combine results - FIXED field indices
+        # STEP 3: Combine results - FIXED to use column names
         league_data = {}
         if league_result and league_result.get("records"):
             for record in league_result["records"]:
-                player_id = get_value_from_field(record[0], 'long')
+                player_id = record.get('mlb_player_id')
                 if player_id:
                     league_data[player_id] = {
-                        "league_player_id": get_value_from_field(record[1], 'string'),
-                        "salary": get_value_from_field(record[2], 'decimal') or 1.0,
-                        "contract_years": get_value_from_field(record[3], 'long') or 1,
-                        "availability_status": get_value_from_field(record[4], 'string') or 'free_agent',
-                        "team_id": get_value_from_field(record[5], 'string'),
-                        "team_name": get_value_from_field(record[6], 'string'),
-                        # Stats - adjusted indices
-                        "games_played": get_value_from_field(record[7], 'long'),
-                        "at_bats": get_value_from_field(record[8], 'long'),
-                        "hits": get_value_from_field(record[9], 'long'),
-                        "runs": get_value_from_field(record[10], 'long'),
-                        "doubles": get_value_from_field(record[11], 'long'),
-                        "triples": get_value_from_field(record[12], 'long'),
-                        "home_runs": get_value_from_field(record[13], 'long'),
-                        "rbi": get_value_from_field(record[14], 'long'),
-                        "stolen_bases": get_value_from_field(record[15], 'long'),
-                        "caught_stealing": get_value_from_field(record[16], 'long'),
-                        "walks": get_value_from_field(record[17], 'long'),
-                        "strikeouts": get_value_from_field(record[18], 'long'),
-                        "batting_avg": get_value_from_field(record[19], 'decimal'),
-                        "obp": get_value_from_field(record[20], 'decimal'),
-                        "slg": get_value_from_field(record[21], 'decimal'),
-                        "ops": get_value_from_field(record[22], 'decimal'),
-                        # Pitcher stats - adjusted indices
-                        "games_started": get_value_from_field(record[23], 'long'),
-                        "wins": get_value_from_field(record[24], 'long'),
-                        "losses": get_value_from_field(record[25], 'long'),
-                        "saves": get_value_from_field(record[26], 'long'),
-                        "blown_saves": get_value_from_field(record[27], 'long'),
-                        "holds": get_value_from_field(record[28], 'long'),
-                        "quality_starts": get_value_from_field(record[29], 'long'),
-                        "innings_pitched": get_value_from_field(record[30], 'decimal'),
-                        "hits_allowed": get_value_from_field(record[31], 'long'),
-                        "earned_runs": get_value_from_field(record[32], 'long'),
-                        "home_runs_allowed": get_value_from_field(record[33], 'long'),
-                        "walks_allowed": get_value_from_field(record[34], 'long'),
-                        "strikeouts_pitched": get_value_from_field(record[35], 'long'),
-                        "era": get_value_from_field(record[36], 'decimal'),
-                        "whip": get_value_from_field(record[37], 'decimal'),
-                        "price": get_value_from_field(record[38], 'decimal') or 1.0
+                        "league_player_id": record.get('league_player_id'),
+                        "salary": record.get('salary') or 1.0,
+                        "contract_years": record.get('contract_years') or 1,
+                        "availability_status": record.get('availability_status') or 'free_agent',
+                        "team_id": record.get('team_id'),
+                        "team_name": record.get('team_name'),
+                        # Stats
+                        "games_played": record.get('games_played'),
+                        "at_bats": record.get('at_bats'),
+                        "hits": record.get('hits'),
+                        "runs": record.get('runs'),
+                        "doubles": record.get('doubles'),
+                        "triples": record.get('triples'),
+                        "home_runs": record.get('home_runs'),
+                        "rbi": record.get('rbi'),
+                        "stolen_bases": record.get('stolen_bases'),
+                        "caught_stealing": record.get('caught_stealing'),
+                        "walks": record.get('walks'),
+                        "strikeouts": record.get('strikeouts'),
+                        "batting_avg": record.get('batting_avg'),
+                        "obp": record.get('obp'),
+                        "slg": record.get('slg'),
+                        "ops": record.get('ops'),
+                        # Pitcher stats
+                        "games_started": record.get('games_started'),
+                        "wins": record.get('wins'),
+                        "losses": record.get('losses'),
+                        "saves": record.get('saves'),
+                        "blown_saves": record.get('blown_saves'),
+                        "holds": record.get('holds'),
+                        "quality_starts": record.get('quality_starts'),
+                        "innings_pitched": record.get('innings_pitched'),
+                        "hits_allowed": record.get('hits_allowed'),
+                        "earned_runs": record.get('earned_runs'),
+                        "home_runs_allowed": record.get('home_runs_allowed'),
+                        "walks_allowed": record.get('walks_allowed'),
+                        "strikeouts_pitched": record.get('strikeouts_pitched'),
+                        "era": record.get('era'),
+                        "whip": record.get('whip'),
+                        "price": record.get('price') or 1.0
                     }
 
         # STEP 4: Filter based on ownership and build final result
@@ -354,7 +354,7 @@ async def get_free_agents(
         count_result = execute_sql(count_query, parameters=count_params, database_name="postgres")
         total_count = 0
         if count_result and count_result.get("records"):
-            total_count = get_value_from_field(count_result["records"][0][0], 'long')
+            total_count = count_result["records"][0].get("count") or 0
 
         logger.info(f"Returning {len(final_players)} players with total count {total_count}")
 
@@ -452,28 +452,28 @@ async def get_free_agents_with_rolling(
         rolling_data = {}
         if rolling_result and rolling_result.get("records"):
             for record in rolling_result["records"]:
-                player_id = get_value_from_field(record[0], 'long')
+                player_id = record.get('player_id')
                 if player_id:
                     rolling_data[player_id] = {
-                        'games_played': get_value_from_field(record[1], 'long'),
-                        'at_bats': get_value_from_field(record[2], 'long'),
-                        'hits': get_value_from_field(record[3], 'long'),
-                        'home_runs': get_value_from_field(record[4], 'long'),
-                        'rbi': get_value_from_field(record[5], 'long'),
-                        'runs': get_value_from_field(record[6], 'long'),
-                        'stolen_bases': get_value_from_field(record[7], 'long'),
-                        'avg': get_value_from_field(record[8], 'decimal'),
-                        'batting_avg': get_value_from_field(record[8], 'decimal'),
-                        'obp': get_value_from_field(record[9], 'decimal'),
-                        'slg': get_value_from_field(record[10], 'decimal'),
-                        'ops': get_value_from_field(record[11], 'decimal'),
-                        'era': get_value_from_field(record[12], 'decimal'),
-                        'wins': get_value_from_field(record[13], 'long'),
-                        'saves': get_value_from_field(record[14], 'long'),
-                        'innings_pitched': get_value_from_field(record[15], 'decimal'),
-                        'whip': get_value_from_field(record[16], 'decimal'),
-                        'strikeouts_pitched': get_value_from_field(record[17], 'long'),
-                        'strikeouts': get_value_from_field(record[17], 'long')  # Alias
+                        'games_played': record.get('l14_games_played'),
+                        'at_bats': record.get('l14_at_bats'),
+                        'hits': record.get('l14_hits'),
+                        'home_runs': record.get('l14_home_runs'),
+                        'rbi': record.get('l14_rbi'),
+                        'runs': record.get('l14_runs'),
+                        'stolen_bases': record.get('l14_stolen_bases'),
+                        'avg': record.get('l14_batting_avg'),
+                        'batting_avg': record.get('l14_batting_avg'),
+                        'obp': record.get('l14_obp'),
+                        'slg': record.get('l14_slg'),
+                        'ops': record.get('l14_ops'),
+                        'era': record.get('l14_era'),
+                        'wins': record.get('l14_wins'),
+                        'saves': record.get('l14_saves'),
+                        'innings_pitched': record.get('l14_innings_pitched'),
+                        'whip': record.get('l14_whip'),
+                        'strikeouts_pitched': record.get('l14_strikeouts_pitched'),
+                        'strikeouts': record.get('l14_strikeouts_pitched')  # Alias
                     }
 
         # Add rolling stats to each player

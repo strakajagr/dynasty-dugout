@@ -6,7 +6,7 @@ import { DynastyTable, TilePerformanceGrid } from '../../services/tableService';
 import { createGameLogsColumns } from '../../services/tables/playerColumns';
 import { Calendar, TrendingUp, Target, Activity, Zap, Award } from 'lucide-react';
 
-const PlayerGameLogsTab = ({ gameLogs, isPitcher, playerId, leagueId }) => {
+const PlayerGameLogsTab = ({ game_logs, isPitcher, playerId, leagueId }) => {
   const [loading, setLoading] = useState(true);
   const [tileAnalytics, setTileAnalytics] = useState(null);
   const [error, setError] = useState(null);
@@ -33,6 +33,19 @@ const PlayerGameLogsTab = ({ gameLogs, isPitcher, playerId, leagueId }) => {
           : await playersAPI.getHitterTileAnalytics(playerId, leagueId);
         
         console.log('📊 Full Analytics Response:', data);
+        console.log('📊 Response type:', typeof data);
+        console.log('📊 Response keys:', Object.keys(data));
+        
+        // ENHANCED DEBUG: Check all possible data structures
+        console.log('🔍 Checking all possible analytics structures:');
+        console.log('  - data.performance_30d:', data.performance_30d);
+        console.log('  - data.batting_trend:', data.batting_trend);
+        console.log('  - data.power_metrics:', data.power_metrics);
+        console.log('  - data.clutch_performance:', data.clutch_performance);
+        console.log('  - data.streak_indicator:', data.streak_indicator);
+        console.log('  - data.trend_vs_starters:', data.trend_vs_starters);
+        console.log('  - data.quality_start_rate:', data.quality_start_rate);
+        console.log('  - data.command_metrics:', data.command_metrics);
         
         // Debug each tile's data structure
         if (data.performance_30d) {
@@ -42,19 +55,39 @@ const PlayerGameLogsTab = ({ gameLogs, isPitcher, playerId, leagueId }) => {
           console.log('  - Has league benchmark?', !!data.performance_30d.league_benchmark);
           if (data.performance_30d.player) {
             console.log('  - Player keys:', Object.keys(data.performance_30d.player));
+            console.log('  - Player data:', JSON.stringify(data.performance_30d.player, null, 2));
           }
+        } else {
+          console.log('⚠️ No performance_30d in response');
+        }
+        
+        if (data.batting_trend) {
+          console.log('📊 Hitter Tile 1 - batting_trend:', data.batting_trend);
+          console.log('  - Has last_10_days?', !!data.batting_trend.last_10_days);
         }
         
         if (data.trend_vs_starters) {
           console.log('📊 Tile 2 - trend_vs_starters:', data.trend_vs_starters);
         }
         
+        if (data.power_metrics) {
+          console.log('📊 Hitter Tile 2 - power_metrics:', data.power_metrics);
+        }
+        
         if (data.quality_start_rate) {
           console.log('📊 Tile 3 - quality_start_rate:', data.quality_start_rate);
         }
         
+        if (data.clutch_performance) {
+          console.log('📊 Hitter Tile 3 - clutch_performance:', data.clutch_performance);
+        }
+        
         if (data.command_metrics) {
           console.log('📊 Tile 4 - command_metrics:', data.command_metrics);
+        }
+        
+        if (data.streak_indicator) {
+          console.log('📊 Hitter Tile 4 - streak_indicator:', data.streak_indicator);
         }
         
         // Set whatever data we get
@@ -182,7 +215,7 @@ const PlayerGameLogsTab = ({ gameLogs, isPitcher, playerId, leagueId }) => {
                 No performance data available
               </div>
               <div className={`text-xs ${dynastyTheme.classes.text.neutral} mt-2 text-center`}>
-                Raw data: {JSON.stringify(tileAnalytics?.performance_30d).substring(0, 100)}...
+                Raw data: {(JSON.stringify(tileAnalytics?.performance_30d) || 'null').substring(0, 100)}...
               </div>
             </div>
           )}
@@ -472,14 +505,14 @@ const PlayerGameLogsTab = ({ gameLogs, isPitcher, playerId, leagueId }) => {
           <TrendAnalysisTile />
         </div>
 
-        {/* Center - Dynasty Table (responsive) */}
-        <div className="flex-1 min-w-0">
-          <div className={`${dynastyTheme.components.card.base}`}>
+        {/* Center - Dynasty Table (responsive) - SCROLLING FIX */}
+        <div className="flex-1 min-w-0" style={{ height: '560px', display: 'flex', flexDirection: 'column' }}>
+          <div className={`${dynastyTheme.components.card.base} flex-1 overflow-hidden`} style={{ height: '100%' }}>
             <DynastyTable
-              title={`2025 Season (${gameLogs?.length || 0} games)`}
-              data={gameLogs || []}
+              title={`2025 Season (${game_logs?.length || 0} games)`}
+              data={game_logs || []}
               columns={columns}
-              maxHeight="560px"
+              maxHeight="480px"
               minWidth="500px"
               enableHorizontalScroll={true}
               enableVerticalScroll={true}

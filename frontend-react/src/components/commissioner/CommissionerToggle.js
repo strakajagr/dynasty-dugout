@@ -21,7 +21,8 @@ const CommissionerToggle = ({ leagueId, userIsCommissioner = false }) => {
   }, [userIsCommissioner, setIsCommissioner]);
 
   // Don't show if not commissioner or already in commissioner mode
-  if (!isCommissioner || isCommissionerMode) return null;
+  // USE PROP DIRECTLY - context may not be synced on first render
+  if (!userIsCommissioner || isCommissionerMode) return null;
 
   const handleEnterCommissionerMode = async () => {
     try {

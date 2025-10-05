@@ -145,6 +145,8 @@ const Dashboard = () => {
       navigate('/join-league');
     } else if (itemId === 'public-leagues') {
       navigate('/browse-leagues');
+    } else if (itemId === 'watchlist') {
+      navigate('/watch-list');
     } else {
       setActiveSection(itemId);
     }

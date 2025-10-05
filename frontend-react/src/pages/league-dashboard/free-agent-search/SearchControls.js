@@ -715,7 +715,7 @@ const SearchControls = ({ state, leagueId, isCommissionerMode, activeTeamName })
         <button
           onClick={handleSearchSubmit}
           disabled={loading}
-          className={`${dynastyTheme.utils.getComponent('button', 'primary', 'md')} disabled:opacity-50`}
+          className="px-6 py-2 bg-yellow-400 text-black rounded font-medium hover:bg-yellow-500 transition-colors disabled:opacity-50 h-10 flex items-center justify-center"
         >
           Search
         </button>

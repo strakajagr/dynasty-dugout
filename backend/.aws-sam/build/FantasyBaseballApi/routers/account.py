@@ -460,12 +460,12 @@ async def get_welcome_settings(current_user: dict = Depends(get_current_user)):
             return {
                 "success": True,
                 "settings": {
-                    "welcomeMessage": record[0].get("stringValue", ""),
-                    "backgroundType": record[1].get("stringValue", "gradient"),
-                    "backgroundValue": record[2].get("stringValue", ""),
-                    "textColor": record[3].get("stringValue", "#FFFFFF"),
-                    "showStats": record[4].get("booleanValue", True),
-                    "showNews": record[5].get("booleanValue", True)
+                    "welcomeMessage": record.get("welcome_message", ""),
+                    "backgroundType": record.get("background_type", "gradient"),
+                    "backgroundValue": record.get("background_value", ""),
+                    "textColor": record.get("text_color", "#FFFFFF"),
+                    "showStats": record.get("show_stats", True),
+                    "showNews": record.get("show_news", True)
                 }
             }
         else:

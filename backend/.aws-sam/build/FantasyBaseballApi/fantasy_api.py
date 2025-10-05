@@ -20,6 +20,8 @@ logger.info("🚀 Starting FastAPI app initialization")
 
 # --- Early Database Setup ---
 from core.database import execute_sql, test_database_connection
+from core.error_handlers import setup_error_handlers
+from core.cache import warm_common_data, get_cache_info
 
 # Create app FIRST before any imports that might use it
 app = FastAPI(
@@ -44,6 +46,10 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Setup centralized error handling
+setup_error_handlers(app)
+logger.info("✅ Error handlers registered")
 
 # Add this function before the handler
 def fix_doubled_api_path(event):
@@ -70,7 +76,8 @@ async def health_check():
             "mlb": "active",
             "mlb_debug": "active",
             "invitations": "active",
-            "utilities": "active"
+            "utilities": "active",
+            "cache": "active"
         }
     }
 
@@ -87,14 +94,19 @@ try:
     app.include_router(account.router, prefix="/api/account", tags=["Profile"])
     logger.info("✅ Account router registered")
     
-    from routers import leagues
-    app.include_router(leagues.router, prefix="/api/leagues", tags=["Leagues"])
-    logger.info("✅ Leagues router registered")
+    try:
+        from routers import leagues
+        app.include_router(leagues.router, prefix="/api/leagues", tags=["Leagues"])
+        logger.info("✅ Leagues router registered")
+    except Exception as e:
+        logger.error(f"❌ Failed to register Leagues router: {e}", exc_info=True)
+        import traceback
+        traceback.print_exc()
     
-    # UPDATED: Use global_stats for ALL player endpoints
-    from routers.leagues.players import global_stats
-    app.include_router(global_stats.router, prefix="/api/players", tags=["Players"])
-    logger.info("✅ Players router (global_stats) registered - includes game-logs and analytics")
+    # UPDATED: Use canonical player structure for consistent responses
+    from routers import players_canonical
+    app.include_router(players_canonical.router, prefix="/api/players", tags=["Players - Canonical"])
+    logger.info("✅ Players router (canonical) registered - consistent ID structure across all endpoints")
     
     from routers import invitations
     app.include_router(invitations.router, prefix="/api/invitation", tags=["Invitations"])
@@ -104,20 +116,34 @@ try:
     app.include_router(utilities.router, prefix="/api/utilities", tags=["Utilities"])
     logger.info("✅ Utilities router registered")
     
+    # Cache Management router
+    from routers import cache
+    app.include_router(cache.router, prefix="/api", tags=["Cache Management"])
+    logger.info("✅ Cache router registered")
+    
+    # Watch List router
+    from routers import watchlist
+    app.include_router(watchlist.router, prefix="/api/watchlist", tags=["Watch List"])
+    logger.info("✅ Watch List router registered")
+    
     # MLB routers
     try:
         from routers import mlb
         app.include_router(mlb.router, tags=["MLB Data"])
         logger.info("✅ MLB router registered")
     except Exception as e:
-        logger.error(f"❌ Failed to register MLB router: {e}")
+        logger.error(f"❌ Failed to register MLB router: {e}", exc_info=True)
+        import traceback
+        traceback.print_exc()
     
     try:
         from routers import mlb_debug
         app.include_router(mlb_debug.router, tags=["MLB Debug"])
         logger.info("✅ MLB Debug router registered")
     except Exception as e:
-        logger.error(f"❌ Failed to register MLB Debug router: {e}")
+        logger.error(f"❌ Failed to register MLB Debug router: {e}", exc_info=True)
+        import traceback
+        traceback.print_exc()
     
     logger.info("✅ All routers registered successfully")
     logger.info("📊 Player endpoints now include: /complete (with game_logs), /game-logs, /recent-performance, /analytics")
@@ -170,74 +196,86 @@ async def api_root():
             "mlb_debug": "/api/mlb/trending-debug",
             "invitations": "/api/invitation",
             "utilities": "/api/utilities",
+            "cache": "/api/cache (stats, health, warm, invalidate)",
             "debug": "/api/debug/routes"
         }
     }
 
-# Global exception handlers
-@app.exception_handler(HTTPException)
-async def http_exception_handler(request: Request, exc: HTTPException):
-    """Handle HTTP exceptions and return proper JSON response"""
-    logger.error(f"HTTP Exception: {exc.status_code} - {exc.detail}")
-    
-    # Special handling for auth errors to provide helpful messages
-    if exc.status_code == 404:
-        if "User not found" in str(exc.detail) or "User does not exist" in str(exc.detail):
-            return JSONResponse(
-                status_code=404,
-                content={
-                    "detail": "No account found with this email. Please sign up first!",
-                    "error_code": "USER_NOT_FOUND",
-                    "status_code": 404,
-                    "action": "signup_required"
-                }
-            )
-    
-    if exc.status_code == 403:
-        if "verify" in str(exc.detail).lower():
-            return JSONResponse(
-                status_code=403,
-                content={
-                    "detail": exc.detail,
-                    "error_code": "EMAIL_NOT_VERIFIED",
-                    "status_code": 403,
-                    "action": "verify_email"
-                }
-            )
-    
-    if exc.status_code == 401:
-        return JSONResponse(
-            status_code=401,
-            content={
-                "detail": exc.detail or "Invalid credentials",
-                "error_code": "INVALID_CREDENTIALS",
-                "status_code": 401
-            }
-        )
-    
-    # Default handling for other HTTP exceptions
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={
-            "detail": exc.detail,
-            "status_code": exc.status_code
-        }
-    )
+# Old exception handlers - REPLACED by centralized error_handlers.py
+# Kept here temporarily for reference, will be removed after testing
+# @app.exception_handler(HTTPException)
+# async def http_exception_handler(request: Request, exc: HTTPException):
+#     """Handle HTTP exceptions and return proper JSON response"""
+#     logger.error(f"HTTP Exception: {exc.status_code} - {exc.detail}")
+#     
+#     # Special handling for auth errors to provide helpful messages
+#     if exc.status_code == 404:
+#         if "User not found" in str(exc.detail) or "User does not exist" in str(exc.detail):
+#             return JSONResponse(
+#                 status_code=404,
+#                 content={
+#                     "detail": "No account found with this email. Please sign up first!",
+#                     "error_code": "USER_NOT_FOUND",
+#                     "status_code": 404,
+#                     "action": "signup_required"
+#                 }
+#             )
+#     
+#     if exc.status_code == 403:
+#         if "verify" in str(exc.detail).lower():
+#             return JSONResponse(
+#                 status_code=403,
+#                 content={
+#                     "detail": exc.detail,
+#                     "error_code": "EMAIL_NOT_VERIFIED",
+#                     "status_code": 403,
+#                     "action": "verify_email"
+#                 }
+#             )
+#     
+#     if exc.status_code == 401:
+#         return JSONResponse(
+#             status_code=401,
+#             content={
+#                 "detail": exc.detail or "Invalid credentials",
+#                 "error_code": "INVALID_CREDENTIALS",
+#                 "status_code": 401
+#             }
+#         )
+#     
+#     # Default handling for other HTTP exceptions
+#     return JSONResponse(
+#         status_code=exc.status_code,
+#         content={
+#             "detail": exc.detail,
+#             "status_code": exc.status_code
+#         }
+#     )
+# 
+# @app.exception_handler(Exception)
+# async def general_exception_handler(request: Request, exc: Exception):
+#     """Handle general exceptions and return proper JSON response"""
+#     logger.error(f"Unhandled exception: {str(exc)}", exc_info=True)
+#     
+#     # Don't expose internal errors in production
+#     return JSONResponse(
+#         status_code=500,
+#         content={
+#             "detail": "An unexpected error occurred. Please try again later.",
+#             "error_code": "INTERNAL_SERVER_ERROR",
+#             "status_code": 500
+#         }
+#     )
 
-@app.exception_handler(Exception)
-async def general_exception_handler(request: Request, exc: Exception):
-    """Handle general exceptions and return proper JSON response"""
-    logger.error(f"Unhandled exception: {str(exc)}", exc_info=True)
-    
-    # Don't expose internal errors in production
-    return JSONResponse(
-        status_code=500,
-        content={
-            "detail": "An unexpected error occurred. Please try again later.",
-            "error_code": "INTERNAL_SERVER_ERROR",
-            "status_code": 500
-        }
-    )
+# =============================================================================
+# CACHE WARMING - Reduce first-request latency
+# =============================================================================
+try:
+    logger.info("🔥 Warming cache during Lambda initialization...")
+    warm_common_data()
+    logger.info("✅ Cache warming complete")
+except Exception as e:
+    logger.warning(f"⚠️ Cache warming failed (non-critical): {e}")
 
 # Create handler with proper request logging
 _handler = Mangum(app, lifespan="off")

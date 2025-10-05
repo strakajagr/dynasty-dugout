@@ -133,7 +133,7 @@ export const createFreeAgentHitterColumns = (leagueSettings = {}, onPlayerAdd) =
       title: 'Price',
       width: 80,
       render: (_, player) => {
-        const price = player.price || player.salary || 1.0;
+        const price = player.financial?.market_price || 1.0;
         return (
           <span className={`font-mono ${dynastyTheme.classes.text.success}`}>
             ${price.toFixed(0)}
@@ -302,7 +302,7 @@ export const createFreeAgentPitcherColumns = (leagueSettings = {}, onPlayerAdd) 
       title: 'Price',
       width: 80,
       render: (_, player) => {
-        const price = player.price || player.salary || 1.0;
+        const price = player.financial?.market_price || 1.0;
         return (
           <span className={`font-mono ${dynastyTheme.classes.text.success}`}>
             ${price.toFixed(0)}
@@ -532,49 +532,227 @@ export const createRosterPitcherColumns = (onPlayerDrop, onPlayerMove) => {
 };
 
 // =============================================================================
-// CAREER STATS COLUMNS - FIXED TO USE BACKEND FIELD NAMES
+// CAREER STATS COLUMNS - CANONICAL NESTED STRUCTURE (batting/pitching objects)
 // =============================================================================
 export const createCareerStatsColumns = (isPitcher = false) => {
+  // Accessor function for nested pitching data in career stats
+  const pitchingAccessor = (statName) => (row) => {
+    return row?.pitching?.[statName] ?? row?.[statName] ?? 0;
+  };
+
+  // Accessor function for nested batting data in career stats
+  const battingAccessor = (statName) => (row) => {
+    return row?.batting?.[statName] ?? row?.[statName] ?? 0;
+  };
+
   if (isPitcher) {
     return [
       { key: 'season', title: 'Year', width: 40, render: (v) => v || '-' },
       { key: 'mlb_team', title: 'Tm', width: 35, render: (v) => v || '-' },
-      { key: 'games_played', title: 'G', width: 28, render: renderDefault },
-      { key: 'games_started', title: 'GS', width: 32, render: renderDefault },
-      { key: 'innings_pitched', title: 'IP', width: 42, render: (v) => parseFloat(v || 0).toFixed(1) },
-      { key: 'era', title: 'ERA', width: 42, render: (v) => v ? parseFloat(v).toFixed(2) : '0.00' },
-      { key: 'whip', title: 'WHIP', width: 48, render: (v) => v ? parseFloat(v).toFixed(3) : '0.000' },
-      { key: 'wins', title: 'W', width: 28, render: renderDefault },
-      { key: 'losses', title: 'L', width: 28, render: renderDefault },
-      { key: 'saves', title: 'SV', width: 32, render: renderDefault },
-      { key: 'quality_starts', title: 'QS', width: 32, render: renderDefault },
-      { key: 'strikeouts_pitched', title: 'SO', width: 32, render: renderDefault }
+      { 
+        key: 'games_played', 
+        title: 'G', 
+        width: 28, 
+        accessor: pitchingAccessor('games_played'),
+        render: (v, row) => renderDefault(pitchingAccessor('games_played')(row)) 
+      },
+      { 
+        key: 'games_started', 
+        title: 'GS', 
+        width: 32, 
+        accessor: pitchingAccessor('games_started'),
+        render: (v, row) => renderDefault(pitchingAccessor('games_started')(row)) 
+      },
+      { 
+        key: 'innings_pitched', 
+        title: 'IP', 
+        width: 42, 
+        accessor: pitchingAccessor('innings_pitched'),
+        render: (v, row) => parseFloat(pitchingAccessor('innings_pitched')(row)).toFixed(1) 
+      },
+      { 
+        key: 'era', 
+        title: 'ERA', 
+        width: 42, 
+        accessor: pitchingAccessor('era'),
+        render: (v, row) => {
+          const val = pitchingAccessor('era')(row);
+          return val ? parseFloat(val).toFixed(2) : '0.00';
+        } 
+      },
+      { 
+        key: 'whip', 
+        title: 'WHIP', 
+        width: 48, 
+        accessor: pitchingAccessor('whip'),
+        render: (v, row) => {
+          const val = pitchingAccessor('whip')(row);
+          return val ? parseFloat(val).toFixed(3) : '0.000';
+        } 
+      },
+      { 
+        key: 'wins', 
+        title: 'W', 
+        width: 28, 
+        accessor: pitchingAccessor('wins'),
+        render: (v, row) => renderDefault(pitchingAccessor('wins')(row)) 
+      },
+      { 
+        key: 'losses', 
+        title: 'L', 
+        width: 28, 
+        accessor: pitchingAccessor('losses'),
+        render: (v, row) => renderDefault(pitchingAccessor('losses')(row)) 
+      },
+      { 
+        key: 'saves', 
+        title: 'SV', 
+        width: 32, 
+        accessor: pitchingAccessor('saves'),
+        render: (v, row) => renderDefault(pitchingAccessor('saves')(row)) 
+      },
+      { 
+        key: 'quality_starts', 
+        title: 'QS', 
+        width: 32, 
+        accessor: pitchingAccessor('quality_starts'),
+        render: (v, row) => renderDefault(pitchingAccessor('quality_starts')(row)) 
+      },
+      { 
+        key: 'strikeouts_pitched', 
+        title: 'SO', 
+        width: 32, 
+        accessor: pitchingAccessor('strikeouts_pitched'),
+        render: (v, row) => renderDefault(pitchingAccessor('strikeouts_pitched')(row)) 
+      }
     ];
   }
 
   return [
     { key: 'season', title: 'Year', width: 40, render: (v) => v || '-' },
     { key: 'mlb_team', title: 'Tm', width: 35, render: (v) => v || '-' },
-    { key: 'games_played', title: 'G', width: 28, render: renderDefault },
-    { key: 'at_bats', title: 'AB', width: 32, render: renderDefault },
-    { key: 'runs', title: 'R', width: 28, render: renderDefault },
-    { key: 'hits', title: 'H', width: 28, render: renderDefault },
-    { key: 'doubles', title: '2B', width: 28, render: renderDefault },
-    { key: 'triples', title: '3B', width: 28, render: renderDefault },
-    { key: 'home_runs', title: 'HR', width: 28, render: renderDefault },
-    { key: 'rbi', title: 'RBI', width: 32, render: renderDefault },
-    { key: 'stolen_bases', title: 'SB', width: 28, render: renderDefault },
-    { key: 'walks', title: 'BB', width: 28, render: renderDefault },
-    { key: 'strikeouts', title: 'K', width: 28, render: renderDefault },
-    { key: 'batting_avg', title: 'AVG', width: 40, render: (v) => v ? parseFloat(v).toFixed(3) : '.000' },
-    { key: 'obp', title: 'OBP', width: 40, render: (v) => v ? parseFloat(v).toFixed(3) : '.000' },
-    { key: 'slg', title: 'SLG', width: 40, render: (v) => v ? parseFloat(v).toFixed(3) : '.000' },
-    { key: 'ops', title: 'OPS', width: 40, render: (v) => v ? parseFloat(v).toFixed(3) : '.000' }
+    { 
+      key: 'games_played', 
+      title: 'G', 
+      width: 28, 
+      accessor: battingAccessor('games_played'),
+      render: (v, row) => renderDefault(battingAccessor('games_played')(row)) 
+    },
+    { 
+      key: 'at_bats', 
+      title: 'AB', 
+      width: 32, 
+      accessor: battingAccessor('at_bats'),
+      render: (v, row) => renderDefault(battingAccessor('at_bats')(row)) 
+    },
+    { 
+      key: 'runs', 
+      title: 'R', 
+      width: 28, 
+      accessor: battingAccessor('runs'),
+      render: (v, row) => renderDefault(battingAccessor('runs')(row)) 
+    },
+    { 
+      key: 'hits', 
+      title: 'H', 
+      width: 28, 
+      accessor: battingAccessor('hits'),
+      render: (v, row) => renderDefault(battingAccessor('hits')(row)) 
+    },
+    { 
+      key: 'doubles', 
+      title: '2B', 
+      width: 28, 
+      accessor: battingAccessor('doubles'),
+      render: (v, row) => renderDefault(battingAccessor('doubles')(row)) 
+    },
+    { 
+      key: 'triples', 
+      title: '3B', 
+      width: 28, 
+      accessor: battingAccessor('triples'),
+      render: (v, row) => renderDefault(battingAccessor('triples')(row)) 
+    },
+    { 
+      key: 'home_runs', 
+      title: 'HR', 
+      width: 28, 
+      accessor: battingAccessor('home_runs'),
+      render: (v, row) => renderDefault(battingAccessor('home_runs')(row)) 
+    },
+    { 
+      key: 'rbi', 
+      title: 'RBI', 
+      width: 32, 
+      accessor: battingAccessor('rbi'),
+      render: (v, row) => renderDefault(battingAccessor('rbi')(row)) 
+    },
+    { 
+      key: 'stolen_bases', 
+      title: 'SB', 
+      width: 28, 
+      accessor: battingAccessor('stolen_bases'),
+      render: (v, row) => renderDefault(battingAccessor('stolen_bases')(row)) 
+    },
+    { 
+      key: 'walks', 
+      title: 'BB', 
+      width: 28, 
+      accessor: battingAccessor('walks'),
+      render: (v, row) => renderDefault(battingAccessor('walks')(row)) 
+    },
+    { 
+      key: 'strikeouts', 
+      title: 'K', 
+      width: 28, 
+      accessor: battingAccessor('strikeouts'),
+      render: (v, row) => renderDefault(battingAccessor('strikeouts')(row)) 
+    },
+    { 
+      key: 'batting_avg', 
+      title: 'AVG', 
+      width: 40, 
+      accessor: battingAccessor('batting_avg'),
+      render: (v, row) => {
+        const val = battingAccessor('batting_avg')(row);
+        return val ? parseFloat(val).toFixed(3) : '.000';
+      } 
+    },
+    { 
+      key: 'obp', 
+      title: 'OBP', 
+      width: 40, 
+      accessor: battingAccessor('obp'),
+      render: (v, row) => {
+        const val = battingAccessor('obp')(row);
+        return val ? parseFloat(val).toFixed(3) : '.000';
+      } 
+    },
+    { 
+      key: 'slg', 
+      title: 'SLG', 
+      width: 40, 
+      accessor: battingAccessor('slg'),
+      render: (v, row) => {
+        const val = battingAccessor('slg')(row);
+        return val ? parseFloat(val).toFixed(3) : '.000';
+      } 
+    },
+    { 
+      key: 'ops', 
+      title: 'OPS', 
+      width: 40, 
+      accessor: battingAccessor('ops'),
+      render: (v, row) => {
+        const val = battingAccessor('ops')(row);
+        return val ? parseFloat(val).toFixed(3) : '.000';
+      } 
+    }
   ];
 };
 
 // =============================================================================
-// GAME LOGS COLUMNS - ULTRA CONDENSED FOR TILES LAYOUT
+// GAME LOGS COLUMNS - CANONICAL NESTED STRUCTURE (batting/pitching objects)
 // =============================================================================
 export const createGameLogsColumns = (isPitcher = false) => {
   const dateRender = (value) => {
@@ -589,18 +767,70 @@ export const createGameLogsColumns = (isPitcher = false) => {
     return `${homeAway}${value}`;
   };
 
+  // Accessor function for nested pitching data
+  const pitchingAccessor = (statName) => (row) => {
+    return row?.pitching?.[statName] ?? 0;
+  };
+
+  // Accessor function for nested batting data
+  const battingAccessor = (statName) => (row) => {
+    return row?.batting?.[statName] ?? 0;
+  };
+
   if (isPitcher) {
     return [
       { key: 'game_date', title: 'Date', width: 35, render: dateRender },
       { key: 'opponent', title: 'Opp', width: 40, render: oppRender },
       { key: 'mlb_team', title: 'Tm', width: 28, render: (v) => v || '-' },
-      { key: 'innings_pitched', title: 'IP', width: 28, render: (v) => parseFloat(v || 0).toFixed(1) },
-      { key: 'hits_allowed', title: 'H', width: 20, render: renderDefault },
-      { key: 'earned_runs', title: 'ER', width: 22, render: renderDefault },
-      { key: 'walks_allowed', title: 'BB', width: 22, render: renderDefault },
-      { key: 'strikeouts_pitched', title: 'K', width: 20, render: renderDefault },
-      { key: 'quality_starts', title: 'QS', width: 22, render: (v) => v ? '1' : '0' },
-      { key: 'was_starter', title: 'GS', width: 22, render: (v) => v ? '1' : '0' }
+      { 
+        key: 'innings_pitched', 
+        title: 'IP', 
+        width: 28, 
+        accessor: pitchingAccessor('innings_pitched'),
+        render: (v, row) => parseFloat(pitchingAccessor('innings_pitched')(row)).toFixed(1) 
+      },
+      { 
+        key: 'hits_allowed', 
+        title: 'H', 
+        width: 20, 
+        accessor: pitchingAccessor('hits_allowed'),
+        render: (v, row) => renderDefault(pitchingAccessor('hits_allowed')(row)) 
+      },
+      { 
+        key: 'earned_runs', 
+        title: 'ER', 
+        width: 22, 
+        accessor: pitchingAccessor('earned_runs'),
+        render: (v, row) => renderDefault(pitchingAccessor('earned_runs')(row)) 
+      },
+      { 
+        key: 'walks_allowed', 
+        title: 'BB', 
+        width: 22, 
+        accessor: pitchingAccessor('walks_allowed'),
+        render: (v, row) => renderDefault(pitchingAccessor('walks_allowed')(row)) 
+      },
+      { 
+        key: 'strikeouts_pitched', 
+        title: 'K', 
+        width: 20, 
+        accessor: pitchingAccessor('strikeouts_pitched'),
+        render: (v, row) => renderDefault(pitchingAccessor('strikeouts_pitched')(row)) 
+      },
+      { 
+        key: 'quality_starts', 
+        title: 'QS', 
+        width: 22, 
+        accessor: pitchingAccessor('quality_starts'),
+        render: (v, row) => pitchingAccessor('quality_starts')(row) ? '1' : '0' 
+      },
+      { 
+        key: 'was_starter', 
+        title: 'GS', 
+        width: 22, 
+        accessor: pitchingAccessor('was_starter'),
+        render: (v, row) => pitchingAccessor('was_starter')(row) ? '1' : '0' 
+      }
     ];
   }
 
@@ -608,16 +838,82 @@ export const createGameLogsColumns = (isPitcher = false) => {
     { key: 'game_date', title: 'Date', width: 35, render: dateRender },
     { key: 'opponent', title: 'Opp', width: 40, render: oppRender },
     { key: 'mlb_team', title: 'Tm', width: 28, render: (v) => v || '-' },
-    { key: 'at_bats', title: 'AB', width: 22, render: renderDefault },
-    { key: 'runs', title: 'R', width: 18, render: renderDefault },
-    { key: 'hits', title: 'H', width: 18, render: renderDefault },
-    { key: 'doubles', title: '2B', width: 20, render: renderDefault },
-    { key: 'triples', title: '3B', width: 20, render: renderDefault },
-    { key: 'home_runs', title: 'HR', width: 22, render: renderDefault },
-    { key: 'rbi', title: 'RBI', width: 24, render: renderDefault },
-    { key: 'stolen_bases', title: 'SB', width: 20, render: renderDefault },
-    { key: 'caught_stealing', title: 'CS', width: 20, render: renderDefault },
-    { key: 'walks', title: 'BB', width: 20, render: renderDefault },
-    { key: 'strikeouts', title: 'K', width: 18, render: renderDefault }
+    { 
+      key: 'at_bats', 
+      title: 'AB', 
+      width: 22, 
+      accessor: battingAccessor('at_bats'),
+      render: (v, row) => renderDefault(battingAccessor('at_bats')(row)) 
+    },
+    { 
+      key: 'runs', 
+      title: 'R', 
+      width: 18, 
+      accessor: battingAccessor('runs'),
+      render: (v, row) => renderDefault(battingAccessor('runs')(row)) 
+    },
+    { 
+      key: 'hits', 
+      title: 'H', 
+      width: 18, 
+      accessor: battingAccessor('hits'),
+      render: (v, row) => renderDefault(battingAccessor('hits')(row)) 
+    },
+    { 
+      key: 'doubles', 
+      title: '2B', 
+      width: 20, 
+      accessor: battingAccessor('doubles'),
+      render: (v, row) => renderDefault(battingAccessor('doubles')(row)) 
+    },
+    { 
+      key: 'triples', 
+      title: '3B', 
+      width: 20, 
+      accessor: battingAccessor('triples'),
+      render: (v, row) => renderDefault(battingAccessor('triples')(row)) 
+    },
+    { 
+      key: 'home_runs', 
+      title: 'HR', 
+      width: 22, 
+      accessor: battingAccessor('home_runs'),
+      render: (v, row) => renderDefault(battingAccessor('home_runs')(row)) 
+    },
+    { 
+      key: 'rbi', 
+      title: 'RBI', 
+      width: 24, 
+      accessor: battingAccessor('rbi'),
+      render: (v, row) => renderDefault(battingAccessor('rbi')(row)) 
+    },
+    { 
+      key: 'stolen_bases', 
+      title: 'SB', 
+      width: 20, 
+      accessor: battingAccessor('stolen_bases'),
+      render: (v, row) => renderDefault(battingAccessor('stolen_bases')(row)) 
+    },
+    { 
+      key: 'caught_stealing', 
+      title: 'CS', 
+      width: 20, 
+      accessor: battingAccessor('caught_stealing'),
+      render: (v, row) => renderDefault(battingAccessor('caught_stealing')(row)) 
+    },
+    { 
+      key: 'walks', 
+      title: 'BB', 
+      width: 20, 
+      accessor: battingAccessor('walks'),
+      render: (v, row) => renderDefault(battingAccessor('walks')(row)) 
+    },
+    { 
+      key: 'strikeouts', 
+      title: 'K', 
+      width: 18, 
+      accessor: battingAccessor('strikeouts'),
+      render: (v, row) => renderDefault(battingAccessor('strikeouts')(row)) 
+    }
   ];
 };

@@ -32,15 +32,14 @@ const PositionAssignmentDropdown = ({
       };
     }
 
-    const eligiblePositions = player?.eligible_positions || [player?.position];
+    // Extract position from canonical structure
+    const playerPosition = player?.info?.position;
+    const eligiblePositions = player?.eligible_positions || (playerPosition ? [playerPosition] : []);
+    
     const positionRequirements = league.position_requirements;
     const benchSlots = league.bench_slots || 0;
     const dlSlots = league.dl_slots || 0;
     const minorSlots = league.minor_league_slots || 0;
-    
-    console.log('Analyzing positions for player:', player?.first_name, player?.last_name);
-    console.log('Eligible positions:', eligiblePositions);
-    console.log('League position requirements:', positionRequirements);
 
     // Count current active assignments
     const activeAssignments = {};
@@ -127,6 +126,45 @@ const PositionAssignmentDropdown = ({
       activeAssignments 
     };
   }, [league, currentRoster, player]);
+
+  // ========================================
+  // AUTO-SELECT BEST POSITION ON MODAL OPEN
+  // ========================================
+  React.useEffect(() => {
+    if (isVisible && player && !selectedOption) {
+      const { available, benchOption, minorsOption } = analyzePositionAvailability;
+      
+      // Priority order: direct position match > utility positions > bench > minors
+      let bestOption = null;
+      
+      // Find direct position match first
+      const playerPosition = player?.info?.position || player?.position;
+      const directMatch = available.find(opt => opt.position === playerPosition);
+      
+      if (directMatch) {
+        bestOption = directMatch.slotId;
+      } else if (available.length > 0) {
+        // Use first available position (sorted by priority in analysis)
+        bestOption = available[0].slotId;
+      } else if (benchOption?.canAssign) {
+        bestOption = benchOption.slotId;
+      } else if (minorsOption?.canAssign) {
+        bestOption = minorsOption.slotId;
+      }
+      
+      if (bestOption) {
+        setSelectedOption(bestOption);
+        console.log(`Auto-selected position: ${bestOption} for ${player?.info?.first_name} ${player?.info?.last_name}`);
+      }
+    }
+    
+    // Reset selection when modal closes
+    if (!isVisible) {
+      setSelectedOption('');
+      setError('');
+      setShowAlternatives(false);
+    }
+  }, [isVisible, player, analyzePositionAvailability, selectedOption]);
 
   // ========================================
   // EVENT HANDLERS
@@ -236,8 +274,16 @@ const PositionAssignmentDropdown = ({
         
         {isSelected && (
           <div className={`mt-2 pt-2 border-t border-yellow-400/30`}>
-            <div className={`text-xs ${dynastyTheme.classes.text.primary}`}>
-              ✓ Selected - Click "Assign Player" to confirm
+            <div className="flex items-center justify-between">
+              <div className={`text-xs ${dynastyTheme.classes.text.primary} flex items-center gap-1`}>
+                <CheckCircle className="w-3 h-3" />
+                Selected
+              </div>
+              {!isAlternative && (
+                <span className={`text-xs px-2 py-0.5 rounded ${dynastyTheme.classes.bg.success} ${dynastyTheme.classes.text.black} font-medium`}>
+                  Recommended
+                </span>
+              )}
             </div>
           </div>
         )}

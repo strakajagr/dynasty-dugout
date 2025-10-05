@@ -45,7 +45,7 @@ export const PlayerModalProvider = ({ children, leagueId, userTeamId, isCommissi
           // Use existing add player logic from FreeAgentSearch
           const addData = {
             league_player_id: playerData.league_player_id,
-            salary: playerData.price || playerData.salary || 1.0,
+            salary: playerData.financial?.market_price || playerData.financial?.contract_salary || 1.0,
             contract_years: 2,
             roster_status: 'active',
             start_contract: true

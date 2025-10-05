@@ -110,6 +110,7 @@ class RollingStats(BaseModel):
 
 class ThreeLinePlayerStats(BaseModel):
     """Complete player stats for team display (3 lines)"""
+    league_player_id: str
     mlb_player_id: int
     player_name: str
     position: str
@@ -127,12 +128,14 @@ class ThreeLinePlayerStats(BaseModel):
 
 class TwoLinePlayerStats(BaseModel):
     """Player stats for free agent display (2 lines)"""
+    league_player_id: str
     mlb_player_id: int
     player_name: str
     position: str
     mlb_team: str
     availability_status: str
     salary: float
+    contract_years: Optional[int] = None  # For owned players
     # Two lines of stats
     season_stats: SeasonStats
     rolling_14_day: RollingStats

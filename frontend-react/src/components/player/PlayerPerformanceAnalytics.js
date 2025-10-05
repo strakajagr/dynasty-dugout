@@ -189,33 +189,44 @@ const PlayerPerformanceAnalytics = ({ analytics, playerName, isPitcher = false }
     }
   };
 
-  // Get appropriate stats for recent performance
+  // Get appropriate stats for recent performance - CANONICAL NESTED STRUCTURE
   const getRecentStats = () => {
+    const stats = analytics?.hot_cold?.recent_stats || {};
+    
+    // Helper to get stat from canonical nested structure (batting/pitching) OR flat fallback
+    const getStat = (statName) => {
+      if (isPitcher) {
+        // Try pitching.statName first, then flat statName
+        return safeValue(stats.pitching?.[statName]) || safeValue(stats[statName]) || 0;
+      } else {
+        // Try batting.statName first, then flat statName
+        return safeValue(stats.batting?.[statName]) || safeValue(stats[statName]) || 0;
+      }
+    };
+    
     if (isPitcher) {
-      const stats = analytics?.hot_cold?.recent_stats || {};
       return {
-        'games': safeValue(stats.games) || safeValue(stats.games_played) || 0,
-        'innings_pitched': safeValue(stats.innings_pitched) || 0,
-        'era': safeValue(stats.era) || 0,
-        'whip': safeValue(stats.whip) || 0,
-        'strikeouts_pitched': safeValue(stats.strikeouts_pitched) || 0,
-        'walks_allowed': safeValue(stats.walks_allowed) || 0,
-        'wins': safeValue(stats.wins) || 0,
-        'losses': safeValue(stats.losses) || 0,
-        'quality_starts': safeValue(stats.quality_starts) || 0
+        'games': getStat('games') || getStat('games_played') || 0,
+        'innings_pitched': getStat('innings_pitched'),
+        'era': getStat('era'),
+        'whip': getStat('whip'),
+        'strikeouts_pitched': getStat('strikeouts_pitched'),
+        'walks_allowed': getStat('walks_allowed'),
+        'wins': getStat('wins'),
+        'losses': getStat('losses'),
+        'quality_starts': getStat('quality_starts')
       };
     } else {
-      const stats = analytics?.hot_cold?.recent_stats || {};
       return {
-        'games': safeValue(stats.games) || safeValue(stats.games_played) || 0,
-        'batting_avg': safeValue(stats.batting_avg) || 0,
-        'home_runs': safeValue(stats.home_runs) || 0,
-        'rbi': safeValue(stats.rbi) || 0,
-        'runs': safeValue(stats.runs) || 0,
-        'at_bats': safeValue(stats.at_bats) || 0,
-        'hits': safeValue(stats.hits) || 0,
-        'stolen_bases': safeValue(stats.stolen_bases) || 0,
-        'obp': safeValue(stats.obp) || safeValue(stats.on_base_pct) || 0
+        'games': getStat('games') || getStat('games_played') || 0,
+        'batting_avg': getStat('batting_avg'),
+        'home_runs': getStat('home_runs'),
+        'rbi': getStat('rbi'),
+        'runs': getStat('runs'),
+        'at_bats': getStat('at_bats'),
+        'hits': getStat('hits'),
+        'stolen_bases': getStat('stolen_bases'),
+        'obp': getStat('obp') || getStat('on_base_pct') || 0
       };
     }
   };
@@ -298,8 +309,17 @@ const PlayerPerformanceAnalytics = ({ analytics, playerName, isPitcher = false }
                   const zValue = safeValue(zScore);
                   const style = getZScoreStyle(zValue);
                   const leagueAvg = safeValue(analytics.league_averages?.[`${stat}_avg`]);
-                  const playerVal = safeValue(analytics.hot_cold?.recent_stats?.[stat]) || 
-                                   safeValue(analytics.season_stats?.[stat]);
+                  // Extract from canonical nested structure (batting/pitching) OR flat fallback
+                  const getStatValue = (dataObj, statName) => {
+                    if (!dataObj) return 0;
+                    if (isPitcher) {
+                      return safeValue(dataObj.pitching?.[statName]) || safeValue(dataObj[statName]) || 0;
+                    } else {
+                      return safeValue(dataObj.batting?.[statName]) || safeValue(dataObj[statName]) || 0;
+                    }
+                  };
+                  const playerVal = getStatValue(analytics.hot_cold?.recent_stats, stat) || 
+                                   getStatValue(analytics.season_stats, stat);
                   
                   return (
                     <div key={stat} className={`p-3 ${dynastyTheme.classes.bg.darkLighter} rounded-md hover:bg-gray-700/50 transition-colors`}>
@@ -379,8 +399,18 @@ const PlayerPerformanceAnalytics = ({ analytics, playerName, isPitcher = false }
           
           <div className="space-y-4">
             {(isPitcher ? ['era', 'whip', 'wins', 'strikeouts_pitched'] : ['avg', 'ops', 'home_runs', 'rbi']).map(stat => {
-              const current = safeValue(analytics?.hot_cold?.recent_stats?.[stat]) || 
-                            safeValue(analytics?.season_stats?.[stat]);
+              // Helper to extract from canonical nested structure
+              const getStatFromCanonical = (dataObj, statName) => {
+                if (!dataObj) return 0;
+                if (isPitcher) {
+                  return safeValue(dataObj.pitching?.[statName]) || safeValue(dataObj[statName]) || 0;
+                } else {
+                  return safeValue(dataObj.batting?.[statName]) || safeValue(dataObj[statName]) || 0;
+                }
+              };
+              
+              const current = getStatFromCanonical(analytics?.hot_cold?.recent_stats, stat) || 
+                            getStatFromCanonical(analytics?.season_stats, stat);
               const league = safeValue(analytics?.league_averages?.[`${stat}_avg`]);
               const diff = current && league ? ((current - league) / league * 100) : 0;
               // For ERA and WHIP, lower is better, so invert the positive/negative
@@ -497,6 +527,17 @@ const PlayerPerformanceAnalytics = ({ analytics, playerName, isPitcher = false }
         <div className="grid grid-cols-3 gap-4">
           {['7-day', '14-day', '30-day'].map(window => {
             const windowData = window === '14-day' ? analytics?.hot_cold?.recent_stats : null;
+            
+            // Helper to extract from canonical nested structure
+            const getWindowStat = (statName) => {
+              if (!windowData) return 0;
+              if (isPitcher) {
+                return safeValue(windowData.pitching?.[statName]) || safeValue(windowData[statName]) || 0;
+              } else {
+                return safeValue(windowData.batting?.[statName]) || safeValue(windowData[statName]) || 0;
+              }
+            };
+            
             return (
               <div key={window} className={`${dynastyTheme.classes.bg.darkLighter} p-4 rounded-lg`}>
                 <div className={`text-sm ${dynastyTheme.classes.text.primary} mb-2`}>{window}</div>
@@ -506,20 +547,20 @@ const PlayerPerformanceAnalytics = ({ analytics, playerName, isPitcher = false }
                       <div className="flex justify-between">
                         <span className={dynastyTheme.classes.text.neutralLight}>ERA</span>
                         <span className={dynastyTheme.classes.text.white}>
-                          {windowData ? safeValue(windowData.era)?.toFixed(2) || '0.00' : '0.00'}
+                          {windowData ? getWindowStat('era')?.toFixed(2) || '0.00' : '0.00'}
                         </span>
                       </div>
                       <div className="flex justify-between">
                         <span className={dynastyTheme.classes.text.neutralLight}>WHIP</span>
                         <span className={dynastyTheme.classes.text.white}>
-                          {windowData ? safeValue(windowData.whip)?.toFixed(3) || '0.000' : '0.000'}
+                          {windowData ? getWindowStat('whip')?.toFixed(3) || '0.000' : '0.000'}
                         </span>
                       </div>
                       <div className="flex justify-between">
                         <span className={dynastyTheme.classes.text.neutralLight}>K/9</span>
                         <span className={dynastyTheme.classes.text.white}>
-                          {windowData && windowData.innings_pitched > 0 ? 
-                            ((safeValue(windowData.strikeouts_pitched) * 9) / safeValue(windowData.innings_pitched)).toFixed(1) : 
+                          {windowData && getWindowStat('innings_pitched') > 0 ? 
+                            ((getWindowStat('strikeouts_pitched') * 9) / getWindowStat('innings_pitched')).toFixed(1) : 
                             '0.0'}
                         </span>
                       </div>
@@ -529,19 +570,19 @@ const PlayerPerformanceAnalytics = ({ analytics, playerName, isPitcher = false }
                       <div className="flex justify-between">
                         <span className={dynastyTheme.classes.text.neutralLight}>AVG</span>
                         <span className={dynastyTheme.classes.text.white}>
-                          {windowData ? safeValue(windowData.batting_avg)?.toFixed(3) || '.000' : '.000'}
+                          {windowData ? getWindowStat('batting_avg')?.toFixed(3) || '.000' : '.000'}
                         </span>
                       </div>
                       <div className="flex justify-between">
                         <span className={dynastyTheme.classes.text.neutralLight}>OPS</span>
                         <span className={dynastyTheme.classes.text.white}>
-                          {windowData ? ((safeValue(windowData.obp) || 0) + (safeValue(windowData.slg) || 0)).toFixed(3) : '.000'}
+                          {windowData ? ((getWindowStat('obp') || 0) + (getWindowStat('slg') || 0)).toFixed(3) : '.000'}
                         </span>
                       </div>
                       <div className="flex justify-between">
                         <span className={dynastyTheme.classes.text.neutralLight}>HR/G</span>
                         <span className={dynastyTheme.classes.text.white}>
-                          {windowData ? (safeValue(windowData.home_runs) / Math.max(safeValue(windowData.games), 1)).toFixed(2) : '0.00'}
+                          {windowData ? (getWindowStat('home_runs') / Math.max(getWindowStat('games'), 1)).toFixed(2) : '0.00'}
                         </span>
                       </div>
                     </>

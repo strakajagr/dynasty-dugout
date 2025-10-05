@@ -8,6 +8,7 @@ import {
   Shield, Flame, Target, AlertCircle, Zap, ThermometerSun,
   BarChart3, PieChart, Hash, Users, Clock, Percent, Star
 } from 'lucide-react';
+import { WatchListStar } from '../WatchList';
 
 // Import all the child components
 import PlayerOverviewTab from './PlayerOverviewTab';
@@ -184,8 +185,12 @@ const PlayerInfoCard = ({
           {/* Main Info */}
           <div className="flex-1">
             <div className="flex items-center gap-3">
-              <h1 className={`text-xl font-bold ${classes.text.white}`}>
+              <h1 className={`text-xl font-bold ${classes.text.white} flex items-center gap-2`}>
                 {player.first_name} {player.last_name}
+                <WatchListStar 
+                  playerId={player.player_id || player.mlb_player_id} 
+                  size={20}
+                />
               </h1>
               <span className={`${classes.bg.primaryLight} ${classes.text.primary} px-2 py-0.5 rounded text-xs font-medium`}>
                 {player.position}
@@ -420,16 +425,17 @@ const PlayerInfoCard = ({
           
           {activeTab === 'gamelogs' && (
             <PlayerGameLogsTab 
-              gameLogs={game_logs}  // Backend name
+              game_logs={game_logs}  // Backend name
               isPitcher={isPitcher}
               playerId={playerId}   // FIXED - NOW PASSING PLAYERID
+              leagueId={leagueId}   // Pass leagueId for analytics
             />
           )}
           
           {activeTab === 'career' && (
             <PlayerCareerTab 
-              historicalStats={career_stats}  // Backend name
-              careerTotals={career_totals}    // Backend name
+              career_stats={career_stats}  // Backend name
+              career_totals={career_totals}    // Backend name
               isPitcher={isPitcher}
             />
           )}
@@ -445,8 +451,8 @@ const PlayerInfoCard = ({
           {activeTab === 'historical' && (
             <PlayerHistoricalAnalytics 
               analytics={analytics}
-              careerStats={career_stats}  // Backend name
-              careerTotals={career_totals}  // Backend name
+              career_stats={career_stats}  // Backend name
+              career_totals={career_totals}  // Backend name
               playerName={`${player.first_name} ${player.last_name}`}
               isPitcher={isPitcher}
             />

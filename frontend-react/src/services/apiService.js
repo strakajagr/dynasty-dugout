@@ -634,6 +634,27 @@ export const leaguesAPI = {
     return response.data;
   },
 
+  // CANONICAL ROSTER ENDPOINTS
+  getMyRosterCanonical: async (leagueId, options = {}) => {
+    let url = `/api/players/leagues/${leagueId}/my-roster`;
+    
+    if (options.commissioner_action && options.target_team_id) {
+      const params = new URLSearchParams({
+        target_team_id: options.target_team_id,
+        commissioner_action: 'true'
+      });
+      url += `?${params.toString()}`;
+    }
+    
+    const response = await api.get(url);
+    return response.data;
+  },
+
+  getTeamRosterCanonical: async (leagueId, teamId) => {
+    const response = await api.get(`/api/players/leagues/${leagueId}/teams/${teamId}/roster`);
+    return response.data;
+  },
+
   moveRosterPlayer: async (leagueId, moveData) => {
     const response = await api.post(`/api/leagues/${leagueId}/roster-move`, moveData);
     return response.data;
@@ -691,7 +712,56 @@ export const leaguesAPI = {
     return response.data;
   },
 
-  // Free Agents
+  // Player in League Context - CANONICAL (NEW)
+  getPlayerInLeague: async (leagueId, playerId) => {
+    try {
+      const response = await api.get(`/api/players/leagues/${leagueId}/players/${playerId}`);
+      // Response: { success: true, player: { ids: {...}, info: {...}, league_context: {...}, stats: {...} } }
+      return response.data;
+    } catch (error) {
+      console.error('❌ Error fetching player in league:', error);
+      throw error;
+    }
+  },
+
+  // My Roster - CANONICAL (replaces getMyRoster)
+  getMyRosterCanonical: async (leagueId) => {
+    try {
+      const response = await api.get(`/api/players/leagues/${leagueId}/my-roster`);
+      // Response: { success: true, players: [...], count: 25 }
+      // Each player has canonical structure with team attribution stats
+      return response.data;
+    } catch (error) {
+      console.error('❌ Error fetching roster:', error);
+      throw error;
+    }
+  },
+
+  // Free Agents - CANONICAL (NEW)
+  getFreeAgentsCanonical: async (leagueId, filters = {}) => {
+    try {
+      const params = new URLSearchParams();
+      if (filters.position) params.append('position', filters.position);
+      if (filters.search) params.append('search', filters.search);
+      if (filters.limit) params.append('limit', filters.limit);
+      if (filters.offset) params.append('offset', filters.offset);
+      if (filters.sort_by) params.append('sort_by', filters.sort_by);
+      
+      const queryString = params.toString();
+      const url = queryString 
+        ? `/api/players/leagues/${leagueId}/free-agents?${queryString}` 
+        : `/api/players/leagues/${leagueId}/free-agents`;
+      
+      const response = await api.get(url);
+      // Response: { success: true, players: [...], count: 500, pagination: {...} }
+      return response.data;
+    } catch (error) {
+      console.error('❌ Error fetching free agents:', error);
+      throw error;
+    }
+  },
+
+  // Free Agents - LEGACY (will be deprecated)
   getFreeAgents: async (leagueId, filters = {}) => {
     const params = new URLSearchParams();
     if (filters.position) params.append('position', filters.position);
@@ -725,6 +795,31 @@ export const leaguesAPI = {
     
     const response = await api.get(url);
     return response.data;
+  },
+
+  // All League Players (owned + free agents for search/trade)
+  getAllLeaguePlayers: async (leagueId, filters = {}) => {
+    try {
+      const params = new URLSearchParams();
+      if (filters.position) params.append('position', filters.position);
+      if (filters.search) params.append('search', filters.search);
+      if (filters.limit) params.append('limit', filters.limit);
+      if (filters.offset) params.append('offset', filters.offset);
+      if (filters.sort_by) params.append('sort_by', filters.sort_by);
+      
+      const queryString = params.toString();
+      const url = queryString 
+        ? `/api/leagues/${leagueId}/all-league-players?${queryString}` 
+        : `/api/leagues/${leagueId}/all-league-players`;
+      
+      const response = await api.get(url);
+      // Response: { success: true, players: [...], count: N }
+      // Returns ALL players in league (owned + free agents) with full stats
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching all league players:', error);
+      throw error;
+    }
   },
 
   // Player Stats
@@ -914,13 +1009,14 @@ export const playersAPI = {
     return response.data;
   },
 
+  // Global player search (no league context) - CANONICAL
   searchPlayers: async (searchTerm, limit = 12) => {
     try {
       if (!searchTerm || searchTerm.trim().length < 2) {
         return { success: false, players: [], message: 'Search term too short' };
       }
       
-      console.log('Calling /search_global with:', {
+      console.log('🔍 Calling canonical /search with:', {
         q: searchTerm.trim(),
         limit: limit
       });
@@ -932,9 +1028,23 @@ export const playersAPI = {
         }
       });
       
+      // Response format: { success: true, players: [...], count: 10, query: "..." }
+      // Each player has: { ids: { mlb: 12345 }, info: {...}, stats: {...} }
       return response.data;
     } catch (error) {
-      console.error('Full error:', error.response);
+      console.error('❌ Player search error:', error.response);
+      throw error;
+    }
+  },
+
+  // Get player across all user's leagues (multi-league view) - NEW
+  getPlayerAcrossMyLeagues: async (playerId) => {
+    try {
+      const response = await api.get(`/api/players/players/${playerId}/my-leagues`);
+      // Response: { ids: {...}, info: {...}, stats: {...}, league_contexts: [...], summary: {...} }
+      return response.data;
+    } catch (error) {
+      console.error('❌ Multi-league player fetch error:', error);
       throw error;
     }
   },

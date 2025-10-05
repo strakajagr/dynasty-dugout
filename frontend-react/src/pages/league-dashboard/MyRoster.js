@@ -1,13 +1,14 @@
-// src/pages/league-dashboard/MyRoster.js - Fixed Header and Button Issues with Modal Integration
+// src/pages/league-dashboard/MyRoster.js - REFACTORED TO USE DYNASTYTABLE WITH CANONICAL STRUCTURE
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
+import { DynastyTable } from '../../services/tableService';
 import { useNavigate } from 'react-router-dom';
 import { 
   Users, DollarSign, Calendar, Trophy, TrendingUp, 
   AlertCircle, Clock, RefreshCw, UserMinus, ChevronDown,
   ExternalLink, ArrowRightLeft, Eye, Shield, Heart,
-  Activity, ChevronUp, Edit2, Save, X, Check,
-  Zap, UserPlus, ArrowUpDown, Layers, ChevronRight
+  Activity, ChevronUp, Check,
+  Zap, UserPlus, ArrowUpDown, Layers, ChevronRight, Move, Trash2
 } from 'lucide-react';
 import { dynastyTheme } from '../../services/colorService';
 import { leaguesAPI } from '../../services/apiService';
@@ -15,6 +16,19 @@ import { useCommissioner } from '../../contexts/CommissionerContext';
 import { usePlayerModal } from '../../contexts/PlayerModalContext';
 import CommissionerToggle from '../../components/commissioner/CommissionerToggle';
 import CommissionerModeBar from '../../components/commissioner/CommissionerModeBar';
+import { 
+  getStatConfigs, 
+  formatStatValue, 
+  getStatValue,
+  DEFAULT_BATTING_STATS,
+  DEFAULT_PITCHING_STATS 
+} from '../../utils/statMapping';
+import {
+  createTeamStatsActiveLineupColumns,
+  createTeamStatsReserveColumns,
+  transformPositionSlotsToThreeLineFormat,
+  transformPlayersToThreeLineFormat
+} from '../../services/tables/teamStatsColumns';
 
 const MyRoster = ({ leagueId, league, user, onPlayerDropped, initialViewTeamId, initialViewTeamName }) => {
   const navigate = useNavigate();
@@ -41,8 +55,6 @@ const MyRoster = ({ leagueId, league, user, onPlayerDropped, initialViewTeamId, 
   const [error, setError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const [activeTab, setActiveTab] = useState('batters');
-  const [editingPositions, setEditingPositions] = useState(false);
-  const [positionChanges, setPositionChanges] = useState({});
   const [expandedSection, setExpandedSection] = useState('active');
   
   // Team browsing state
@@ -95,6 +107,75 @@ const MyRoster = ({ leagueId, league, user, onPlayerDropped, initialViewTeamId, 
   };
 
   const positions = getLeaguePositions();
+
+  // ========================================
+  // DYNAMIC STAT CATEGORIES FROM LEAGUE
+  // ========================================
+  const statCategories = useMemo(() => {
+    // Use league's configured scoring categories
+    if (league?.scoring_categories) {
+      return {
+        batting: league.scoring_categories.hitting || league.scoring_categories.batting || DEFAULT_BATTING_STATS,
+        pitching: league.scoring_categories.pitching || league.scoring_categories.pitchers || DEFAULT_PITCHING_STATS
+      };
+    }
+    
+    // Fallback to defaults
+    return {
+      batting: DEFAULT_BATTING_STATS,
+      pitching: DEFAULT_PITCHING_STATS
+    };
+  }, [league]);
+
+  // Get stat configs for current tab
+  const currentStatConfigs = useMemo(() => {
+    const statLabels = activeTab === 'batters' ? statCategories.batting : statCategories.pitching;
+    const isPitcher = activeTab === 'pitchers';
+    return getStatConfigs(statLabels, isPitcher);
+  }, [activeTab, statCategories]);
+
+  // ========================================
+  // PARSE CANONICAL STRUCTURE FROM BACKEND
+  // ========================================
+  const parseCanonicalPlayer = (canonicalPlayer) => {
+    // Transform canonical structure - PRESERVE NESTED OBJECTS for column renderers
+    return {
+      // IDs - flat for compatibility
+      mlb_player_id: canonicalPlayer.ids?.mlb,
+      league_player_id: canonicalPlayer.ids?.league_player,
+      
+      // Info - KEEP NESTED for column renderers + add flat properties
+      info: canonicalPlayer.info || {},  // ✅ PRESERVE NESTED
+      player_name: canonicalPlayer.info?.full_name,
+      position: canonicalPlayer.info?.position,
+      mlb_team: canonicalPlayer.info?.mlb_team,
+      
+      // Stats - KEEP NESTED for column renderers
+      stats: {
+        season: canonicalPlayer.stats?.season || {},
+        rolling_14_day: canonicalPlayer.stats?.rolling_14_day || {},
+        team_attribution: canonicalPlayer.stats?.team_attribution || {}
+      },
+      season_stats: canonicalPlayer.stats?.season || {},
+      rolling_14_day: canonicalPlayer.stats?.rolling_14_day || {},
+      accrued_stats: canonicalPlayer.stats?.team_attribution || {},
+      
+      // Roster info (from API's roster key, not league_context)
+      roster_status: canonicalPlayer.roster?.status || canonicalPlayer.league_context?.roster_status || 'active',
+      assigned_position: canonicalPlayer.roster?.position || canonicalPlayer.league_context?.assigned_position,
+      roster_position: canonicalPlayer.roster?.position || canonicalPlayer.league_context?.roster_position,
+      acquisition_date: canonicalPlayer.roster?.acquisition_date || canonicalPlayer.league_context?.acquisition_date,
+      
+      // Financial info - KEEP NESTED for column renderers + add flat properties
+      financial: canonicalPlayer.financial || {},  // ✅ PRESERVE NESTED
+      salary: canonicalPlayer.financial?.contract_salary || canonicalPlayer.league_context?.salary,
+      contract_years: canonicalPlayer.financial?.contract_years || canonicalPlayer.league_context?.contract_years,
+      price: canonicalPlayer.financial?.market_price || 0,
+      
+      // Other
+      acquisition_method: canonicalPlayer.league_context?.acquisition_method
+    };
+  };
 
   // ========================================
   // HELPER FUNCTIONS
@@ -161,87 +242,82 @@ const MyRoster = ({ leagueId, league, user, onPlayerDropped, initialViewTeamId, 
     loadRoster(newTeamId);
   };
 
-  const canFillPosition = (player, position) => {
-    const eligiblePositions = player.eligible_positions || [player.position];
-    
-    if (eligiblePositions.includes(position)) return true;
-    
-    if (position === 'MI' && (eligiblePositions.includes('2B') || eligiblePositions.includes('SS'))) return true;
-    if (position === 'CI' && (eligiblePositions.includes('1B') || eligiblePositions.includes('3B'))) return true;
-    if (position === 'UTIL' && !['SP', 'RP', 'P'].some(p => eligiblePositions.includes(p))) return true;
-    if (position === 'P' && ['SP', 'RP'].some(p => eligiblePositions.includes(p))) return true;
-    if (position === 'OF' && ['LF', 'CF', 'RF', 'OF'].some(p => eligiblePositions.includes(p))) return true;
-    
-    return false;
-  };
+  // ========================================
+  // ORGANIZE ROSTER DATA FOR DYNASTYTABLE
+  // ========================================
+  const organizeRosterForTable = useMemo(() => {
+    const organized = {
+      batters: {
+        active: [],    // Array of { slotPosition, slotId, player }
+        bench: [],     // Array of PARSED players
+        dl: [],        // Array of PARSED players
+        minors: []     // Array of PARSED players
+      },
+      pitchers: {
+        active: [],    // Array of { slotPosition, slotId, player }
+        bench: [],     // Array of PARSED players
+        dl: [],        // Array of PARSED players
+        minors: []     // Array of PARSED players
+      }
+    };
 
-// Organize roster by actual lineup positions
-const organizeRosterByPosition = useMemo(() => {
-  const organized = {
-    batters: {
-      active: {},
-      bench: [],
-      dl: [],
-      minors: []
-    },
-    pitchers: {
-      active: {},
-      bench: [],
-      dl: [],
-      minors: []
-    }
-  };
+    // Create position slot rows for active lineup
+    const batterPositionCounts = {};
+    positions.batters.forEach((pos) => {
+      const count = batterPositionCounts[pos] || 0;
+      const slotId = `${pos}_${count}`;
+      organized.batters.active.push({
+        slotPosition: pos,
+        slotId: slotId,
+        player: null  // Will be PARSED player
+      });
+      batterPositionCounts[pos] = count + 1;
+    });
 
-  // Create position slots with position-specific counters
-  const batterPositionCounts = {};
-  positions.batters.forEach((pos) => {
-    const count = batterPositionCounts[pos] || 0;
-    organized.batters.active[`${pos}_${count}`] = null;
-    batterPositionCounts[pos] = count + 1;
-  });
+    const pitcherPositionCounts = {};
+    positions.pitchers.forEach((pos) => {
+      const count = pitcherPositionCounts[pos] || 0;
+      const slotId = `${pos}_${count}`;
+      organized.pitchers.active.push({
+        slotPosition: pos,
+        slotId: slotId,
+        player: null  // Will be PARSED player
+      });
+      pitcherPositionCounts[pos] = count + 1;
+    });
 
-  const pitcherPositionCounts = {};
-  positions.pitchers.forEach((pos) => {
-    const count = pitcherPositionCounts[pos] || 0;
-    organized.pitchers.active[`${pos}_${count}`] = null;
-    pitcherPositionCounts[pos] = count + 1;
-  });
+    // Assign players to their slots - PARSE CANONICAL PLAYERS
+    rosterData.players.forEach(canonicalPlayer => {
+      const position = canonicalPlayer.info?.position;
+      const isBatter = !['SP', 'RP', 'P'].includes(position);
+      const category = isBatter ? 'batters' : 'pitchers';
+      
+      const status = canonicalPlayer.roster?.status || canonicalPlayer.league_context?.roster?.status || 'bench';
+      const assignedPosition = canonicalPlayer.roster?.position || canonicalPlayer.league_context?.roster?.position;
+      
+      // Parse to flat structure
+      const parsedPlayer = parseCanonicalPlayer(canonicalPlayer);
+      
+      if (status === 'active' && assignedPosition) {
+        // Find the slot and assign the PARSED player
+        const slot = organized[category].active.find(s => s.slotId === assignedPosition);
+        if (slot) {
+          slot.player = parsedPlayer;
+        } else {
+          // If slot not found, add to bench
+          organized[category].bench.push(parsedPlayer);
+        }
+      } else if (status === 'bench') {
+        organized[category].bench.push(parsedPlayer);
+      } else if (status === 'dl') {
+        organized[category].dl.push(parsedPlayer);
+      } else if (status === 'minors') {
+        organized[category].minors.push(parsedPlayer);
+      }
+    });
 
-  // Right after the positionCounts logic in organizeRosterByPosition
-  console.log('Created batter slots:', Object.keys(organized.batters.active));
-  console.log('Created pitcher slots:', Object.keys(organized.pitchers.active));
-
-  // Assign players to their positions
-  console.log('About to assign players:', rosterData.players);
-
-  rosterData.players.forEach(player => {
-    const isBatter = !['SP', 'RP', 'P'].includes(player.position);
-    const category = isBatter ? 'batters' : 'pitchers';
-    
-    const status = player.roster_status || 'bench';
-    const assignedPosition = player.roster_position;
-    
-    console.log(`Player ${player.last_name}: status=${status}, position=${assignedPosition}, category=${category}`);
-    console.log(`  Has position ${assignedPosition}?`, organized[category].active.hasOwnProperty(assignedPosition));
-    
-    if (status === 'active' && assignedPosition && organized[category].active.hasOwnProperty(assignedPosition)) {
-      console.log(`  ✓ Assigning ${player.last_name} to ${assignedPosition}`);
-      organized[category].active[assignedPosition] = player;
-    } else if (status === 'bench') {
-      organized[category].bench.push(player);
-    } else if (status === 'dl') {
-      organized[category].dl.push(player);
-    } else if (status === 'minors') {
-      organized[category].minors.push(player);
-    } else {
-      console.log(`  ✗ Not assigned - failed conditions`);
-    }
-  });
-
-  console.log('Final organized.batters.active:', organized.batters.active);
-
-  return organized;
-}, [rosterData.players, positions]);
+    return organized;
+  }, [rosterData.players, positions]);
 
   // Calculate salary subtotals
   const salarySubtotals = useMemo(() => {
@@ -252,11 +328,12 @@ const organizeRosterByPosition = useMemo(() => {
     };
 
     rosterData.players.forEach(player => {
-      const isBatter = !['SP', 'RP', 'P'].includes(player.position);
+      const position = player.info?.position;
+      const isBatter = !['SP', 'RP', 'P'].includes(position);
       const category = isBatter ? 'batters' : 'pitchers';
-      const status = player.roster_status || 'bench';
+      const status = player.roster?.status || player.league_context?.roster?.status || 'bench';
       
-      const salary = status === 'minors' ? 0 : (player.salary || 0);
+      const salary = status === 'minors' ? 0 : (player.financial?.contract_salary || player.league_context?.financial?.contract_salary || 0);
       
       if (['active', 'bench', 'dl', 'minors'].includes(status)) {
         totals[category][status] += salary;
@@ -352,20 +429,21 @@ const organizeRosterByPosition = useMemo(() => {
           return;
         }
         
-        response = await leaguesAPI.getMyRoster(leagueId, { 
-          commissioner_action: true,
-          target_team_id: commissionerTeamId 
-        });
+        // Use canonical API for own roster in commissioner mode
+        response = await leaguesAPI.getMyRosterCanonical(leagueId);
       } else {
         const targetTeamId = teamId || selectedTeamId;
         if (targetTeamId && targetTeamId !== userTeamId) {
-          response = await leaguesAPI.getTeamRoster(leagueId, targetTeamId);
+          // Use canonical API for viewing other teams
+          response = await leaguesAPI.getTeamRosterCanonical(leagueId, targetTeamId);
         } else {
-          response = await leaguesAPI.getMyRoster(leagueId);
+          // Use canonical API for own roster
+          response = await leaguesAPI.getMyRosterCanonical(leagueId);
         }
       }
 
       if (response && response.success) {
+        console.log('Loaded canonical roster data:', response.players?.length, 'players');
         setRosterData(response);
       } else {
         setError(response?.message || 'Failed to load roster');
@@ -381,25 +459,6 @@ const organizeRosterByPosition = useMemo(() => {
   // ========================================
   // ACTION HANDLERS
   // ========================================
-  const handlePositionChange = (playerId, slotId) => {
-    setPositionChanges(prev => ({
-      ...prev,
-      [playerId]: slotId
-    }));
-  };
-
-  const savePositionChanges = async () => {
-    try {
-      console.log('Saving position changes:', positionChanges);
-      setSuccessMessage('Position changes saved successfully!');
-      setEditingPositions(false);
-      setPositionChanges({});
-      loadRoster();
-    } catch (err) {
-      setError('Failed to save position changes');
-    }
-  };
-
   const handleMovePlayer = async (player, fromStatus, toStatus, targetSlot = null) => {
     if (!isViewingOwnTeam()) {
       setError('You can only manage your own team');
@@ -407,8 +466,11 @@ const organizeRosterByPosition = useMemo(() => {
     }
 
     try {
+      const playerId = player.ids?.league_player || player.league_player_id;
+      const playerName = `${player.info?.first_name} ${player.info?.last_name}`;
+      
       const moveData = {
-        player_id: player.league_player_id,
+        player_id: playerId,
         from_status: fromStatus,
         to_status: toStatus,
         target_slot: targetSlot,
@@ -416,11 +478,20 @@ const organizeRosterByPosition = useMemo(() => {
       };
       
       console.log('Moving player:', moveData);
-      setSuccessMessage(`${player.first_name} ${player.last_name} moved to ${toStatus}${moveData.start_contract ? ' (contract started)' : ''}`);
+      setSuccessMessage(`${playerName} moved to ${toStatus}${moveData.start_contract ? ' (contract started)' : ''}`);
       loadRoster();
     } catch (err) {
       setError('Failed to move player');
     }
+  };
+
+  const handleBenchPlayer = async (player) => {
+    await handleMovePlayer(player, 'active', 'bench');
+  };
+
+  const handleActivatePlayer = async (player) => {
+    // TODO: Show position selector modal
+    console.log('Activate player - need to show position selector');
   };
 
   const handleDropPlayer = async (player) => {
@@ -429,11 +500,16 @@ const organizeRosterByPosition = useMemo(() => {
       return;
     }
 
-    const contractInfo = player.roster_status === 'minors' 
+    const playerName = `${player.info?.first_name} ${player.info?.last_name}`;
+    const playerId = player.ids?.league_player || player.league_player_id;
+    const status = player.roster?.status || player.league_context?.roster?.status;
+    const salary = player.financial?.contract_salary || player.league_context?.financial?.contract_salary || 0;
+
+    const contractInfo = status === 'minors' 
       ? '' 
-      : ` This will free up $${player.salary} in cap space.`;
+      : ` This will free up $${salary} in cap space.`;
     
-    const confirmMessage = `Drop ${player.first_name} ${player.last_name}?${contractInfo}`;
+    const confirmMessage = `Drop ${playerName}?${contractInfo}`;
     
     if (window.confirm(confirmMessage)) {
       try {
@@ -443,10 +519,10 @@ const organizeRosterByPosition = useMemo(() => {
           dropOptions.target_team_id = getTargetTeamId(null);
         }
 
-        const response = await leaguesAPI.dropPlayerFromTeam(leagueId, player.league_player_id, dropOptions);
+        const response = await leaguesAPI.dropPlayerFromTeam(leagueId, playerId, dropOptions);
 
         if (response.success) {
-          setSuccessMessage(`${player.first_name} ${player.last_name} dropped!`);
+          setSuccessMessage(`${playerName} dropped!`);
           loadRoster();
           setTimeout(() => setSuccessMessage(''), 3000);
         } else {
@@ -460,7 +536,7 @@ const organizeRosterByPosition = useMemo(() => {
   };
 
   const handlePlayerClick = (player) => {
-    const playerId = player.mlb_player_id || player.player_id;
+    const playerId = player.ids?.mlb;
     openPlayerModal(playerId, player);
   };
 
@@ -497,344 +573,34 @@ const organizeRosterByPosition = useMemo(() => {
   }, []);
 
   // ========================================
-  // RENDER LINEUP SLOT
-  // ========================================
-  const renderLineupSlot = (position, slotId, player, category) => {
-    const canEdit = isViewingOwnTeam() && editingPositions;
-    const isEmpty = !player;
-    
-    return (
-      <div 
-        key={slotId}
-        className={`
-          flex items-center justify-between py-2 px-3
-          ${dynastyTheme.classes.border.neutral}
-          ${isEmpty 
-            ? dynastyTheme.classes.bg.darkLighter
-            : dynastyTheme.classes.bg.neutral
-          }
-          ${dynastyTheme.components.listItem.hoverable}
-        `}
-      >
-        {/* Position Label */}
-        <div className="w-12 text-center flex-shrink-0">
-          <span className={`${dynastyTheme.classes.text.primary} text-xs font-bold uppercase tracking-wide`}>
-            {position}
-          </span>
-        </div>
-
-        {/* Player Info or Empty Slot */}
-        {isEmpty ? (
-          <div className="flex-1 px-4 min-w-0">
-            <span className={`${dynastyTheme.classes.text.neutralDark} text-sm italic`}>
-              Empty - {canEdit ? 'Drag player here' : 'No player assigned'}
-            </span>
-          </div>
-        ) : (
-          <>
-            {/* Player Name */}
-            <div className="w-48 px-4 min-w-0">
-              <button
-                onClick={() => handlePlayerClick(player)}
-                className={`text-left ${dynastyTheme.classes.text.primaryHover} ${dynastyTheme.classes.transitionFast} flex items-center w-full group`}
-              >
-                <div className="flex-1 min-w-0">
-                  <div className={`${dynastyTheme.classes.text.white} font-medium text-sm truncate`}>
-                    {player.first_name} {player.last_name}
-                  </div>
-                  <div className={`${dynastyTheme.classes.text.neutralLight} text-xs truncate`}>
-                    {player.mlb_team}
-                  </div>
-                </div>
-                <ExternalLink className="w-3 h-3 ml-2 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
-              </button>
-            </div>
-
-            {/* Stats */}
-            <div className="flex gap-6 px-4 flex-shrink-0">
-              {category === 'batters' ? (
-                <>
-                  <div className="w-12 text-center">
-                    <div className={`${dynastyTheme.classes.text.neutralDark} text-2xs uppercase tracking-wide`}>AVG</div>
-                    <div className={`${dynastyTheme.classes.text.neutralLight} text-sm font-mono`}>
-                      {player.batting_avg ? `.${String(player.batting_avg).slice(2)}` : '.000'}
-                    </div>
-                  </div>
-                  <div className="w-8 text-center">
-                    <div className={`${dynastyTheme.classes.text.neutralDark} text-2xs uppercase tracking-wide`}>HR</div>
-                    <div className={`${dynastyTheme.classes.text.neutralLight} text-sm font-mono`}>
-                      {player.home_runs || 0}
-                    </div>
-                  </div>
-                  <div className="w-10 text-center">
-                    <div className={`${dynastyTheme.classes.text.neutralDark} text-2xs uppercase tracking-wide`}>RBI</div>
-                    <div className={`${dynastyTheme.classes.text.neutralLight} text-sm font-mono`}>
-                      {player.rbi || 0}
-                    </div>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <div className="w-8 text-center">
-                    <div className={`${dynastyTheme.classes.text.neutralDark} text-2xs uppercase tracking-wide`}>W</div>
-                    <div className={`${dynastyTheme.classes.text.neutralLight} text-sm font-mono`}>
-                      {player.wins || 0}
-                    </div>
-                  </div>
-                  <div className="w-12 text-center">
-                    <div className={`${dynastyTheme.classes.text.neutralDark} text-2xs uppercase tracking-wide`}>ERA</div>
-                    <div className={`${dynastyTheme.classes.text.neutralLight} text-sm font-mono`}>
-                      {player.era ? player.era.toFixed(2) : '0.00'}
-                    </div>
-                  </div>
-                  <div className="w-8 text-center">
-                    <div className={`${dynastyTheme.classes.text.neutralDark} text-2xs uppercase tracking-wide`}>K</div>
-                    <div className={`${dynastyTheme.classes.text.neutralLight} text-sm font-mono`}>
-                      {player.strikeouts || 0}
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-
-            {/* Salary */}
-            <div className="w-16 text-right px-4 flex-shrink-0">
-              {player.roster_status === 'minors' ? (
-                <span className={`${dynastyTheme.classes.text.neutralDark} text-xs italic`}>
-                  No Contract
-                </span>
-              ) : (
-                <span className={`${dynastyTheme.classes.text.success} font-medium text-sm`}>
-                  ${player.salary || 0}
-                </span>
-              )}
-            </div>
-
-            {/* Actions */}
-            <div className="w-20 px-2 flex-shrink-0">
-              {player.roster_status === 'active' ? (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleMovePlayer(player, 'active', 'bench');
-                  }}
-                  className={`text-xs px-2 py-1 ${dynastyTheme.classes.bg.darkLighter} rounded text-neutral-300 hover:bg-yellow-400/20 ${dynastyTheme.classes.transitionFast} w-full`}
-                >
-                  Bench
-                </button>
-              ) : player.roster_status === 'minors' ? (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    handleMovePlayer(player, 'minors', 'bench');
-                  }}
-                  className={`text-xs px-2 py-1 ${dynastyTheme.components.badge.info} w-full`}
-                >
-                  Call Up
-                </button>
-              ) : (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    console.log('Activate player - show position selector');
-                  }}
-                  className={`text-xs px-2 py-1 ${dynastyTheme.components.badge.success} w-full`}
-                >
-                  Start
-                </button>
-              )}
-            </div>
-          </>
-        )}
-      </div>
-    );
-  };
-
-  // ========================================
-  // RENDER BENCH/DL/MINORS PLAYER
-  // ========================================
-  const renderReservePlayer = (player, status, index) => {
-    const isEven = index % 2 === 0;
-    
-    return (
-      <div 
-        key={player.league_player_id}
-        className={`
-          ${isEven ? dynastyTheme.classes.bg.darkLighter : dynastyTheme.classes.bg.neutral}
-          ${dynastyTheme.components.listItem.hoverable}
-          flex items-center justify-between py-2 px-3
-        `}
-      >
-        {/* Player Name */}
-        <div className="w-48 px-4 min-w-0">
-          <button
-            onClick={() => handlePlayerClick(player)}
-            className={`text-left ${dynastyTheme.classes.text.primaryHover} ${dynastyTheme.classes.transitionFast} flex items-center w-full group`}
-          >
-            <div className="flex-1 min-w-0">
-              <div className={`${dynastyTheme.classes.text.white} font-medium text-sm truncate`}>
-                {player.first_name} {player.last_name}
-              </div>
-              <div className={`${dynastyTheme.classes.text.neutralLight} text-xs truncate`}>
-                {player.position} - {player.mlb_team}
-              </div>
-            </div>
-            <ExternalLink className="w-3 h-3 ml-2 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
-          </button>
-        </div>
-
-        {/* Stats */}
-        <div className="flex gap-6 px-4 flex-shrink-0">
-          {!['SP', 'RP', 'P'].includes(player.position) ? (
-            <>
-              <div className="w-12 text-center">
-                <div className={`${dynastyTheme.classes.text.neutralDark} text-2xs uppercase`}>AVG</div>
-                <div className={`${dynastyTheme.classes.text.neutralLight} text-sm font-mono`}>
-                  {player.batting_avg ? `.${String(player.batting_avg).slice(2)}` : '.000'}
-                </div>
-              </div>
-              <div className="w-8 text-center">
-                <div className={`${dynastyTheme.classes.text.neutralDark} text-2xs uppercase`}>HR</div>
-                <div className={`${dynastyTheme.classes.text.neutralLight} text-sm font-mono`}>
-                  {player.home_runs || 0}
-                </div>
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="w-8 text-center">
-                <div className={`${dynastyTheme.classes.text.neutralDark} text-2xs uppercase`}>W</div>
-                <div className={`${dynastyTheme.classes.text.neutralLight} text-sm font-mono`}>
-                  {player.wins || 0}
-                </div>
-              </div>
-              <div className="w-12 text-center">
-                <div className={`${dynastyTheme.classes.text.neutralDark} text-2xs uppercase`}>ERA</div>
-                <div className={`${dynastyTheme.classes.text.neutralLight} text-sm font-mono`}>
-                  {player.era ? player.era.toFixed(2) : '0.00'}
-                </div>
-              </div>
-            </>
-          )}
-        </div>
-
-        {/* Salary */}
-        <div className="w-16 text-right px-4 flex-shrink-0">
-          {status === 'minors' ? (
-            <span className={`${dynastyTheme.classes.text.neutralDark} text-xs italic`}>
-              No Contract
-            </span>
-          ) : (
-            <span className={`${dynastyTheme.classes.text.success} font-medium text-sm`}>
-              ${player.salary || 0}
-            </span>
-          )}
-        </div>
-
-        {/* Actions */}
-        <div className="w-24 px-2 flex gap-1 justify-end flex-shrink-0">
-          {status === 'bench' && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                console.log('Activate player to position...');
-              }}
-              className={`text-xs px-2 py-1 ${dynastyTheme.components.badge.success}`}
-            >
-              Start
-            </button>
-          )}
-          {status === 'dl' && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleMovePlayer(player, 'dl', 'bench');
-              }}
-              className={`text-xs px-2 py-1 ${dynastyTheme.components.badge.info}`}
-            >
-              Activate
-            </button>
-          )}
-          {status === 'minors' && (
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                handleMovePlayer(player, 'minors', 'bench');
-              }}
-              className={`text-xs px-2 py-1 ${dynastyTheme.components.badge.info}`}
-              title="Call Up and Start Contract"
-            >
-              Call Up
-            </button>
-          )}
-          <button
-            onClick={(e) => {
-              e.stopPropagation();
-              handleDropPlayer(player);
-            }}
-            className={`text-xs px-2 py-1 ${dynastyTheme.components.badge.error}`}
-          >
-            Drop
-          </button>
-        </div>
-      </div>
-    );
-  };
-
-  // ========================================
-  // RENDER ROSTER SECTION
+  // RENDER ROSTER SECTION WITH 3-LINE FORMAT (TeamStats style)
   // ========================================
   const renderRosterSection = (title, sectionType, icon) => {
     const Icon = icon;
     const isExpanded = expandedSection === sectionType;
     
-    let sectionData = [];
+    const category = activeTab === 'batters' ? 'batters' : 'pitchers';
+    let rawSectionData = [];
+    let transformedData = [];  // Will hold 3-line format rows
     let sectionSalary = 0;
     let maxSlots = 0;
     
+    // Check if league has bench/DL/minors
+    const hasBenchSlots = positions.bench > 0;
+    const leagueSettings = {
+      enableMinors: positions.minors > 0,
+      enableDL: positions.dl > 0
+    };
+    
     if (sectionType === 'active') {
-      const category = activeTab === 'batters' ? 'batters' : 'pitchers';
-      const activeSlots = organizeRosterByPosition[category].active;
-      const positionList = activeTab === 'batters' ? positions.batters : positions.pitchers;
-      maxSlots = positionList.length;
+      rawSectionData = organizeRosterForTable[category].active;
+      maxSlots = rawSectionData.length;
+      sectionSalary = salarySubtotals[activeTab].active;
       
-      return (
-        <div className="mb-6">
-          <button
-            onClick={() => setExpandedSection(isExpanded ? null : sectionType)}
-            className={`w-full flex items-center justify-between p-4 ${dynastyTheme.components.card.interactive}`}
-          >
-            <div className="flex items-center gap-3">
-              <Icon className={`w-5 h-5 ${dynastyTheme.classes.text.primary}`} />
-              <h3 className={`text-lg font-bold ${dynastyTheme.classes.text.white}`}>{title}</h3>
-              <span className={`text-sm ${dynastyTheme.classes.text.neutralLight}`}>
-                ({positionList.length} slots)
-              </span>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className={`${dynastyTheme.classes.text.success} font-medium`}>
-                ${salarySubtotals[activeTab].active}
-              </span>
-              {isExpanded ? 
-                <ChevronUp className={`w-5 h-5 ${dynastyTheme.classes.text.neutralLight}`} /> : 
-                <ChevronDown className={`w-5 h-5 ${dynastyTheme.classes.text.neutralLight}`} />
-              }
-            </div>
-          </button>
-
-          {isExpanded && (
-            <div className={`mt-2 ${dynastyTheme.components.card.base} overflow-hidden`}>
-              {Object.entries(activeSlots).map(([slotId, player]) => {
-                const position = slotId.split('_')[0];  // Extract position from slotId
-                return renderLineupSlot(position, slotId, player, activeTab);
-              })}
-            </div>
-          )}
-        </div>
-      );
+      // Transform to 3-line format for active lineup
+      transformedData = transformPositionSlotsToThreeLineFormat(rawSectionData);
     } else {
-      const category = activeTab === 'batters' ? 'batters' : 'pitchers';
-      sectionData = organizeRosterByPosition[category][sectionType] || [];
+      rawSectionData = organizeRosterForTable[category][sectionType];
       sectionSalary = salarySubtotals[activeTab][sectionType];
       
       if (sectionType === 'bench') maxSlots = positions.bench;
@@ -844,50 +610,90 @@ const organizeRosterByPosition = useMemo(() => {
       // Always show bench, conditionally show DL/Minors if slots > 0
       if (sectionType !== 'bench' && maxSlots === 0) return null;
       
-      return (
-        <div className="mb-6">
-          <button
-            onClick={() => setExpandedSection(isExpanded ? null : sectionType)}
-            className={`w-full flex items-center justify-between p-4 ${dynastyTheme.components.card.interactive}`}
-          >
-            <div className="flex items-center gap-3">
-              <Icon className={`w-5 h-5 ${dynastyTheme.classes.text.primary}`} />
-              <h3 className={`text-lg font-bold ${dynastyTheme.classes.text.white}`}>{title}</h3>
-              <span className={`text-sm ${dynastyTheme.classes.text.neutralLight}`}>
-                ({sectionData.length}/{maxSlots})
-              </span>
-            </div>
-            <div className="flex items-center gap-4">
-              <span className={`${dynastyTheme.classes.text.success} font-medium`}>
-                ${sectionSalary}
-              </span>
-              {isExpanded ? 
-                <ChevronUp className={`w-5 h-5 ${dynastyTheme.classes.text.neutralLight}`} /> : 
-                <ChevronDown className={`w-5 h-5 ${dynastyTheme.classes.text.neutralLight}`} />
-              }
-            </div>
-          </button>
-
-          {isExpanded && (
-            <div className={`mt-2 ${dynastyTheme.components.card.base} overflow-hidden`}>
-              {sectionData.length > 0 ? (
-                sectionData.map((player, index) => renderReservePlayer(player, sectionType, index))
-              ) : (
-                <div className={`py-8 text-center ${dynastyTheme.classes.text.neutralDark}`}>
-                  No {activeTab} in {title.toLowerCase()} (0/{maxSlots} slots used)
-                </div>
-              )}
-              
-              {maxSlots > 0 && sectionData.length < maxSlots && (
-                <div className={`py-4 text-center ${dynastyTheme.classes.text.neutralDark} ${dynastyTheme.classes.border.neutral} border-t`}>
-                  {maxSlots - sectionData.length} empty {title.toLowerCase()} slots available
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      );
+      // Transform to 3-line format for reserve players
+      transformedData = transformPlayersToThreeLineFormat(rawSectionData);
     }
+    
+    // Create columns based on section type using TeamStats columns
+    let columns;
+    if (sectionType === 'active') {
+      columns = createTeamStatsActiveLineupColumns({
+        statConfigs: currentStatConfigs,
+        onPlayerClick: (player) => {
+          const playerId = player.mlb_player_id;
+          openPlayerModal(playerId, player);
+        },
+        showHistoricalBadge: false,
+        isPitcher: activeTab === 'pitchers',
+        onMovePlayer: (player) => handleMovePlayer(player, 'active', 'bench'),
+        onDropPlayer: handleDropPlayer,
+        onTradePlayer: (player) => console.log('Trade player:', player.player_name),
+        hasBenchSlots: hasBenchSlots,
+        leagueSettings: leagueSettings
+      });
+    } else {
+      columns = createTeamStatsReserveColumns({
+        statConfigs: currentStatConfigs,
+        onPlayerClick: (player) => {
+          const playerId = player.mlb_player_id;
+          openPlayerModal(playerId, player);
+        },
+        showHistoricalBadge: false,
+        isPitcher: activeTab === 'pitchers'
+      });
+    }
+    
+    return (
+      <div className="mb-6" key={sectionType}>
+        <button
+          onClick={() => setExpandedSection(isExpanded ? null : sectionType)}
+          className={`w-full flex items-center justify-between p-4 ${dynastyTheme.components.card.interactive}`}
+        >
+          <div className="flex items-center gap-3">
+            <Icon className={`w-5 h-5 ${dynastyTheme.classes.text.primary}`} />
+            <h3 className={`text-lg font-bold ${dynastyTheme.classes.text.white}`}>{title}</h3>
+            <span className={`text-sm ${dynastyTheme.classes.text.neutralLight}`}>
+              ({sectionType === 'active' ? rawSectionData.length : `${rawSectionData.length}/${maxSlots}`} slots)
+            </span>
+          </div>
+          <div className="flex items-center gap-4">
+            <span className={`${dynastyTheme.classes.text.success} font-medium`}>
+              ${sectionSalary}
+            </span>
+            {isExpanded ? 
+              <ChevronUp className={`w-5 h-5 ${dynastyTheme.classes.text.neutralLight}`} /> : 
+              <ChevronDown className={`w-5 h-5 ${dynastyTheme.classes.text.neutralLight}`} />
+            }
+          </div>
+        </button>
+
+        {isExpanded && (
+          <div className="mt-2">
+            {transformedData.length > 0 ? (
+              <DynastyTable
+                data={transformedData}
+                columns={columns}
+                stickyHeader={true}
+                enableHorizontalScroll={true}
+                enableVerticalScroll={false}
+                maxHeight="none"
+                minWidth="800px"
+              />
+            ) : (
+              <div className={`${dynastyTheme.components.card.base} py-8 text-center ${dynastyTheme.classes.text.neutralDark}`}>
+                No {activeTab} in {title.toLowerCase()} (0/{maxSlots} slots used)
+              </div>
+            )}
+            
+            {sectionType !== 'active' && maxSlots > 0 && rawSectionData.length < maxSlots && (
+              <div className={`${dynastyTheme.components.card.base} py-4 text-center ${dynastyTheme.classes.text.neutralDark} ${dynastyTheme.classes.border.neutral} border-t`}>
+                {maxSlots - rawSectionData.length} empty {title.toLowerCase()} slots available
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    );
   };
 
   // ========================================
@@ -970,35 +776,6 @@ const organizeRosterByPosition = useMemo(() => {
               
               {/* Action Buttons Row */}
               <div className="flex items-center gap-3">
-                {/* Edit Positions Button */}
-                {isViewingOwnTeam() && (
-                  <button
-                    onClick={() => {
-                      if (editingPositions) {
-                        savePositionChanges();
-                      } else {
-                        setEditingPositions(true);
-                      }
-                    }}
-                    className={editingPositions 
-                      ? dynastyTheme.utils.getComponent('button', 'primary', 'sm')
-                      : dynastyTheme.utils.getComponent('button', 'secondary', 'sm')
-                    }
-                  >
-                    {editingPositions ? (
-                      <>
-                        <Save className="w-4 h-4 mr-2" />
-                        Save Changes
-                      </>
-                    ) : (
-                      <>
-                        <Edit2 className="w-4 h-4 mr-2" />
-                        Edit Lineup
-                      </>
-                    )}
-                  </button>
-                )}
-                
                 {/* Refresh Button */}
                 <button
                   onClick={() => loadRoster()}
@@ -1086,7 +863,11 @@ const organizeRosterByPosition = useMemo(() => {
             <h3 className={`text-sm font-semibold ${dynastyTheme.classes.text.neutralLight}`}>Contracts</h3>
           </div>
           <p className={dynastyTheme.components.statCard.value}>
-            {rosterData.players.filter(p => p.contract_years === 1 && p.roster_status !== 'minors').length}
+            {rosterData.players.filter(p => {
+              const years = p.financial?.contract_years || p.league_context?.financial?.contract_years || 0;
+              const status = p.roster?.status || p.league_context?.roster?.status;
+              return years === 1 && status !== 'minors';
+            }).length}
           </p>
           <p className={dynastyTheme.components.statCard.label}>expiring this year</p>
         </div>

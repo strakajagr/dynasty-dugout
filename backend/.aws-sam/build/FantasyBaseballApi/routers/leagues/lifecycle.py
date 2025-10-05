@@ -143,11 +143,11 @@ async def create_league_async(league_data: LeagueCreateRequest, current_user: di
         execute_sql(
             """INSERT INTO user_leagues (
                 league_id, league_name, commissioner_user_id, 
-                creation_status, status, is_public, invite_code
+                creation_status, status, is_public, invite_code, database_name
                )
                VALUES (
                 :league_id::uuid, :league_name, :user_id, 
-                'pending', 'creating', :is_public, :invite_code
+                'pending', 'creating', :is_public, :invite_code, 'leagues'
                )""",
             {
                 'league_id': league_id, 

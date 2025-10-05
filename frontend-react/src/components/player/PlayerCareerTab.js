@@ -5,8 +5,8 @@ import { dynastyTheme } from '../../services/colorService';
 import { DynastyTable } from '../../services/tableService';
 import { createCareerStatsColumns } from '../../services/tables/playerColumns';
 
-const PlayerCareerTab = ({ historicalStats, careerTotals, isPitcher }) => {
-  if (!historicalStats || historicalStats.length === 0) {
+const PlayerCareerTab = ({ career_stats, career_totals, isPitcher }) => {
+  if (!career_stats || career_stats.length === 0) {
     return (
       <div className={dynastyTheme.components.section}>
         <h3 className={`${dynastyTheme.components.heading.h3} flex items-center gap-2`}>
@@ -21,9 +21,9 @@ const PlayerCareerTab = ({ historicalStats, careerTotals, isPitcher }) => {
   }
 
   // Combine historical stats with career totals - USING BACKEND FIELD NAMES
-  const tableData = careerTotals 
-    ? [...historicalStats, { ...careerTotals, season: 'TOTAL', mlb_team: 'Career' }]
-    : historicalStats;
+  const tableData = career_totals 
+    ? [...career_stats, { ...career_totals, season: 'TOTAL', mlb_team: 'Career' }]
+    : career_stats;
 
   // Get columns and calculate actual width needed
   const columns = createCareerStatsColumns(isPitcher);
@@ -37,7 +37,7 @@ const PlayerCareerTab = ({ historicalStats, careerTotals, isPitcher }) => {
       </h3>
       <div className={dynastyTheme.components.card.base}>
         <DynastyTable
-          title={`Career Stats (${historicalStats.length} seasons)`}
+          title={`Career Stats (${career_stats.length} seasons)`}
           data={tableData}
           columns={columns}
           initialSort={{ key: 'season', direction: 'desc' }}

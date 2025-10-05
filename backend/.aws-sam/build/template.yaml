@@ -4,7 +4,7 @@ Description: Dynasty Dugout FastAPI Application with Complete Daily MLB Updates
 Globals:
   Function:
     Timeout: 30
-    MemorySize: 512
+    MemorySize: 2048
     Runtime: python3.12
     Environment:
       Variables:
@@ -79,6 +79,17 @@ Resources:
           Resource:
             Fn::GetAtt:
             - LeagueCreationWorker
+            - Arn
+        - Effect: Allow
+          Action:
+          - dynamodb:GetItem
+          - dynamodb:PutItem
+          - dynamodb:DeleteItem
+          - dynamodb:Query
+          - dynamodb:Scan
+          Resource:
+            Fn::GetAtt:
+            - DynastyDugoutCacheTable
             - Arn
       Events:
         ApiGateway:
@@ -222,11 +233,40 @@ Resources:
           Resource: '*'
     Metadata:
       SamResourceId: UpdateActiveAccruedStatsFunction
+  DynastyDugoutCacheTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: dynasty-dugout-cache
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+      - AttributeName: cache_key
+        AttributeType: S
+      KeySchema:
+      - AttributeName: cache_key
+        KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      Tags:
+      - Key: Purpose
+        Value: API Response Caching
+      - Key: Tier
+        Value: Tier2-Persistent
 Outputs:
   DynastyDugoutApiUrl:
     Description: Dynasty Dugout API Gateway endpoint URL
     Value:
       Fn::Sub: https://${ApiGatewayApi}.execute-api.${AWS::Region}.amazonaws.com/Prod/
+  CacheTableName:
+    Description: DynamoDB Cache Table Name
+    Value:
+      Ref: DynastyDugoutCacheTable
+  FantasyBaseballApiArn:
+    Description: ARN of the main Fantasy Baseball API Lambda function
+    Value:
+      Fn::GetAtt:
+      - FantasyBaseballApi
+      - Arn
   MasterDailyUpdaterArn:
     Description: ARN of the Master Daily Updater Lambda function
     Value:

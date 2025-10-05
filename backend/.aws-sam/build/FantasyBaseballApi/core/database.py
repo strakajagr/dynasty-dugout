@@ -91,6 +91,16 @@ def execute_sql(sql: str, parameters=None, database_name=None):
             
         response = rds_client.execute_statement(**params)
         logger.info(f"SQL executed successfully on '{target_database}', returned {len(response.get('records', []))} records")
+        
+        # AUTO-FORMAT: Convert RDS raw lists to dictionaries before returning
+        if response.get('records'):
+            formatted_records = format_player_data(response['records'], response)
+            return {
+                'records': formatted_records,
+                'columnMetadata': response.get('columnMetadata'),
+                'numberOfRecordsUpdated': response.get('numberOfRecordsUpdated')
+            }
+        
         return response
         
     except Exception as e:
@@ -483,8 +493,8 @@ def get_league_player_with_mlb_stats(league_id: str, mlb_player_id: int) -> dict
         
         # Combine the data
         if league_response.get('records') and mlb_response.get('records'):
-            league_data = format_single_record(league_response['records'][0], league_response)
-            mlb_data = format_single_record(mlb_response['records'][0], mlb_response)
+            league_data = league_response['records'][0]  # Already formatted by execute_sql
+            mlb_data = mlb_response['records'][0]  # Already formatted by execute_sql
             
             combined_data = {
                 **league_data,  # League-specific: salary, contract, roster_status
@@ -528,7 +538,7 @@ def get_team_roster_with_mlb_stats(league_id: str, team_id: str) -> list:
         if not roster_response.get('records'):
             return []
         
-        roster_data = format_player_data(roster_response['records'], roster_response)
+        roster_data = roster_response['records']  # Already formatted by execute_sql
         
         # Get MLB data for all players in batch
         mlb_player_ids = [player['mlb_player_id'] for player in roster_data]
@@ -555,7 +565,7 @@ def get_team_roster_with_mlb_stats(league_id: str, team_id: str) -> list:
         if not mlb_response.get('records'):
             return roster_data  # Return league data only if no MLB data found
         
-        mlb_data = format_player_data(mlb_response['records'], mlb_response)
+        mlb_data = mlb_response['records']  # Already formatted by execute_sql
         
         # Create lookup dict for MLB data
         mlb_lookup = {player['player_id']: player for player in mlb_data}
@@ -619,7 +629,7 @@ def add_player_to_league(league_id: str, mlb_player_id: int, team_id: str = None
         )
         
         if insert_response.get('records'):
-            league_player_id = insert_response['records'][0][0].get('stringValue')
+            league_player_id = insert_response['records'][0].get('league_player_id')
             logger.info(f"✅ Successfully added player to league with ID: {league_player_id}")
             
             return {
@@ -648,9 +658,7 @@ def drop_league_database(league_id: str) -> dict:
         try:
             size_response = execute_sql(size_sql, database_name='postgres')
             if size_response.get('records') and size_response['records'][0]:
-                size_mb_value = size_response['records'][0][0]
-                if size_mb_value and not size_mb_value.get('isNull'):
-                    database_size_mb = size_mb_value.get('doubleValue', 0)
+                database_size_mb = size_response['records'][0].get('size_mb', 0)
         except Exception as size_error:
             logger.warning(f"Could not get database size: {size_error}")
         
@@ -701,10 +709,10 @@ def get_database_info(database_name: str) -> dict:
         record = response['records'][0]
         return {
             'exists': True,
-            'database_name': record[0].get('stringValue'),
-            'size_pretty': record[1].get('stringValue'),
-            'size_mb': record[2].get('doubleValue'),
-            'active_connections': record[3].get('longValue')
+            'database_name': record.get('datname'),
+            'size_pretty': record.get('size_pretty'),
+            'size_mb': record.get('size_mb'),
+            'active_connections': record.get('active_connections')
         }
     except Exception as e:
         logger.error(f"Error getting database info for {database_name}: {str(e)}")
@@ -731,9 +739,9 @@ def list_league_databases() -> dict:
         if response.get('records'):
             for record in response['records']:
                 db_info = {
-                    'database_name': record[0].get('stringValue'),
-                    'size_pretty': record[1].get('stringValue'),
-                    'size_mb': record[2].get('doubleValue', 0)
+                    'database_name': record.get('datname'),
+                    'size_pretty': record.get('size_pretty'),
+                    'size_mb': record.get('size_mb', 0)
                 }
                 databases.append(db_info)
                 total_size_mb += db_info['size_mb']
@@ -911,12 +919,12 @@ def get_user_profile(user_id: str):
         if response.get('records'):
             record = response['records'][0]
             return {
-                'user_id': record[0].get('stringValue'),
-                'date_of_birth': record[1].get('stringValue'),
-                'profile_picture_url': record[2].get('stringValue'),
-                'preferences': record[3].get('stringValue', '{}'),
-                'created_at': record[4].get('stringValue'),
-                'updated_at': record[5].get('stringValue')
+                'user_id': record.get('user_id'),
+                'date_of_birth': record.get('date_of_birth'),
+                'profile_picture_url': record.get('profile_picture_url'),
+                'preferences': record.get('preferences', '{}'),
+                'created_at': record.get('created_at'),
+                'updated_at': record.get('updated_at')
             }
         return None
     except Exception as e:

@@ -904,13 +904,13 @@ async def get_team_salary_details(
         if not await validate_league_membership(league_id, user_id):
             raise HTTPException(status_code=403, detail="Not a member of this league")
         
-        # Get team info and contracts
+        # Get team info and contracts (using cached player data from league_players)
         contracts_query = """
             SELECT 
                 lp.league_player_id,
                 lp.mlb_player_id,
-                mp.first_name || ' ' || mp.last_name as player_name,
-                mp.position,
+                lp.player_name,
+                lp.position,
                 lt.team_id,
                 lt.team_name,
                 lp.salary,
@@ -918,7 +918,6 @@ async def get_team_salary_details(
                 lp.acquisition_method,
                 lp.acquisition_date
             FROM league_players lp
-            JOIN postgres.mlb_players mp ON lp.mlb_player_id = mp.player_id
             JOIN league_teams lt ON lp.team_id = lt.team_id AND lp.league_id = lt.league_id
             WHERE lp.league_id = :league_id::uuid
                 AND lp.team_id = :team_id::uuid

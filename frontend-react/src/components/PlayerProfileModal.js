@@ -1,4 +1,4 @@
-// src/components/PlayerProfileModal.js - COMPLETE FIXED VERSION
+// src/components/PlayerProfileModal.js - CANONICAL STRUCTURE COMPATIBLE
 import React, { useState, useEffect } from 'react';
 import ReactDOM from 'react-dom';
 import { 
@@ -9,6 +9,7 @@ import {
 import { dynastyTheme } from '../services/colorService';
 import { leaguesAPI, teamStatsAPI } from '../services/apiService';
 import apiService from '../services/apiService';
+import { WatchListStar } from './WatchList';
 
 const PlayerProfileModal = ({ 
   playerId, 
@@ -37,14 +38,12 @@ const PlayerProfileModal = ({
   }, [isOpen, playerId, leagueId]);
 
   const loadScoringCategories = async () => {
-    // Set default categories immediately
     const defaultCats = {
       hitting: ['R', 'HR', 'RBI', 'SB', 'AVG', 'OPS'],
       pitching: ['W', 'SV', 'ERA', 'WHIP', 'K', 'QS']
     };
     setScoringCategories(defaultCats);
 
-    // If we have a league, try to get league-specific categories
     if (leagueId) {
       if (league?.scoring_categories) {
         const cats = typeof league.scoring_categories === 'string' 
@@ -85,15 +84,44 @@ const PlayerProfileModal = ({
     setLoading(true);
     
     try {
-      // First get complete player data from MLB database
+      // Get complete player data from MLB database
       const response = await apiService.get(`/api/players/${playerId}/complete`);
-      const completePlayerData = response.data;
+      const data = response.data || response;
       
-      if (completePlayerData) {
-        console.log('Loaded complete player data:', completePlayerData);
+      console.log('Raw API response:', data);
+      
+      if (data && data.player) {
+        console.log('Loaded canonical player data:', data.player);
         
-        // Set player with full MLB stats
-        setPlayer(completePlayerData);
+        // TRANSFORM CANONICAL STRUCTURE TO FLAT STRUCTURE FOR MODAL
+        const playerData = data.player;
+        const flatPlayer = {
+          // IDs
+          player_id: playerData.ids?.mlb || playerId,
+          mlb_player_id: playerData.ids?.mlb || playerId,
+          
+          // Info fields - from player.info.*
+          first_name: playerData.info?.first_name || '',
+          last_name: playerData.info?.last_name || '',
+          position: playerData.info?.position || '',
+          mlb_team: playerData.info?.mlb_team || '',
+          jersey_number: playerData.info?.jersey_number || 0,
+          height_inches: playerData.info?.height_inches || null,
+          weight_pounds: playerData.info?.weight_pounds || null,
+          birthdate: playerData.info?.birthdate || null,
+          age: playerData.info?.age || null,
+          is_active: playerData.info?.active ?? true,
+          
+          // Stats - from player.stats.*
+          season_stats: playerData.stats?.season || null,
+          rolling_14_day: playerData.stats?.rolling_14_day || null,
+          last_14_days: playerData.stats?.rolling_14_day || null // Alias
+        };
+        
+        console.log('Transformed to flat structure:', flatPlayer);
+        
+        // Set player with transformed data
+        setPlayer(flatPlayer);
         
         // If in a league context, determine roster status
         if (leagueId) {
@@ -120,10 +148,7 @@ const PlayerProfileModal = ({
                   ...prev,
                   salary: faPlayer.salary || faPlayer.price || 1,
                   contract_years: faPlayer.contract_years || 1,
-                  league_player_id: faPlayer.league_player_id,
-                  // IMPORTANT: Keep the MLB stats from complete endpoint
-                  season_stats: completePlayerData.season_stats,
-                  rolling_14_day: completePlayerData.rolling_14_day || completePlayerData.last_14_days
+                  league_player_id: faPlayer.league_player_id
                 }));
                 return; // Exit early - player is available
               }
@@ -149,10 +174,6 @@ const PlayerProfileModal = ({
                   salary: rosterPlayer.salary || rosterPlayer.price || 1,
                   contract_years: rosterPlayer.contract_years || 1,
                   league_player_id: rosterPlayer.league_player_id,
-                  // IMPORTANT: Keep the MLB stats from complete endpoint
-                  season_stats: completePlayerData.season_stats,
-                  rolling_14_day: completePlayerData.rolling_14_day || completePlayerData.last_14_days,
-                  // Add accrued stats from roster
                   accrued_stats: rosterPlayer.accrued_stats
                 }));
                 return; // Exit early - player is owned by user
@@ -162,13 +183,6 @@ const PlayerProfileModal = ({
             // If not free agent or on user's team, must be on another team
             console.log('✅ Player is on ANOTHER TEAM');
             setRosterStatus('other_team');
-            
-            // Keep MLB stats
-            setPlayer(prev => ({
-              ...prev,
-              season_stats: completePlayerData.season_stats,
-              rolling_14_day: completePlayerData.rolling_14_day || completePlayerData.last_14_days
-            }));
             
           } catch (err) {
             console.error('Error checking roster status:', err);
@@ -747,8 +761,12 @@ const PlayerProfileModal = ({
                   </div>
                 )}
                 
-                <h3 className={`text-2xl font-bold ${dynastyTheme.classes.text.white} mb-1`}>
+                <h3 className={`text-2xl font-bold ${dynastyTheme.classes.text.white} mb-1 flex items-center justify-center gap-2`}>
                   {player.first_name} {player.last_name}
+                  <WatchListStar 
+                    playerId={player.mlb_player_id || player.player_id} 
+                    size={20}
+                  />
                 </h3>
                 
                 <div className="flex items-center justify-center gap-4 text-sm">

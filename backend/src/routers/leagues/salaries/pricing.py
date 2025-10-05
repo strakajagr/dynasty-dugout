@@ -11,6 +11,7 @@ from fastapi import APIRouter, HTTPException, Depends
 from core.auth_utils import get_current_user
 from core.database import execute_sql, batch_execute_sql
 from core.season_utils import CURRENT_SEASON
+from core.cache import cached, invalidate_cache_pattern
 from .models import PlayerPrice, SavePricesRequest
 from .settings import validate_league_membership, verify_commissioner
 
@@ -130,6 +131,7 @@ def get_required_columns_for_categories(categories: List[str], is_pitcher: bool 
 # =============================================================================
 
 @router.get("/{league_id}/salaries/pricing-data")
+@cached(ttl_seconds=1800, key_prefix='pricing_data', key_params=['league_id'])
 async def get_pricing_data(
     league_id: str,
     current_user: dict = Depends(get_current_user)
@@ -137,6 +139,8 @@ async def get_pricing_data(
     """
     Get ALL MLB players with stats from CACHED league database
     Stats are pre-calculated and stored in leagues DB for performance
+    
+    CACHED: 30 minute TTL - This is an expensive query!
     """
     try:
         user_id = current_user.get('sub') or current_user.get('username')
@@ -376,11 +380,15 @@ async def get_pricing_data(
 # =============================================================================
 
 @router.get("/{league_id}/salaries/prices")
+@cached(ttl_seconds=600, key_prefix='player_prices', key_params=['league_id'])
 async def get_player_prices(
     league_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get all player prices for the league"""
+    """Get all player prices for the league
+    
+    CACHED: 10 minute TTL
+    """
     try:
         user_id = current_user.get('sub') or current_user.get('username')
         
@@ -492,6 +500,11 @@ async def save_player_prices(
         )
         
         logger.info(f"Successfully saved {len(request.prices)} player prices in batch operation")
+        
+        # Invalidate price caches for this league
+        invalidate_cache_pattern(f'player_prices:{league_id}')
+        invalidate_cache_pattern(f'pricing_data:{league_id}')
+        logger.info(f"Invalidated price caches for league {league_id}")
         
         return {
             "success": True,

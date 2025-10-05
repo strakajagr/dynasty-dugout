@@ -462,12 +462,11 @@ def populate_league_players(league_id):
     try:
         logger.info(f"[{league_id[:8]}] Loading MLB players with full info...")
         
-        # Get all active players with their info from postgres
+        # Get ALL players (active and inactive) for dynasty leagues
         all_players = execute_sql(
             """SELECT player_id, first_name || ' ' || last_name as player_name, 
                       position, mlb_team 
-               FROM mlb_players 
-               WHERE is_active = true""",
+               FROM mlb_players""",
             database_name='postgres'
         )
         

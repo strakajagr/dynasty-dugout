@@ -145,78 +145,78 @@ const FreeAgentSearchInner = ({ leagueId, onPlayerAdded, league, user }) => {
         const minPA = advancedFilters.qualifiedPA || 502;
         filtered = filtered.filter(p => {
           // Calculate plate appearances: AB + BB + HBP + SF + SH
-          const pa = (p.at_bats || 0) + (p.walks || 0) + (p.hit_by_pitch || 0) + 
-                     (p.sacrifice_flies || 0) + (p.sacrifice_hits || 0);
+          const pa = (p.stats?.season?.at_bats || 0) + (p.stats?.season?.walks || 0) + (p.stats?.season?.hit_by_pitch || 0) + 
+                     (p.stats?.season?.sacrifice_flies || 0) + (p.stats?.season?.sacrifice_hits || 0);
           return pa >= minPA;
         });
       }
       
       // At Bats filter
       if (advancedFilters.minAB) {
-        filtered = filtered.filter(p => (p.at_bats || 0) >= parseInt(advancedFilters.minAB));
+        filtered = filtered.filter(p => (p.stats?.season?.at_bats || 0) >= parseInt(advancedFilters.minAB));
       }
       if (advancedFilters.maxAB) {
-        filtered = filtered.filter(p => (p.at_bats || 0) <= parseInt(advancedFilters.maxAB));
+        filtered = filtered.filter(p => (p.stats?.season?.at_bats || 0) <= parseInt(advancedFilters.maxAB));
       }
       
       // Home Runs filter
       if (advancedFilters.minHR) {
-        filtered = filtered.filter(p => (p.home_runs || 0) >= parseInt(advancedFilters.minHR));
+        filtered = filtered.filter(p => (p.stats?.season?.home_runs || 0) >= parseInt(advancedFilters.minHR));
       }
       if (advancedFilters.maxHR) {
-        filtered = filtered.filter(p => (p.home_runs || 0) <= parseInt(advancedFilters.maxHR));
+        filtered = filtered.filter(p => (p.stats?.season?.home_runs || 0) <= parseInt(advancedFilters.maxHR));
       }
       
       // Games filter
       if (advancedFilters.minG) {
-        filtered = filtered.filter(p => (p.games_played || 0) >= parseInt(advancedFilters.minG));
+        filtered = filtered.filter(p => (p.stats?.season?.games_played || 0) >= parseInt(advancedFilters.minG));
       }
       if (advancedFilters.maxG) {
-        filtered = filtered.filter(p => (p.games_played || 0) <= parseInt(advancedFilters.maxG));
+        filtered = filtered.filter(p => (p.stats?.season?.games_played || 0) <= parseInt(advancedFilters.maxG));
       }
       
     } else if (activeTab === 'pitchers') {
       // MLB Qualified filter for pitchers
       if (advancedFilters.pitcherQualified) {
         const minIP = advancedFilters.qualifiedIP || 162;
-        filtered = filtered.filter(p => (p.innings_pitched || 0) >= minIP);
+        filtered = filtered.filter(p => (p.stats?.season?.innings_pitched || 0) >= minIP);
       }
       
       // Strikeouts filter
       if (advancedFilters.minK) {
-        filtered = filtered.filter(p => (p.strikeouts_pitched || 0) >= parseInt(advancedFilters.minK));
+        filtered = filtered.filter(p => (p.stats?.season?.strikeouts_pitched || 0) >= parseInt(advancedFilters.minK));
       }
       if (advancedFilters.maxK) {
-        filtered = filtered.filter(p => (p.strikeouts_pitched || 0) <= parseInt(advancedFilters.maxK));
+        filtered = filtered.filter(p => (p.stats?.season?.strikeouts_pitched || 0) <= parseInt(advancedFilters.maxK));
       }
       
       // Games Started filter
       if (advancedFilters.minGS) {
-        filtered = filtered.filter(p => (p.games_started || 0) >= parseInt(advancedFilters.minGS));
+        filtered = filtered.filter(p => (p.stats?.season?.games_started || 0) >= parseInt(advancedFilters.minGS));
       }
       if (advancedFilters.maxGS) {
-        filtered = filtered.filter(p => (p.games_started || 0) <= parseInt(advancedFilters.maxGS));
+        filtered = filtered.filter(p => (p.stats?.season?.games_started || 0) <= parseInt(advancedFilters.maxGS));
       }
       
       // Innings Pitched filter
       if (advancedFilters.minIP) {
-        filtered = filtered.filter(p => (p.innings_pitched || 0) >= parseFloat(advancedFilters.minIP));
+        filtered = filtered.filter(p => (p.stats?.season?.innings_pitched || 0) >= parseFloat(advancedFilters.minIP));
       }
       if (advancedFilters.maxIP) {
-        filtered = filtered.filter(p => (p.innings_pitched || 0) <= parseFloat(advancedFilters.maxIP));
+        filtered = filtered.filter(p => (p.stats?.season?.innings_pitched || 0) <= parseFloat(advancedFilters.maxIP));
       }
     }
     
     // Price filter (both tabs)
     if (advancedFilters.minPrice) {
       filtered = filtered.filter(p => {
-        const price = savedPrices[p.mlb_player_id || p.player_id] || p.price || p.salary || 0;
+        const price = savedPrices[p.ids?.mlb || p.player_id] || p.price || p.financial?.contract_salary || 0;
         return price >= parseInt(advancedFilters.minPrice);
       });
     }
     if (advancedFilters.maxPrice) {
       filtered = filtered.filter(p => {
-        const price = savedPrices[p.mlb_player_id || p.player_id] || p.price || p.salary || 0;
+        const price = savedPrices[p.ids?.mlb || p.player_id] || p.price || p.financial?.contract_salary || 0;
         return price <= parseInt(advancedFilters.maxPrice);
       });
     }
@@ -224,7 +224,6 @@ const FreeAgentSearchInner = ({ leagueId, onPlayerAdded, league, user }) => {
     // Date range filter (if using rolling stats)
     if (advancedFilters.dateRange !== 'season') {
       // This would filter based on last_14_days or other rolling stats
-      console.log('Date range filter:', advancedFilters.dateRange);
     }
     
     return filtered;
@@ -235,16 +234,12 @@ const FreeAgentSearchInner = ({ leagueId, onPlayerAdded, league, user }) => {
   // ========================================
   const loadRosterCapacity = useCallback(async () => {
     try {
-      console.log('Loading roster capacity analysis...');
-      
-      const rosterResponse = await leaguesAPI.getMyRoster(leagueId);
+      const rosterResponse = await leaguesAPI.getMyRosterCanonical(leagueId);
       if (rosterResponse.success) {
         setCurrentRoster(rosterResponse.players || []);
         
         const analysis = analyzeRosterCapacity(league, rosterResponse.players || []);
         setRosterCapacityAnalysis(analysis);
-        
-        console.log('Roster capacity analysis:', analysis);
       } else {
         console.error('Failed to load roster for capacity analysis');
       }
@@ -271,6 +266,8 @@ const FreeAgentSearchInner = ({ leagueId, onPlayerAdded, league, user }) => {
 
   const loadSavedPrices = useCallback(async () => {
     try {
+      
+      // Original price loading logic for non-offline drafts
       let response;
       
       if (typeof leaguesAPI.checkPriceStatus === 'function') {
@@ -329,12 +326,30 @@ const FreeAgentSearchInner = ({ leagueId, onPlayerAdded, league, user }) => {
     try {
       const response = await leaguesAPI.getLeagueDetails(leagueId);
       if (response.success) {
-        const status = response.league.league_status || 'setup';
-        setLeagueStatus(status);
+        const status = response.league.league_status || response.league.status || 'setup';
         
-        if (['draft_ready', 'drafting', 'active'].includes(status)) {
+        // Check for draft type - simplified
+        const draftType = response.league.draft_type || 
+                         response.league.draft_settings?.type ||
+                         response.league.season_setup?.draft_type ||
+                         null;
+        
+        const isOfflineDraft = draftType === 'offline';
+        
+        // Set league status
+        if (isOfflineDraft) {
+          setLeagueStatus('offline_draft');
+          // Force enable transactions for offline draft
           setTransactionsEnabled(true);
           setNoPricesWarning(false);
+          setBrowseMode(false);
+        } else {
+          setLeagueStatus(status);
+          // Enable transactions for normal draft/active states
+          if (['draft_ready', 'drafting', 'active'].includes(status)) {
+            setTransactionsEnabled(true);
+            setNoPricesWarning(false);
+          }
         }
       }
     } catch (err) {
@@ -384,41 +399,41 @@ const FreeAgentSearchInner = ({ leagueId, onPlayerAdded, league, user }) => {
         sort_order: 'desc'
       };
 
-      const response = await leaguesAPI.getFreeAgentsEnhanced(leagueId, {
+      const response = await leaguesAPI.getFreeAgentsCanonical(leagueId, {
         ...filters,
         ...sortParams
       });
 
       if (response.success) {
         let playersWithPrices = (response.players || []).map(player => {
-          const playerId = player.mlb_player_id || player.player_id;
+          const playerId = player.ids?.mlb || player.player_id;
           
           let price = 0;
           if (transactionsEnabled && pricesExist && Object.keys(savedPrices).length > 0) {
-            price = savedPrices[playerId] || player.price || player.salary || 1.0;
+            price = savedPrices[playerId] || player.financial?.market_price || player.financial?.contract_salary || 1.0;
           } else if (transactionsEnabled && !pricesExist) {
-            price = player.price || player.salary || 1.0;
+            price = player.financial?.market_price || player.financial?.contract_salary || 1.0;
           }
           
           return {
             ...player,
             price: price,
             display_price: price,
-            display_salary: player.salary || 1.0
+            display_salary: player.financial?.contract_salary || 1.0
           };
         });
 
         // Frontend filtering for MI/CI positions
         if (position === 'MI') {
           playersWithPrices = playersWithPrices.filter(p => 
-            p.position === '2B' || p.position === 'SS'
+            p.info?.position === '2B' || p.info?.position === 'SS'
           );
         } else if (position === 'CI') {
           playersWithPrices = playersWithPrices.filter(p => 
-            p.position === '1B' || p.position === '3B'
+            p.info?.position === '1B' || p.info?.position === '3B'
           );
         } else if (position !== 'all') {
-          playersWithPrices = playersWithPrices.filter(p => p.position === position);
+          playersWithPrices = playersWithPrices.filter(p => p.info?.position === position);
         }
 
         // Store unfiltered for later filtering
@@ -481,15 +496,20 @@ const FreeAgentSearchInner = ({ leagueId, onPlayerAdded, league, user }) => {
   // PLAYER ACTIONS
   // ========================================
   const handleAddPlayer = useCallback(async (player) => {
-    console.log('Single add player:', player.first_name, player.last_name);
+    // Check if transactions are allowed
+    const isOfflineDraft = leagueStatus === 'offline_draft';
+    const isDraftMode = ['drafting', 'draft_ready', 'offline_draft'].includes(leagueStatus);
     
-    if (!transactionsEnabled) {
+    // Allow transactions in offline draft mode, commissioner mode, or when normally enabled
+    if (!isOfflineDraft && !isDraftMode && !isCommissionerMode && !transactionsEnabled) {
       setError('Transactions are not allowed until the commissioner sets player prices');
       setTimeout(() => setError(''), 5000);
       return;
     }
 
-    if (player.team_id) {
+    // Check ownership using canonical structure
+    const isOwned = player.league_context?.team?.team_name || player.team_id;
+    if (isOwned) {
       setError('Player is already owned by a team');
       setTimeout(() => setError(''), 5000);
       return;
@@ -512,35 +532,30 @@ const FreeAgentSearchInner = ({ leagueId, onPlayerAdded, league, user }) => {
     const suggestion = findBestPositionForPlayer(player, rosterCapacityAnalysis, league);
     
     if (!suggestion.hasSuggestions) {
-      setError(`No available roster slots for ${player.first_name} ${player.last_name}`);
+      const firstName = player.info?.first_name || player.first_name;
+      const lastName = player.info?.last_name || player.last_name;
+      setError(`No available roster slots for ${firstName} ${lastName}`);
       setTimeout(() => setError(''), 5000);
       return;
     }
 
-    if (suggestion.allSuggestions.length === 1 && suggestion.bestSuggestion.priority === 1) {
-      console.log('Auto-assigning to best position:', suggestion.bestSuggestion);
-      await executePlayerAssignment(player, suggestion.bestSuggestion);
-    } else {
-      setPlayerForAssignment(player);
-      setShowPositionModal(true);
-    }
-  }, [transactionsEnabled, rosterCapacityAnalysis, league, loadRosterCapacity]);
+    // Always show modal for user confirmation (with best position pre-selected)
+    setPlayerForAssignment(player);
+    setShowPositionModal(true);
+  }, [transactionsEnabled, leagueStatus, isCommissionerMode, rosterCapacityAnalysis, league, loadRosterCapacity]);
 
   const executePlayerAssignment = useCallback(async (player, assignment) => {
-    console.log('Executing player assignment:', {
-      player: `${player.first_name} ${player.last_name}`,
-      assignment,
-      isCommissionerMode,
-      activeTeamName
-    });
+    const firstName = player.info?.first_name || player.first_name;
+    const lastName = player.info?.last_name || player.last_name;
+    const leaguePlayerId = player.ids?.league_player || player.league_player_id;
 
-    setAddingPlayer(player.league_player_id);
+    setAddingPlayer(leaguePlayerId);
     setError('');
 
     try {
       const playerData = {
-        league_player_id: player.league_player_id,
-        salary: assignment.type === 'minors' ? 0 : (player.display_price || player.price || player.salary || 1.0),
+        league_player_id: leaguePlayerId,
+        salary: assignment.type === 'minors' ? 0 : (player.display_price || player.price || player.financial?.market_price || player.salary || 1.0),
         contract_years: assignment.type === 'minors' ? 0 : 2,
         roster_status: assignment.type || 'active',
         roster_position: assignment.type === 'active' ? assignment.slotId : null,
@@ -557,10 +572,16 @@ const FreeAgentSearchInner = ({ leagueId, onPlayerAdded, league, user }) => {
       if (response.success) {
         const teamName = isCommissionerMode ? activeTeamName : 'your team';
         const positionText = assignment.type === 'active' ? assignment.position.toUpperCase() : assignment.type;
-        setSuccessMessage(`${response.player_name || player.first_name + ' ' + player.last_name} added to ${teamName} (${positionText})!`);
+        const firstName = player.info?.first_name || player.first_name;
+        const lastName = player.info?.last_name || player.last_name;
+        setSuccessMessage(`${response.player_name || firstName + ' ' + lastName} added to ${teamName} (${positionText})!`);
         
+        const leaguePlayerId = player.ids?.league_player || player.league_player_id;
         if (!showAll) {
-          setPlayers(prev => prev.filter(p => p.league_player_id !== player.league_player_id));
+          setPlayers(prev => prev.filter(p => {
+            const pId = p.ids?.league_player || p.league_player_id;
+            return pId !== leaguePlayerId;
+          }));
           setTotalCount(prev => prev - 1);
         } else {
           loadPlayers(searchTerm, activeTab, positionFilter, showAll);
@@ -582,11 +603,20 @@ const FreeAgentSearchInner = ({ leagueId, onPlayerAdded, league, user }) => {
         }, 1000);
         
       } else {
-        setError(response.message || 'Failed to add player');
+        const errorMsg = response.message || response.error?.message || response.error || 'Failed to add player';
+        setError(errorMsg);
       }
     } catch (err) {
-      console.error('Error adding player:', err);
-      setError('Failed to add player');
+      if (err.response?.data) {
+        const errorMsg = err.response.data.message || 
+                        err.response.data.error?.message || 
+                        err.response.data.error ||
+                        JSON.stringify(err.response.data) ||
+                        'Failed to add player';
+        setError(errorMsg);
+      } else {
+        setError(err.message || 'Failed to add player');
+      }
     } finally {
       setAddingPlayer(null);
       setShowPositionModal(false);
@@ -595,8 +625,6 @@ const FreeAgentSearchInner = ({ leagueId, onPlayerAdded, league, user }) => {
   }, [isCommissionerMode, activeTeamName, getTargetTeamId, leagueId, showAll, loadPlayers, searchTerm, activeTab, positionFilter, loadRosterCapacity, onPlayerAdded, navigate]);
 
   const handleBatchAddPlayers = useCallback(async (selectedPlayers) => {
-    console.log('Bulk add triggered with', selectedPlayers.length, 'players');
-    
     if (!transactionsEnabled) {
       setError('Transactions are not allowed until prices are set');
       return;
@@ -625,7 +653,6 @@ const FreeAgentSearchInner = ({ leagueId, onPlayerAdded, league, user }) => {
   }, [transactionsEnabled, rosterCapacityAnalysis, loadRosterCapacity]);
 
   const handleBulkAssignmentComplete = useCallback(async (assignmentData) => {
-    console.log('Executing bulk assignment:', assignmentData);
     setError('');
     
     const results = {
@@ -636,8 +663,9 @@ const FreeAgentSearchInner = ({ leagueId, onPlayerAdded, league, user }) => {
     try {
       for (const assignment of assignmentData) {
         try {
+          const leaguePlayerId = assignment.player.ids?.league_player || assignment.player.league_player_id;
           const playerData = {
-            league_player_id: assignment.player.league_player_id,
+            league_player_id: leaguePlayerId,
             salary: assignment.salary,
             contract_years: assignment.contract_years,
             roster_status: assignment.roster_status,
@@ -653,22 +681,28 @@ const FreeAgentSearchInner = ({ leagueId, onPlayerAdded, league, user }) => {
           const response = await leaguesAPI.addPlayerToTeam(leagueId, playerData);
 
           if (response.success) {
+            const firstName = assignment.player.info?.first_name || assignment.player.first_name;
+            const lastName = assignment.player.info?.last_name || assignment.player.last_name;
             results.successful.push({
               player: assignment.player,
-              name: response.player_name || `${assignment.player.first_name} ${assignment.player.last_name}`,
+              name: response.player_name || `${firstName} ${lastName}`,
               position: assignment.roster_status === 'active' ? assignment.roster_position : assignment.roster_status
             });
           } else {
+            const firstName = assignment.player.info?.first_name || assignment.player.first_name;
+            const lastName = assignment.player.info?.last_name || assignment.player.last_name;
             results.failed.push({
               player: assignment.player,
-              name: `${assignment.player.first_name} ${assignment.player.last_name}`,
+              name: `${firstName} ${lastName}`,
               error: response.message || 'Unknown error'
             });
           }
         } catch (playerErr) {
+          const firstName = assignment.player.info?.first_name || assignment.player.first_name;
+          const lastName = assignment.player.info?.last_name || assignment.player.last_name;
           results.failed.push({
             player: assignment.player,
-            name: `${assignment.player.first_name} ${assignment.player.last_name}`,
+            name: `${firstName} ${lastName}`,
             error: playerErr.message || 'Network error'
           });
         }
@@ -702,7 +736,8 @@ const FreeAgentSearchInner = ({ leagueId, onPlayerAdded, league, user }) => {
   }, [isCommissionerMode, activeTeamName, getTargetTeamId, leagueId, clearAllSelections, loadRosterCapacity, navigate]);
 
   const handlePlayerClick = useCallback((player) => {
-    navigate(`/player/${player.mlb_player_id || player.player_id}?leagueId=${leagueId}`);
+    const playerId = player.ids?.mlb || player.mlb_player_id || player.player_id;
+    navigate(`/player/${playerId}?leagueId=${leagueId}`);
   }, [navigate, leagueId]);
 
   // ========================================
@@ -710,31 +745,30 @@ const FreeAgentSearchInner = ({ leagueId, onPlayerAdded, league, user }) => {
   // ========================================
   useEffect(() => {
     if (leagueId && !initialized) {
-      console.log('Initializing FreeAgentSearch component:', { leagueId });
       setInitialized(true);
       
       const initializeComponent = async () => {
-        console.log('Starting async initialization...');
+        // Force enable transactions if in commissioner mode
+        if (isCommissionerMode) {
+          setTransactionsEnabled(true);
+          setNoPricesWarning(false);
+          setBrowseMode(false);
+        }
+        
         await loadLeagueSettings();
-        console.log('League settings loaded');
         await loadSavedPrices(); 
-        console.log('Prices loaded');
         await checkLeagueStatus();
-        console.log('Status checked');
         await loadRosterCapacity();
-        console.log('Roster capacity loaded');
         
         setAllInitialized(true);
-        console.log('ALL INITIALIZATION COMPLETE');
       };
       
       initializeComponent();
     }
-  }, [leagueId, initialized, loadLeagueSettings, loadSavedPrices, checkLeagueStatus, loadRosterCapacity]);
+  }, [leagueId, initialized, isCommissionerMode, loadLeagueSettings, loadSavedPrices, checkLeagueStatus, loadRosterCapacity]);
 
   useEffect(() => {
     if (allInitialized && (transactionsEnabled || browseMode)) {
-      console.log('Loading players:', { allInitialized, transactionsEnabled, browseMode });
       loadPlayers(searchTerm, activeTab, positionFilter, showAll, 0, false);
     }
   }, [allInitialized, transactionsEnabled, browseMode, activeTab, positionFilter, showAll]);
@@ -831,6 +865,16 @@ const FreeAgentSearchInner = ({ leagueId, onPlayerAdded, league, user }) => {
           }
         }}
       />
+      
+      {/* Commissioner Toggle - Prominently Displayed */}
+      {(user?.is_commissioner || isCommissioner) && (
+        <div className="mb-4">
+          <CommissionerToggle 
+            leagueId={leagueId} 
+            userIsCommissioner={user?.is_commissioner || isCommissioner || false}
+          />
+        </div>
+      )}
 
       {/* Status Banners */}
       {allInitialized && !transactionsEnabled && !browseMode && !addingPlayer && !loading && (
@@ -850,11 +894,6 @@ const FreeAgentSearchInner = ({ leagueId, onPlayerAdded, league, user }) => {
                 {viewMode === 'all_players' ? 'All Players' : 'Free Agent Search'} 
                 {browseMode && !transactionsEnabled && ' (View Only)'}
               </h2>
-              
-              <CommissionerToggle 
-                leagueId={leagueId} 
-                userIsCommissioner={user?.is_commissioner || isCommissioner || false}
-              />
             </div>
             
             <div className="flex items-center gap-2">

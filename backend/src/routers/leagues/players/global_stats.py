@@ -16,11 +16,57 @@ from core.auth_utils import get_current_user
 from core.season_utils import get_current_season
 from .analytics import PlayerAnalytics
 from .utils import (
-    get_decimal_value, get_long_value, get_string_value, get_boolean_value,
     calculate_career_totals
 )
 
 logger = logging.getLogger(__name__)
+
+
+# Temporary helper functions until we refactor to dictionary access
+def get_long_value(val):
+    """Get long/int value from record field"""
+    if val is None:
+        return 0
+    if isinstance(val, dict):
+        if 'longValue' in val:
+            return val['longValue']
+        elif 'isNull' in val and val['isNull']:
+            return 0
+    return int(val) if val else 0
+
+def get_decimal_value(val):
+    """Get decimal/float value from record field"""
+    if val is None:
+        return 0.0
+    if isinstance(val, dict):
+        if 'doubleValue' in val:
+            return val['doubleValue']
+        elif 'isNull' in val and val['isNull']:
+            return 0.0
+    return float(val) if val else 0.0
+
+def get_string_value(val):
+    """Get string value from record field"""
+    if val is None:
+        return ''
+    if isinstance(val, dict):
+        if 'stringValue' in val:
+            return val['stringValue']
+        elif 'isNull' in val and val['isNull']:
+            return ''
+    return str(val) if val else ''
+
+def get_boolean_value(val):
+    """Get boolean value from record field"""
+    if val is None:
+        return False
+    if isinstance(val, dict):
+        if 'booleanValue' in val:
+            return val['booleanValue']
+        elif 'isNull' in val and val['isNull']:
+            return False
+    return bool(val) if val else False
+
 
 router = APIRouter()
 

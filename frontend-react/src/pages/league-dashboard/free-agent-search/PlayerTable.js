@@ -8,6 +8,41 @@ import { useBatchSelection } from './BatchSelectionProvider';
 
 const PlayerTable = ({ state, leagueId, isCommissionerMode, activeTeamName }) => {
   const { bulkMode } = useBatchSelection();
+  const tableRef = React.useRef(null);
+  
+  // Use event delegation to handle Add button clicks
+  React.useEffect(() => {
+    const handleClick = (e) => {
+      // Check if clicked element or its parent is an add-player button
+      const button = e.target.closest('.add-player-btn');
+      
+      if (button && !button.disabled) {
+        e.preventDefault();
+        e.stopPropagation();
+        
+        const playerDataStr = button.getAttribute('data-player');
+        if (playerDataStr) {
+          try {
+            const { player, leaguePlayerId, canAddPlayer, loading } = JSON.parse(playerDataStr);
+            
+            if (state.handleAddPlayer && leaguePlayerId && canAddPlayer && !loading) {
+              state.handleAddPlayer(player);
+            }
+          } catch (err) {
+            console.error('Error parsing player data:', err);
+          }
+        }
+      }
+    };
+    
+    const tableElement = tableRef.current;
+    if (tableElement) {
+      tableElement.addEventListener('click', handleClick, true); // Use capture phase
+      return () => {
+        tableElement.removeEventListener('click', handleClick, true);
+      };
+    }
+  }, [state.handleAddPlayer]);
   
   const {
     // Data
@@ -28,12 +63,13 @@ const PlayerTable = ({ state, leagueId, isCommissionerMode, activeTeamName }) =>
     // League state
     transactionsEnabled,
     addingPlayer,
+    leagueStatus,
     
     // Pricing data - CRITICAL FOR DISPLAY
     savedPrices
   } = state;
 
-  // Create columns using the imported function - NOW WITH PRICING
+  // Create columns using the imported function
   const columns = createDynamicColumns({
     showAll,
     activeTab,
@@ -45,7 +81,8 @@ const PlayerTable = ({ state, leagueId, isCommissionerMode, activeTeamName }) =>
     isCommissionerMode,
     activeTeamName,
     bulkMode,
-    savedPrices: savedPrices || {} // PASS SAVED PRICES TO COLUMNS
+    savedPrices: savedPrices || {},
+    leagueStatus: leagueStatus || ''
   });
 
   // Process players to ensure rolling stats are properly formatted
@@ -128,7 +165,7 @@ const PlayerTable = ({ state, leagueId, isCommissionerMode, activeTeamName }) =>
   return (
     <>
       {/* Players Table */}
-      <div className="relative">
+      <div className="relative" ref={tableRef}>
         <DynastyTable
           data={processedPlayers}
           columns={columns}

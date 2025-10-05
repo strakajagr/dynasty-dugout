@@ -54,24 +54,7 @@ def get_cache(key: str) -> Any:
     """Get cached data"""
     return _cache.get(key)
 
-def get_value_from_field(field, value_type='long'):
-    """Helper function to extract values from AWS RDS Data API response fields"""
-    if not field:
-        return 0 if value_type != 'string' else ""
-    
-    if value_type == 'long':
-        return field.get("longValue", 0) or field.get("intValue", 0)
-    elif value_type == 'decimal':
-        val = field.get("stringValue")
-        if val:
-            try:
-                return float(val)
-            except:
-                pass
-        return field.get("doubleValue", 0.0) or field.get("floatValue", 0.0)
-    elif value_type == 'string':
-        return field.get("stringValue", "")
-    return 0
+# Helper function removed - now using dictionary access directly
 
 # =============================================================================
 # TODAY'S GAMES + STARTING PITCHERS
@@ -696,36 +679,36 @@ async def get_trending_players(
                 try:
                     if player_type == "pitchers":
                         hot_players.append({
-                            'player_id': get_value_from_field(record[0], 'long'),
-                            'name': get_value_from_field(record[1], 'string'),
-                            'position': get_value_from_field(record[2], 'string'),
-                            'team': get_value_from_field(record[3], 'string'),
+                            'player_id': record.get('player_id', 0),
+                            'name': record.get('name', ''),
+                            'position': record.get('position', ''),
+                            'team': record.get('team', ''),
                             'last_7': {
-                                'wins': get_value_from_field(record[4], 'long'),
-                                'saves': get_value_from_field(record[5], 'long'),
-                                'strikeouts': get_value_from_field(record[6], 'long'),
-                                'era': get_value_from_field(record[7], 'decimal'),
-                                'whip': get_value_from_field(record[8], 'decimal')
+                                'wins': record.get('wins', 0),
+                                'saves': record.get('saves', 0),
+                                'strikeouts': record.get('strikeouts', 0),
+                                'era': float(record.get('era', 0)),
+                                'whip': float(record.get('whip', 0))
                             },
                             'change': {
-                                'era': f"-{get_value_from_field(record[7], 'decimal'):.2f}",
+                                'era': f"-{float(record.get('era', 0)):.2f}",
                                 'trend': 'up'
                             }
                         })
                     else:
                         hot_players.append({
-                            'player_id': get_value_from_field(record[0], 'long'),
-                            'name': get_value_from_field(record[1], 'string'),
-                            'position': get_value_from_field(record[2], 'string'),
-                            'team': get_value_from_field(record[3], 'string'),
+                            'player_id': record.get('player_id', 0),
+                            'name': record.get('name', ''),
+                            'position': record.get('position', ''),
+                            'team': record.get('team', ''),
                             'last_7': {
-                                'avg': get_value_from_field(record[4], 'decimal'),
-                                'hr': get_value_from_field(record[5], 'long'),
-                                'rbi': get_value_from_field(record[6], 'long'),
-                                'ops': get_value_from_field(record[7], 'decimal')
+                                'avg': float(record.get('avg', 0)),
+                                'hr': record.get('hr', 0),
+                                'rbi': record.get('rbi', 0),
+                                'ops': float(record.get('ops', 0))
                             },
                             'change': {
-                                'ops': f"+{get_value_from_field(record[7], 'decimal'):.3f}",
+                                'ops': f"+{float(record.get('ops', 0)):.3f}",
                                 'trend': 'up'
                             }
                         })
@@ -739,36 +722,36 @@ async def get_trending_players(
                 try:
                     if player_type == "pitchers":
                         cold_players.append({
-                            'player_id': get_value_from_field(record[0], 'long'),
-                            'name': get_value_from_field(record[1], 'string'),
-                            'position': get_value_from_field(record[2], 'string'),
-                            'team': get_value_from_field(record[3], 'string'),
+                            'player_id': record.get('player_id', 0),
+                            'name': record.get('name', ''),
+                            'position': record.get('position', ''),
+                            'team': record.get('team', ''),
                             'last_7': {
-                                'wins': get_value_from_field(record[4], 'long'),
-                                'saves': get_value_from_field(record[5], 'long'),
-                                'strikeouts': get_value_from_field(record[6], 'long'),
-                                'era': get_value_from_field(record[7], 'decimal'),
-                                'whip': get_value_from_field(record[8], 'decimal')
+                                'wins': record.get('wins', 0),
+                                'saves': record.get('saves', 0),
+                                'strikeouts': record.get('strikeouts', 0),
+                                'era': float(record.get('era', 0)),
+                                'whip': float(record.get('whip', 0))
                             },
                             'change': {
-                                'era': f"+{get_value_from_field(record[7], 'decimal'):.2f}",
+                                'era': f"+{float(record.get('era', 0)):.2f}",
                                 'trend': 'down'
                             }
                         })
                     else:
                         cold_players.append({
-                            'player_id': get_value_from_field(record[0], 'long'),
-                            'name': get_value_from_field(record[1], 'string'),
-                            'position': get_value_from_field(record[2], 'string'),
-                            'team': get_value_from_field(record[3], 'string'),
+                            'player_id': record.get('player_id', 0),
+                            'name': record.get('name', ''),
+                            'position': record.get('position', ''),
+                            'team': record.get('team', ''),
                             'last_7': {
-                                'avg': get_value_from_field(record[4], 'decimal'),
-                                'hr': get_value_from_field(record[5], 'long'),
-                                'rbi': get_value_from_field(record[6], 'long'),
-                                'ops': get_value_from_field(record[7], 'decimal')
+                                'avg': float(record.get('avg', 0)),
+                                'hr': record.get('hr', 0),
+                                'rbi': record.get('rbi', 0),
+                                'ops': float(record.get('ops', 0))
                             },
                             'change': {
-                                'ops': f"-{abs(get_value_from_field(record[7], 'decimal')):.3f}",
+                                'ops': f"-{abs(float(record.get('ops', 0))):.3f}",
                                 'trend': 'down'
                             }
                         })

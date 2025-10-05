@@ -8,6 +8,7 @@ import json
 from fastapi import APIRouter, HTTPException, Depends
 from core.auth_utils import get_current_user
 from core.database import execute_sql, batch_execute_sql
+from core.cache import cached, invalidate_cache_pattern
 from .models import SalarySettings
 
 logger = logging.getLogger(__name__)
@@ -26,7 +27,7 @@ def verify_commissioner(league_id: str, user_id: str) -> bool:
             database_name='postgres'
         )
         if result and result.get('records'):
-            commissioner_id = result['records'][0][0].get('stringValue')
+            commissioner_id = result['records'][0].get('commissioner_user_id')
             return commissioner_id == user_id
         return False
     except Exception as e:
@@ -41,7 +42,7 @@ async def validate_league_membership(league_id: str, user_id: str) -> bool:
             parameters={'league_id': league_id, 'user_id': user_id},
             database_name='postgres'
         )
-        if membership_check and membership_check.get("records") and len(membership_check["records"]) > 0:
+        if membership_check and membership_check.get("records"):
             return True
         return False
     except Exception as e:
@@ -53,11 +54,15 @@ async def validate_league_membership(league_id: str, user_id: str) -> bool:
 # =============================================================================
 
 @router.get("/{league_id}/salaries/settings")
+@cached(ttl_seconds=600, key_prefix='salary_settings', key_params=['league_id'])
 async def get_salary_settings(
     league_id: str,
     current_user: dict = Depends(get_current_user)
 ):
-    """Get current salary cap and pricing settings for the league"""
+    """Get current salary cap and pricing settings for the league
+    
+    CACHED: 10 minute TTL - Settings don't change often
+    """
     try:
         user_id = current_user.get('sub') or current_user.get('username')
         
@@ -88,35 +93,44 @@ async def get_salary_settings(
         
         if result and result.get('records'):
             for record in result['records']:
-                setting_name = record[0].get('stringValue')
-                setting_value = record[1].get('stringValue')
+                setting_name = record.get('setting_name')
+                setting_value = record.get('setting_value')
                 
-                if setting_name == 'salary_cap':
-                    settings.salary_cap = float(setting_value)
-                    settings.total_cap = float(setting_value)
-                elif setting_name == 'draft_cap':
-                    settings.draft_cap = float(setting_value)
-                elif setting_name == 'season_cap':
-                    settings.season_cap = float(setting_value)
-                elif setting_name == 'min_salary':
-                    settings.min_salary = float(setting_value)
-                elif setting_name == 'salary_increment':
-                    settings.salary_increment = float(setting_value)
-                elif setting_name == 'rookie_price':
-                    settings.rookie_price = float(setting_value)
-                elif setting_name == 'use_dual_cap':
-                    settings.use_dual_cap = setting_value.lower() == 'true'
-                elif setting_name == 'standard_contract_length':
-                    settings.standard_contract_length = int(setting_value)
-                elif setting_name == 'draft_cap_usage':
-                    settings.draft_cap_usage = float(setting_value)
-                elif setting_name == 'extension_rules':
-                    try:
-                        settings.extension_rules = json.loads(setting_value)
-                    except:
-                        settings.extension_rules = []
-                elif setting_name == 'pricing_method':
-                    settings.pricing_method = setting_value
+                # Skip if setting_value is None
+                if setting_value is None:
+                    logger.warning(f"Setting {setting_name} has None value, using default")
+                    continue
+                
+                try:
+                    if setting_name == 'salary_cap':
+                        settings.salary_cap = float(setting_value)
+                        settings.total_cap = float(setting_value)
+                    elif setting_name == 'draft_cap':
+                        settings.draft_cap = float(setting_value)
+                    elif setting_name == 'season_cap':
+                        settings.season_cap = float(setting_value)
+                    elif setting_name == 'min_salary':
+                        settings.min_salary = float(setting_value)
+                    elif setting_name == 'salary_increment':
+                        settings.salary_increment = float(setting_value)
+                    elif setting_name == 'rookie_price':
+                        settings.rookie_price = float(setting_value)
+                    elif setting_name == 'use_dual_cap':
+                        settings.use_dual_cap = setting_value.lower() == 'true'
+                    elif setting_name == 'standard_contract_length':
+                        settings.standard_contract_length = int(setting_value)
+                    elif setting_name == 'draft_cap_usage':
+                        settings.draft_cap_usage = float(setting_value)
+                    elif setting_name == 'extension_rules':
+                        try:
+                            settings.extension_rules = json.loads(setting_value)
+                        except:
+                            settings.extension_rules = []
+                    elif setting_name == 'pricing_method':
+                        settings.pricing_method = setting_value
+                except (ValueError, TypeError) as e:
+                    logger.error(f"Error converting setting {setting_name}={setting_value}: {e}")
+                    continue
         
         return {
             "success": True,
@@ -175,6 +189,10 @@ async def update_salary_settings(
             settings_params,
             database_name='leagues'
         )
+        
+        # Invalidate settings cache for this league
+        invalidate_cache_pattern(f'salary_settings:{league_id}')
+        logger.info(f"Invalidated salary settings cache for league {league_id}")
         
         return {
             "success": True,

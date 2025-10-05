@@ -10,7 +10,6 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime, timedelta
 from core.database import execute_sql
 from core.season_utils import CURRENT_SEASON
-from .utils import get_decimal_value, get_long_value, get_string_value, get_boolean_value
 
 logger = logging.getLogger(__name__)
 
@@ -162,14 +161,14 @@ class PlayerAnalytics:
                 return {"error": "No pitching data available"}
             
             data_record = data_check_result['records'][0]
-            total_games = get_long_value(data_record[0]) or 0
+            total_games = data_record.get('total_games') or 0
             logger.info(f"Total games found: {total_games}")
             
             if total_games == 0:
                 logger.error("No pitching appearances found")
                 return {"error": "No pitching appearances found"}
             
-            days_covered = get_long_value(data_record[3]) or 30
+            days_covered = data_record.get('days_covered') or 30
             logger.info(f"Days covered: {days_covered}")
             
             # Use whatever data is available (up to 30 days)
@@ -212,8 +211,8 @@ class PlayerAnalytics:
                 logger.warning(f"No role data, defaulting to reliever with {appearances} appearances")
             else:
                 role_record = role_result['records'][0]
-                role = get_string_value(role_record[0]) or 'reliever'
-                appearances = get_long_value(role_record[3]) or total_games
+                role = role_record.get('role') or 'reliever'
+                appearances = role_record.get('total_appearances') or total_games
                 logger.info(f"Pitcher role: {role}, appearances: {appearances}")
             
             # Step 2: Get player's stats for available period (up to 30 days)
@@ -249,19 +248,19 @@ class PlayerAnalytics:
                 return {"error": "Failed to get player stats"}
             
             player_record = player_result['records'][0]
-            games = get_long_value(player_record[0]) or 0
-            total_ip = get_decimal_value(player_record[1]) or 0
-            total_er = get_long_value(player_record[2]) or 0
-            total_hits = get_long_value(player_record[3]) or 0
-            total_walks = get_long_value(player_record[4]) or 0
-            total_k = get_long_value(player_record[5]) or 0
-            wins = get_long_value(player_record[6]) or 0
-            quality_starts = get_long_value(player_record[7]) or 0
-            saves = get_long_value(player_record[8]) or 0
-            holds = get_long_value(player_record[9]) or 0
-            first_game = get_string_value(player_record[10])
-            last_game = get_string_value(player_record[11])
-            actual_days = get_long_value(player_record[12]) or days_covered
+            games = player_record.get('games') or 0
+            total_ip = player_record.get('total_ip') or 0
+            total_er = player_record.get('total_er') or 0
+            total_hits = player_record.get('total_hits') or 0
+            total_walks = player_record.get('total_walks') or 0
+            total_k = player_record.get('total_k') or 0
+            wins = player_record.get('wins') or 0
+            quality_starts = player_record.get('quality_starts') or 0
+            saves = player_record.get('saves') or 0
+            holds = player_record.get('holds') or 0
+            first_game = player_record.get('first_game')
+            last_game = player_record.get('last_game')
+            actual_days = player_record.get('days_span') or days_covered
             
             logger.info(f"Stats parsed - Games: {games}, IP: {total_ip}, ER: {total_er}, K: {total_k}")
             
@@ -472,38 +471,38 @@ class PlayerAnalytics:
             if role == 'starter':
                 return {
                     "stats": {
-                        "wins": round(get_decimal_value(record[0]) or 2, 1),
-                        "era": round(get_decimal_value(record[1]) or 4.12, 2),
-                        "whip": round(get_decimal_value(record[2]) or 1.31, 3),
-                        "strikeouts": round(get_decimal_value(record[3]) or 38, 1),
-                        "quality_starts": round(get_decimal_value(record[4]) or 3, 1),
-                        "bb_per_9": round(get_decimal_value(record[5]) or 2.8, 2)
+                        "wins": round(record.get('avg_wins') or 2, 1),
+                        "era": round(record.get('avg_era') or 4.12, 2),
+                        "whip": round(record.get('avg_whip') or 1.31, 3),
+                        "strikeouts": round(record.get('avg_strikeouts') or 38, 1),
+                        "quality_starts": round(record.get('avg_quality_starts') or 3, 1),
+                        "bb_per_9": round(record.get('avg_bb_per_9') or 2.8, 2)
                     },
-                    "sample_size": get_long_value(record[6]) or 0
+                    "sample_size": record.get('sample_size') or 0
                 }
             elif role == 'closer':
                 return {
                     "stats": {
-                        "saves": round(get_decimal_value(record[0]) or 3, 1),
-                        "era": round(get_decimal_value(record[1]) or 3.50, 2),
-                        "whip": round(get_decimal_value(record[2]) or 1.20, 3),
-                        "strikeouts": round(get_decimal_value(record[3]) or 12, 1),
-                        "k_per_9": round(get_decimal_value(record[4]) or 10.5, 2),
-                        "bb_per_9": round(get_decimal_value(record[5]) or 3.0, 2)
+                        "saves": round(record.get('avg_saves') or 3, 1),
+                        "era": round(record.get('avg_era') or 3.50, 2),
+                        "whip": round(record.get('avg_whip') or 1.20, 3),
+                        "strikeouts": round(record.get('avg_strikeouts') or 12, 1),
+                        "k_per_9": round(record.get('avg_k_per_9') or 10.5, 2),
+                        "bb_per_9": round(record.get('avg_bb_per_9') or 3.0, 2)
                     },
-                    "sample_size": get_long_value(record[6]) or 0
+                    "sample_size": record.get('sample_size') or 0
                 }
             else:  # reliever
                 return {
                     "stats": {
-                        "holds": round(get_decimal_value(record[0]) or 2, 1),
-                        "era": round(get_decimal_value(record[1]) or 3.85, 2),
-                        "whip": round(get_decimal_value(record[2]) or 1.28, 3),
-                        "strikeouts": round(get_decimal_value(record[3]) or 10, 1),
-                        "k_per_9": round(get_decimal_value(record[4]) or 9.0, 2),
-                        "bb_per_9": round(get_decimal_value(record[5]) or 3.2, 2)
+                        "holds": round(record.get('avg_holds') or 2, 1),
+                        "era": round(record.get('avg_era') or 3.85, 2),
+                        "whip": round(record.get('avg_whip') or 1.28, 3),
+                        "strikeouts": round(record.get('avg_strikeouts') or 10, 1),
+                        "k_per_9": round(record.get('avg_k_per_9') or 9.0, 2),
+                        "bb_per_9": round(record.get('avg_bb_per_9') or 3.2, 2)
                     },
-                    "sample_size": get_long_value(record[6]) or 0
+                    "sample_size": record.get('sample_size') or 0
                 }
             
         except Exception as e:
@@ -531,7 +530,7 @@ class PlayerAnalytics:
                 return None
             
             # Get pitcher IDs
-            pitcher_ids = [get_long_value(r[0]) for r in roster_result['records']]
+            pitcher_ids = [r.get('mlb_player_id') for r in roster_result['records']]
             
             if not pitcher_ids:
                 return None
@@ -581,14 +580,14 @@ class PlayerAnalytics:
                     record = result['records'][0]
                     return {
                         "stats": {
-                            "wins": round(get_decimal_value(record[0]) or 1.8, 1),
-                            "era": round(get_decimal_value(record[1]) or 4.45, 2),
-                            "whip": round(get_decimal_value(record[2]) or 1.35, 3),
-                            "strikeouts": round(get_decimal_value(record[3]) or 35, 1),
-                            "quality_starts": round(get_decimal_value(record[4]) or 2.8, 1),
-                            "bb_per_9": round(get_decimal_value(record[5]) or 3.1, 2)
+                            "wins": round(record.get('avg_wins') or 1.8, 1),
+                            "era": round(record.get('avg_era') or 4.45, 2),
+                            "whip": round(record.get('avg_whip') or 1.35, 3),
+                            "strikeouts": round(record.get('avg_strikeouts') or 35, 1),
+                            "quality_starts": round(record.get('avg_quality_starts') or 2.8, 1),
+                            "bb_per_9": round(record.get('avg_bb_per_9') or 3.1, 2)
                         },
-                        "sample_size": get_long_value(record[6]) or 0
+                        "sample_size": record.get('sample_size') or 0
                     }
             
             # Similar logic for closer and reliever roles would go here
@@ -731,12 +730,12 @@ class PlayerAnalytics:
                 return {}
             
             record = result['records'][0]
-            games_30 = get_long_value(record[0]) or 0
-            ab_30 = get_long_value(record[1]) or 0
-            h_30 = get_long_value(record[2]) or 0
-            bb_30 = get_long_value(record[3]) or 0
-            hr_30 = get_long_value(record[4]) or 0
-            xbh_30 = get_long_value(record[5]) or 0
+            games_30 = record.get('games_30') or 0
+            ab_30 = record.get('ab_30') or 0
+            h_30 = record.get('h_30') or 0
+            bb_30 = record.get('bb_30') or 0
+            hr_30 = record.get('hr_30') or 0
+            xbh_30 = record.get('xbh_30') or 0
             
             avg_30 = h_30 / ab_30 if ab_30 > 0 else 0
             obp_30 = (h_30 + bb_30) / (ab_30 + bb_30) if (ab_30 + bb_30) > 0 else 0
@@ -751,14 +750,14 @@ class PlayerAnalytics:
                     "ops": round(obp_30 + slg_30, 3)
                 },
                 "season": {
-                    "avg": get_decimal_value(record[6]),
-                    "obp": get_decimal_value(record[7]),
-                    "slg": get_decimal_value(record[8]),
-                    "ops": get_decimal_value(record[9])
+                    "avg": record.get('batting_avg'),
+                    "obp": record.get('obp'),
+                    "slg": record.get('slg'),
+                    "ops": record.get('ops')
                 },
                 "trend": {
-                    "avg": self._calculate_trend(avg_30, get_decimal_value(record[6])),
-                    "ops": self._calculate_trend(obp_30 + slg_30, get_decimal_value(record[9]))
+                    "avg": self._calculate_trend(avg_30, record.get('batting_avg')),
+                    "ops": self._calculate_trend(obp_30 + slg_30, record.get('ops'))
                 }
             }
             
@@ -792,13 +791,13 @@ class PlayerAnalytics:
                 return {}
             
             record = result['records'][0]
-            hr_30 = get_long_value(record[0]) or 0
-            xbh_30 = get_long_value(record[1]) or 0
-            ab_30 = get_long_value(record[2]) or 0
-            hr_7 = get_long_value(record[3]) or 0
-            ab_7 = get_long_value(record[4]) or 0
-            hr_season = get_long_value(record[5]) or 0
-            ab_season = get_long_value(record[6]) or 0
+            hr_30 = record.get('hr_30') or 0
+            xbh_30 = record.get('xbh_30') or 0
+            ab_30 = record.get('ab_30') or 0
+            hr_7 = record.get('hr_7') or 0
+            ab_7 = record.get('ab_7') or 0
+            hr_season = record.get('hr_season') or 0
+            ab_season = record.get('ab_season') or 0
             
             hr_rate_30 = (hr_30 / ab_30 * 100) if ab_30 > 0 else 0
             hr_rate_7 = (hr_7 / ab_7 * 100) if ab_7 > 0 else 0
@@ -861,9 +860,9 @@ class PlayerAnalytics:
             
             if result and result.get('records'):
                 record = result['records'][0]
-                enhanced["longest_30_days"] = get_long_value(record[0])
-                enhanced["multi_hit_30_days"] = get_long_value(record[1])
-                enhanced["three_hit_30_days"] = get_long_value(record[2])
+                enhanced["longest_30_days"] = record.get('longest_hit_streak')
+                enhanced["multi_hit_30_days"] = record.get('multi_hit_games')
+                enhanced["three_hit_30_days"] = record.get('three_hit_games')
                 
                 # Determine streak status
                 if base_streaks.get("hit_streak", 0) >= 10:
@@ -907,12 +906,12 @@ class PlayerAnalytics:
                 return {}
             
             record = result['records'][0]
-            total_games = get_long_value(record[0]) or 0
-            total_hits = get_long_value(record[1]) or 0
-            total_ab = get_long_value(record[2]) or 0
-            total_rbi = get_long_value(record[3]) or 0
-            big_rbi_games = get_long_value(record[4]) or 0
-            clutch_homers = get_long_value(record[5]) or 0
+            total_games = record.get('total_games') or 0
+            total_hits = record.get('total_hits') or 0
+            total_ab = record.get('total_ab') or 0
+            total_rbi = record.get('total_rbi') or 0
+            big_rbi_games = record.get('big_rbi_games') or 0
+            clutch_homers = record.get('clutch_homers') or 0
             
             # Calculate clutch rating based on RBI rate and big games
             rbi_per_game = total_rbi / total_games if total_games > 0 else 0
@@ -974,15 +973,15 @@ class PlayerAnalytics:
             recent = recent_result['records'][0]
             season = season_result['records'][0]
             
-            # Extract values
-            recent_avg = get_decimal_value(recent[5])
-            recent_games = get_long_value(recent[0])
-            recent_hr = get_long_value(recent[3])
-            recent_ab = get_long_value(recent[1])
+            # Extract values (already plain Python types)
+            recent_avg = recent.get('avg')
+            recent_games = recent.get('games')
+            recent_hr = recent.get('hr')
+            recent_ab = recent.get('ab')
             
-            season_avg = get_decimal_value(season[0])
-            season_hr = get_long_value(season[4])
-            season_ab = get_long_value(season[7])
+            season_avg = season.get('batting_avg')
+            season_hr = season.get('home_runs')
+            season_ab = season.get('at_bats')
             
             # Calculate differentials
             avg_diff = recent_avg - season_avg
@@ -1020,7 +1019,7 @@ class PlayerAnalytics:
                 },
                 "season_stats": {
                     "batting_avg": round(season_avg, 3),
-                    "ops": get_decimal_value(season[3]),
+                    "ops": season.get('ops'),
                     "home_runs": season_hr
                 }
             }
@@ -1071,38 +1070,38 @@ class PlayerAnalytics:
             z_scores = {}
             
             # Batting average
-            if league[1] and get_decimal_value(league[1]) > 0:
+            if league.get('std_ba') and league.get('std_ba') > 0:
                 z_scores['batting_avg'] = round(
-                    (get_decimal_value(player[0]) - get_decimal_value(league[0])) / 
-                    get_decimal_value(league[1]), 2
+                    (player.get('batting_avg') - league.get('avg_ba')) / 
+                    league.get('std_ba'), 2
                 )
             
             # OPS
-            if league[3] and get_decimal_value(league[3]) > 0:
+            if league.get('std_ops') and league.get('std_ops') > 0:
                 z_scores['ops'] = round(
-                    (get_decimal_value(player[3]) - get_decimal_value(league[2])) / 
-                    get_decimal_value(league[3]), 2
+                    (player.get('ops') - league.get('avg_ops')) / 
+                    league.get('std_ops'), 2
                 )
             
             # Home runs
-            if league[5] and get_decimal_value(league[5]) > 0:
+            if league.get('std_hr') and league.get('std_hr') > 0:
                 z_scores['home_runs'] = round(
-                    (get_long_value(player[4]) - get_decimal_value(league[4])) / 
-                    get_decimal_value(league[5]), 2
+                    (player.get('home_runs') - league.get('avg_hr')) / 
+                    league.get('std_hr'), 2
                 )
             
             # RBI
-            if league[7] and get_decimal_value(league[7]) > 0:
+            if league.get('std_rbi') and league.get('std_rbi') > 0:
                 z_scores['rbi'] = round(
-                    (get_long_value(player[5]) - get_decimal_value(league[6])) / 
-                    get_decimal_value(league[7]), 2
+                    (player.get('rbi') - league.get('avg_rbi')) / 
+                    league.get('std_rbi'), 2
                 )
             
             # Stolen bases
-            if league[9] and get_decimal_value(league[9]) > 0:
+            if league.get('std_sb') and league.get('std_sb') > 0:
                 z_scores['stolen_bases'] = round(
-                    (get_long_value(player[7]) - get_decimal_value(league[8])) / 
-                    get_decimal_value(league[9]), 2
+                    (player.get('stolen_bases') - league.get('avg_sb')) / 
+                    league.get('std_sb'), 2
                 )
             
             return z_scores
@@ -1121,7 +1120,7 @@ class PlayerAnalytics:
             if not pos_result or not pos_result.get('records'):
                 return []
             
-            position = get_string_value(pos_result['records'][0][0])
+            position = pos_result['records'][0].get('position')
             
             # Get top players at this position
             rankings_query = """
@@ -1154,15 +1153,15 @@ class PlayerAnalytics:
             if result and result.get('records'):
                 for record in result['records']:
                     rankings.append({
-                        'rank': get_long_value(record[8]),
-                        'player_id': get_long_value(record[0]),
-                        'name': get_string_value(record[1]),
-                        'batting_avg': get_decimal_value(record[2]),
-                        'ops': get_decimal_value(record[3]),
-                        'home_runs': get_long_value(record[4]),
-                        'rbi': get_long_value(record[5]),
-                        'stolen_bases': get_long_value(record[6]),
-                        'runs': get_long_value(record[7])
+                        'rank': record.get('rank'),
+                        'player_id': record.get('player_id'),
+                        'name': record.get('name'),
+                        'batting_avg': record.get('batting_avg'),
+                        'ops': record.get('ops'),
+                        'home_runs': record.get('home_runs'),
+                        'rbi': record.get('rbi'),
+                        'stolen_bases': record.get('stolen_bases'),
+                        'runs': record.get('runs')
                     })
             
             return rankings
@@ -1207,18 +1206,18 @@ class PlayerAnalytics:
             monthly_splits = []
             if result and result.get('records'):
                 for record in result['records']:
-                    obp = get_decimal_value(record[9])
-                    slg = get_decimal_value(record[10])
+                    obp = record.get('obp') or 0
+                    slg = record.get('slg') or 0
                     monthly_splits.append({
-                        'month': int(get_decimal_value(record[0])),
-                        'games': get_long_value(record[1]),
-                        'at_bats': get_long_value(record[2]),
-                        'hits': get_long_value(record[3]),
-                        'home_runs': get_long_value(record[4]),
-                        'rbi': get_long_value(record[5]),
-                        'runs': get_long_value(record[6]),
-                        'stolen_bases': get_long_value(record[7]),
-                        'batting_avg': round(get_decimal_value(record[8]), 3),
+                        'month': int(record.get('month') or 0),
+                        'games': record.get('games'),
+                        'at_bats': record.get('ab'),
+                        'hits': record.get('h'),
+                        'home_runs': record.get('hr'),
+                        'rbi': record.get('rbi'),
+                        'runs': record.get('r'),
+                        'stolen_bases': record.get('sb'),
+                        'batting_avg': round(record.get('avg') or 0, 3),
                         'obp': round(obp, 3),
                         'slg': round(slg, 3),
                         'ops': round(obp + slg, 3)
@@ -1272,10 +1271,10 @@ class PlayerAnalytics:
             multi_hit_last_10 = 0
             
             for i, record in enumerate(result['records']):
-                hits = get_long_value(record[1])
-                at_bats = get_long_value(record[2])
-                walks = get_long_value(record[3])
-                hbp = get_long_value(record[4])
+                hits = record.get('hits')
+                at_bats = record.get('at_bats')
+                walks = record.get('walks')
+                hbp = record.get('hit_by_pitch')
                 
                 # Count multi-hit games in last 10
                 if i < 10 and hits >= 2:
@@ -1316,7 +1315,7 @@ class PlayerAnalytics:
             if not result or not result.get('records') or len(result['records']) < 5:
                 return {"score": 50, "grade": "C", "std_dev": 0, "variance": 0}
             
-            averages = [get_decimal_value(r[0]) for r in result['records']]
+            averages = [r.get('avg') if isinstance(r, dict) else r[0] for r in result['records']]
             
             # Calculate standard deviation and variance
             if len(averages) > 1:
@@ -1388,24 +1387,24 @@ class PlayerAnalytics:
                     previous = records[i + 1]
                     
                     yoy_data.append({
-                        'year': get_long_value(current[0]),
-                        'games': get_long_value(current[1]),
+                        'year': current.get('season'),
+                        'games': current.get('games_played'),
                         'avg_change': round(
-                            get_decimal_value(current[2]) - get_decimal_value(previous[2]), 3
+                            (current.get('batting_avg') or 0) - (previous.get('batting_avg') or 0), 3
                         ),
                         'ops_change': round(
-                            get_decimal_value(current[3]) - get_decimal_value(previous[3]), 3
+                            (current.get('ops') or 0) - (previous.get('ops') or 0), 3
                         ),
-                        'hr_change': get_long_value(current[4]) - get_long_value(previous[4]),
-                        'rbi_change': get_long_value(current[5]) - get_long_value(previous[5]),
-                        'wins': get_long_value(current[7]),
-                        'losses': get_long_value(current[8]),
+                        'hr_change': (current.get('home_runs') or 0) - (previous.get('home_runs') or 0),
+                        'rbi_change': (current.get('rbi') or 0) - (previous.get('rbi') or 0),
+                        'wins': current.get('wins'),
+                        'losses': current.get('losses'),
                         'era_change': round(
-                            get_decimal_value(current[9]) - get_decimal_value(previous[9]), 2
-                        ) if current[9] else None,
+                            (current.get('era') or 0) - (previous.get('era') or 0), 2
+                        ) if current.get('era') else None,
                         'whip_change': round(
-                            get_decimal_value(current[10]) - get_decimal_value(previous[10]), 3
-                        ) if current[10] else None
+                            (current.get('whip') or 0) - (previous.get('whip') or 0), 3
+                        ) if current.get('whip') else None
                     })
             
             return yoy_data
@@ -1443,13 +1442,13 @@ class PlayerAnalytics:
             if result and result.get('records'):
                 record = result['records'][0]
                 return {
-                    'batting_avg_avg': get_decimal_value(record[0]),
-                    'obp_avg': get_decimal_value(record[1]),
-                    'slg_avg': get_decimal_value(record[2]),
-                    'ops_avg': get_decimal_value(record[3]),
-                    'home_runs_avg': get_decimal_value(record[4]),
-                    'rbi_avg': get_decimal_value(record[5]),
-                    'stolen_bases_avg': get_decimal_value(record[6])
+                    'batting_avg_avg': record.get('batting_avg_avg'),
+                    'obp_avg': record.get('obp_avg'),
+                    'slg_avg': record.get('slg_avg'),
+                    'ops_avg': record.get('ops_avg'),
+                    'home_runs_avg': record.get('home_runs_avg'),
+                    'rbi_avg': record.get('rbi_avg'),
+                    'stolen_bases_avg': record.get('stolen_bases_avg')
                 }
             
             return {}

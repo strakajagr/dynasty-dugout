@@ -18,6 +18,8 @@ import LeagueSettings from '../components/LeagueSettings';
 
 // Import the league-specific player search
 import PlayerSearchDropdownLeague from '../components/PlayerSearchDropdownLeague';
+import PositionAssignmentDropdown from '../components/league-dashboard/PositionAssignmentDropdown';
+import { analyzeRosterCapacity } from '../utils/RosterCapacityUtils';
 
 // Import the modular components
 import LeagueHome from './league-dashboard/LeagueHome';
@@ -32,6 +34,7 @@ import SalaryContractSettings from './league-dashboard/salary-contract/SalaryCon
 import TransactionLog from './league-dashboard/TransactionLog';
 import CommissionerControls from './league-dashboard/CommissionerControls';
 import TeamSetup from './league-dashboard/TeamSetup';
+import { WatchList } from '../components/WatchList/WatchList';
 
 const LeagueDashboard = () => {
   const { leagueId } = useParams();
@@ -45,6 +48,12 @@ const LeagueDashboard = () => {
   // Then safely extract the functions with null checks
   const setActiveTeamId = commissionerContext?.setActiveTeamId || null;
   const setActiveTeamName = commissionerContext?.setActiveTeamName || null;
+  
+  // Position assignment modal state (MOVED TO TOP LEVEL)
+  const [showPositionModal, setShowPositionModal] = useState(false);
+  const [playerForAssignment, setPlayerForAssignment] = useState(null);
+  const [positionModalRoster, setPositionModalRoster] = useState([]);
+  const [positionModalCapacity, setPositionModalCapacity] = useState(null);
   
   // ========================================
   // STATE MANAGEMENT
@@ -385,6 +394,57 @@ const LeagueDashboard = () => {
     setReloadTrigger(prev => prev + 1);
   };
 
+  // Handler for opening position assignment modal from search
+  const handleOpenPositionModal = async (player) => {
+    try {
+      // Load roster
+      const rosterResponse = await leaguesAPI.getMyRosterCanonical(leagueId);
+      if (rosterResponse.success && rosterResponse.players) {
+        setPositionModalRoster(rosterResponse.players);
+        
+        // Analyze capacity
+        const analysis = analyzeRosterCapacity(rosterResponse.players, league);
+        setPositionModalCapacity(analysis);
+        
+        // Set player and show modal
+        setPlayerForAssignment(player);
+        setShowPositionModal(true);
+      }
+    } catch (error) {
+      console.error('Failed to load roster for position assignment:', error);
+    }
+  };
+
+  // Handler for completing position assignment
+  const handleCompletePositionAssignment = async (assignmentData) => {
+    const { player, assignment } = assignmentData;
+    
+    try {
+      const response = await leaguesAPI.addPlayerToTeam(leagueId, {
+        league_player_id: player.leagueData?.league_player_id,
+        salary: assignment.roster_status === 'minors' ? 0 : (player.leagueData?.salary || league?.min_salary || 1),
+        contract_years: assignment.roster_status === 'minors' ? 0 : 1,
+        roster_status: assignment.roster_status,
+        roster_position: assignment.roster_position,
+        start_contract: assignment.roster_status !== 'minors'
+      });
+      
+      if (response.success) {
+        // Close modal
+        setShowPositionModal(false);
+        setPlayerForAssignment(null);
+        setPositionModalRoster([]);
+        setPositionModalCapacity(null);
+        
+        // Trigger reload
+        handlePlayerAdded(player);
+      }
+    } catch (error) {
+      console.error('Failed to add player:', error);
+      throw error; // Let modal handle error display
+    }
+  };
+
   const handleStatusChange = () => {
     console.log('League status changed, reloading data...');
     loadLeagueData();
@@ -597,13 +657,21 @@ const LeagueDashboard = () => {
           <ComingSoon title="Unauthorized" description="Commissioner access only" />
         );
       
+      // Watch List - Render inline with league context
+      case 'watch-list':
+        return (
+          <WatchList 
+            leagueId={leagueId}
+            league={league}
+            userTeam={userTeam}
+          />
+        );
+      
       // Coming soon pages
       case 'live-scoring':
         return <ComingSoon title="Live Scoring" description="Real-time game scores and stats" />;
       case 'messages':
         return <ComingSoon title="League Chat" description="Communicate with your league" />;
-      case 'watch-list':
-        return <ComingSoon title="Watch List" description="Track players you're interested in" />;
       case 'mlb-player-data':
         return <ComingSoon title="Player Stats" description="Comprehensive MLB player statistics" />;
       case 'team-rosters':
@@ -681,6 +749,7 @@ const LeagueDashboard = () => {
               userTeam={userTeam}
               onPlayerAdded={handlePlayerAdded}
               onPlayerDropped={handlePlayerDropped}
+              onOpenPositionModal={handleOpenPositionModal}
             />
             
             <div className="flex items-center space-x-4">
@@ -840,6 +909,23 @@ const LeagueDashboard = () => {
             {renderContent()}
           </main>
         </div>
+        
+        {/* Position Assignment Modal - Rendered at top level */}
+        {showPositionModal && playerForAssignment && positionModalCapacity && (
+          <PositionAssignmentDropdown
+            player={playerForAssignment}
+            league={league}
+            currentRoster={positionModalRoster}
+            onAssign={handleCompletePositionAssignment}
+            onCancel={() => {
+              setShowPositionModal(false);
+              setPlayerForAssignment(null);
+              setPositionModalRoster([]);
+              setPositionModalCapacity(null);
+            }}
+            isVisible={showPositionModal}
+          />
+        )}
       </div>
     </PlayerModalProvider>
   );

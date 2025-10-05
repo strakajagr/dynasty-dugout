@@ -78,7 +78,7 @@ def is_user_commissioner(league_id: str, user_id: str) -> bool:
         )
         
         if result and result.get('records'):
-            count = result['records'][0][0].get('longValue', 0)
+            count = result['records'][0].get('count', 0)
             return count > 0
         return False
     except Exception as e:
@@ -386,7 +386,7 @@ async def get_logo_upload_url(
         if not team_result.get('records'):
             raise HTTPException(status_code=404, detail="Team not found")
         
-        team_id = team_result['records'][0][0].get('stringValue')
+        team_id = team_result['records'][0].get('team_id')
         
         # Validate file type and size based on image type
         allowed_types = ['image/png', 'image/jpeg', 'image/jpg', 'image/gif', 'image/webp', 'image/avif']
@@ -455,8 +455,8 @@ async def delete_team_logo(
             raise HTTPException(status_code=404, detail="Team not found")
         
         record = team_result['records'][0]
-        team_id = record[0].get('stringValue')
-        current_logo_url = record[1].get('stringValue') if not record[1].get('isNull') else None
+        team_id = record.get('team_id')
+        current_logo_url = record.get('team_logo_url')
         
         if current_logo_url:
             # Extract S3 key from URL
@@ -578,7 +578,7 @@ async def get_league_owners(league_id: str, current_user: dict = Depends(get_cur
         if not league_result.get('records'):
             raise HTTPException(status_code=404, detail="League not found")
         
-        commissioner_user_id = league_result['records'][0][0].get('stringValue')
+        commissioner_user_id = league_result['records'][0].get('commissioner_user_id')
         
         # Check user membership from main database
         membership_sql = """
@@ -596,7 +596,7 @@ async def get_league_owners(league_id: str, current_user: dict = Depends(get_cur
         if not membership_result.get('records'):
             raise HTTPException(status_code=403, detail="Access denied - not a league member")
         
-        user_role = membership_result['records'][0][0].get('stringValue')
+        user_role = membership_result['records'][0].get('role')
         
         # Check if current user is a commissioner using multi-commissioner support
         is_current_user_commissioner = is_user_commissioner(league_id, user_id)
@@ -609,9 +609,9 @@ async def get_league_owners(league_id: str, current_user: dict = Depends(get_cur
             settings_sql = "SELECT setting_value FROM league_settings WHERE league_id = :league_id::uuid AND setting_name = 'max_teams'"
             settings_result = execute_sql(settings_sql, {'league_id': league_id}, database_name='leagues')
             if settings_result.get('records') and settings_result['records'][0]:
-                max_teams_value = settings_result['records'][0][0]
-                if max_teams_value and not max_teams_value.get('isNull'):
-                    max_teams = int(max_teams_value.get('stringValue', 12))
+                max_teams_value = settings_result['records'][0].get('setting_value')
+                if max_teams_value is not None:
+                    max_teams = int(max_teams_value)
         except Exception as settings_error:
             logger.warning(f"Could not get max_teams setting: {settings_error}")
         
@@ -661,10 +661,10 @@ async def get_league_owners(league_id: str, current_user: dict = Depends(get_cur
         # Add active teams first
         if teams_result.get('records'):
             for i, team_record in enumerate(teams_result['records'], 1):
-                team_user_id = team_record[4].get('stringValue') if team_record[4] and not team_record[4].get('isNull') else None
+                team_user_id = team_record.get('user_id')
                 # Use the is_commissioner flag from database
-                team_is_commissioner = team_record[6].get('booleanValue', False) if team_record[6] and not team_record[6].get('isNull') else False
-                team_logo_url = team_record[7].get('stringValue') if team_record[7] and not team_record[7].get('isNull') else None
+                team_is_commissioner = team_record.get('is_commissioner', False)
+                team_logo_url = team_record.get('team_logo_url')
                 
                 # Determine actions based on current user's commissioner status
                 actions = []
@@ -677,12 +677,12 @@ async def get_league_owners(league_id: str, current_user: dict = Depends(get_cur
                 
                 owner = {
                     "slot": i,
-                    "owner_name": team_record[2].get('stringValue') if team_record[2] and not team_record[2].get('isNull') else "Manager",
-                    "owner_email": team_record[3].get('stringValue') if team_record[3] and not team_record[3].get('isNull') else "N/A",
-                    "team_name": team_record[1].get('stringValue') if team_record[1] and not team_record[1].get('isNull') else "Unnamed Team",
+                    "owner_name": team_record.get('manager_name', "Manager"),
+                    "owner_email": team_record.get('manager_email', "N/A"),
+                    "team_name": team_record.get('team_name', "Unnamed Team"),
                     "status": "Active",
                     "actions": actions,
-                    "team_id": team_record[0].get('stringValue') if team_record[0] and not team_record[0].get('isNull') else None,
+                    "team_id": team_record.get('team_id'),
                     "is_commissioner": team_is_commissioner,
                     "user_id": team_user_id,
                     "team_logo_url": team_logo_url
@@ -704,12 +704,12 @@ async def get_league_owners(league_id: str, current_user: dict = Depends(get_cur
                 if next_slot:
                     owner = {
                         "slot": next_slot,
-                        "owner_name": invitation_record[2].get('stringValue') if invitation_record[2] and not invitation_record[2].get('isNull') else "Invited Owner",
-                        "owner_email": invitation_record[1].get('stringValue') if invitation_record[1] and not invitation_record[1].get('isNull') else "unknown@email.com",
+                        "owner_name": invitation_record.get('owner_name', "Invited Owner"),
+                        "owner_email": invitation_record.get('email', "unknown@email.com"),
                         "team_name": f"Team {next_slot} (Pending)",
                         "status": "Pending",
                         "actions": ["Cancel"] if is_current_user_commissioner else [],
-                        "invitation_id": invitation_record[0].get('stringValue') if invitation_record[0] and not invitation_record[0].get('isNull') else None,
+                        "invitation_id": invitation_record.get('invitation_id'),
                         "is_commissioner": False,
                         "team_logo_url": None
                     }
@@ -820,7 +820,7 @@ async def setup_team(
         if not team_response.get('records'):
             raise HTTPException(status_code=404, detail="Team not found in this league")
         
-        team_id = team_response['records'][0][0].get('stringValue')
+        team_id = team_response['records'][0].get('team_id')
         
         # Update team details in shared leagues database
         update_sql = """
@@ -991,14 +991,14 @@ async def get_pending_invitations(
         if invitations_result.get('records'):
             for record in invitations_result['records']:
                 invitation = {
-                    'invitation_id': record[0].get('stringValue'),
-                    'email': record[1].get('stringValue'),
-                    'owner_name': record[2].get('stringValue'),
-                    'personal_message': record[3].get('stringValue') if not record[3].get('isNull') else '',
-                    'target_slot': record[4].get('longValue') if not record[4].get('isNull') else None,
-                    'invited_at': record[5].get('stringValue'),
-                    'expires_at': record[6].get('stringValue'),
-                    'status': record[7].get('stringValue')
+                    'invitation_id': record.get('invitation_id'),
+                    'email': record.get('email'),
+                    'owner_name': record.get('owner_name'),
+                    'personal_message': record.get('personal_message', ''),
+                    'target_slot': record.get('target_slot'),
+                    'invited_at': record.get('invited_at'),
+                    'expires_at': record.get('expires_at'),
+                    'status': record.get('status')
                 }
                 invitations.append(invitation)
         
@@ -1041,8 +1041,8 @@ async def cancel_invitation(
             logger.error(f"❌ Invitation {invitation_id} not found in shared leagues database")
             raise HTTPException(status_code=404, detail="Invitation not found")
         
-        invitation_status = invitation_check["records"][0][1]["stringValue"]
-        invitation_email = invitation_check["records"][0][2]["stringValue"]
+        invitation_status = invitation_check["records"][0].get('status')
+        invitation_email = invitation_check["records"][0].get('email')
         
         logger.info(f"✅ Found invitation: {invitation_id}, status: {invitation_status}, email: {invitation_email}")
         
@@ -1125,7 +1125,7 @@ async def resend_invitation(
             raise HTTPException(status_code=404, detail="Invitation not found")
         
         invitation_record = invitation_result["records"][0]
-        invitation_status = invitation_record[6]["stringValue"]
+        invitation_status = invitation_record.get('status')
         
         if invitation_status != 'pending':
             raise HTTPException(status_code=400, detail="Can only resend pending invitations")
@@ -1139,7 +1139,7 @@ async def resend_invitation(
         
         league_name = "Unknown League"
         if league_name_result.get("records") and len(league_name_result["records"]) > 0:
-            league_name = league_name_result["records"][0][0]["stringValue"]
+            league_name = league_name_result["records"][0].get('league_name', 'Unknown League')
         
         # Get commissioner name from JWT token instead of database
         commissioner_first_name = current_user.get('given_name', 'Commissioner')
@@ -1151,13 +1151,13 @@ async def resend_invitation(
         # 🎯 EMAIL-FIRST PATTERN: Send email synchronously
         logger.info(f"📧 EMAIL-FIRST: Resending email for invitation {invitation_id}")
         await send_invitation_email(
-            recipient_email=invitation_record[1]["stringValue"],
-            owner_name=invitation_record[2]["stringValue"],
+            recipient_email=invitation_record.get('email'),
+            owner_name=invitation_record.get('owner_name'),
             league_name=league_name,
             commissioner_name=commissioner_name,
-            invitation_token=invitation_record[5]["stringValue"],
-            personal_message=invitation_record[3]["stringValue"] if not invitation_record[3].get('isNull') else "",
-            target_slot=invitation_record[4]["longValue"] if not invitation_record[4].get('isNull') else None
+            invitation_token=invitation_record.get('invitation_token'),
+            personal_message=invitation_record.get('personal_message', ''),
+            target_slot=invitation_record.get('target_slot')
         )
         
         # Update the invitation with new resend timestamp only after email succeeds
@@ -1172,11 +1172,11 @@ async def resend_invitation(
             database_name='leagues'  # SHARED DATABASE
         )
         
-        logger.info(f"✅ Invitation {invitation_id} resent to {invitation_record[1]['stringValue']}")
+        logger.info(f"✅ Invitation {invitation_id} resent to {invitation_record.get('email')}")
         
         return {
             'success': True,
-            'message': f"Invitation resent successfully to {invitation_record[2]['stringValue']} ({invitation_record[1]['stringValue']})"
+            'message': f"Invitation resent successfully to {invitation_record.get('owner_name')} ({invitation_record.get('email')})"
         }
         
     except HTTPException:
@@ -1207,11 +1207,11 @@ async def get_team_home_data(
         
         team_record = team_result['records'][0]
         team_info = {
-            'team_id': team_record[0].get('stringValue'),
-            'team_name': team_record[1].get('stringValue') or 'My Team',
-            'team_logo_url': team_record[2].get('stringValue') if not team_record[2].get('isNull') else None,
-            'team_colors': json.loads(team_record[3].get('stringValue', '{}')) if not team_record[3].get('isNull') else {},
-            'team_motto': team_record[4].get('stringValue') if not team_record[4].get('isNull') else None
+            'team_id': team_record.get('team_id'),
+            'team_name': team_record.get('team_name') or 'My Team',
+            'team_logo_url': team_record.get('team_logo_url'),
+            'team_colors': json.loads(team_record.get('team_colors', '{}')) if team_record.get('team_colors') else {},
+            'team_motto': team_record.get('team_motto')
         }
         
         # Get basic roster info (simplified approach - stats enhancement comes later)
@@ -1228,14 +1228,15 @@ async def get_team_home_data(
         roster_stats = []
         if roster_result.get('records'):
             for record in roster_result['records']:
+                mlb_player_id = record.get('mlb_player_id', 0)
                 player_stats = {
-                    'league_player_id': record[0].get('stringValue'),
-                    'mlb_player_id': record[1].get('longValue', 0),
-                    'player_name': f"Player {record[1].get('longValue', 0)}",
-                    'position': record[2].get('stringValue', 'UTIL'),
+                    'league_player_id': record.get('league_player_id'),
+                    'mlb_player_id': mlb_player_id,
+                    'player_name': f"Player {mlb_player_id}",
+                    'position': record.get('roster_position', 'UTIL'),
                     'mlb_team': 'TBD',
-                    'salary': float(record[3].get('stringValue', '0')) if record[3] and not record[3].get('isNull') else 0.0,
-                    'roster_status': record[4].get('stringValue', 'active'),
+                    'salary': float(record.get('salary', 0)) if record.get('salary') is not None else 0.0,
+                    'roster_status': record.get('roster_status', 'active'),
                     # Empty stats for now - will be enhanced with real data later
                     'season_stats': {'games': 0, 'batting_avg': 0.0, 'home_runs': 0, 'rbi': 0, 'runs': 0, 'stolen_bases': 0, 'wins': 0, 'saves': 0, 'era': 0.0, 'whip': 0.0, 'strikeouts_pitched': 0},
                     'last_14_days': {'games': 0, 'batting_avg': 0.0, 'home_runs': 0, 'rbi': 0, 'runs': 0, 'stolen_bases': 0, 'wins': 0, 'saves': 0, 'era': 0.0, 'whip': 0.0, 'strikeouts_pitched': 0},

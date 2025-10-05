@@ -1,20 +1,41 @@
 // src/pages/league-dashboard/TeamStats.js
-// Team Statistics Display with toggleable 1-line/3-line view - FIXED VERSION
+// Team Statistics Display with DynastyTable 3-Line Format
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   TrendingUp, Activity, Calendar, AlertCircle, RefreshCw,
-  ChevronDown, ChevronUp, ExternalLink, Trophy, Clock,
-  Zap, DollarSign, Users, Filter, Eye, EyeOff, Layers
+  Trophy, Clock, DollarSign, Users, Filter, ExternalLink
 } from 'lucide-react';
 import { dynastyTheme } from '../../services/colorService';
-import { teamStatsAPI, leaguesAPI } from '../../services/apiService';
+import { leaguesAPI } from '../../services/apiService';
 import { useCommissioner } from '../../contexts/CommissionerContext';
+import { usePlayerModal } from '../../contexts/PlayerModalContext';
 import CommissionerModeBar from '../../components/commissioner/CommissionerModeBar';
+import { 
+  DynastyTable
+} from '../../services/tableService';
+import {
+  createTeamStatsActiveLineupColumns,
+  createTeamStatsReserveColumns,
+  transformPositionSlotsToThreeLineFormat,
+  transformPlayersToThreeLineFormat,
+  separateCurrentAndHistorical,
+  createTeamStatsActiveLineupColumnsAccruedOnly,
+  createTeamStatsReserveColumnsAccruedOnly,
+  transformPositionSlotsToAccruedOnlyFormat,
+  transformPlayersToAccruedOnlyFormat,
+  calculateAccruedTotals
+} from '../../services/tables/teamStatsColumns';
+import { 
+  getStatConfigs, 
+  DEFAULT_BATTING_STATS,
+  DEFAULT_PITCHING_STATS 
+} from '../../utils/statMapping';
 
 const TeamStats = ({ leagueId, league, user, initialViewTeamId, initialViewTeamName }) => {
   const navigate = useNavigate();
+  const { openPlayerModal } = usePlayerModal();
   const { 
     isCommissionerMode, 
     activeTeamName, 
@@ -28,18 +49,72 @@ const TeamStats = ({ leagueId, league, user, initialViewTeamId, initialViewTeamN
   const [stats, setStats] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [activeView, setActiveView] = useState('season'); // season, accrued, rolling
-  const [expandedView, setExpandedView] = useState(false); // false = 1-line, true = 3-line
-  const [expandedPlayers, setExpandedPlayers] = useState(new Set());
-  const [filterPosition, setFilterPosition] = useState('all');
+  const [activeTab, setActiveTab] = useState('batters');
   const [teamTotals, setTeamTotals] = useState(null);
   const [recentTransactions, setRecentTransactions] = useState([]);
+  const [accruedOnlyMode, setAccruedOnlyMode] = useState(true);
   
   // Team selection state
   const [allTeams, setAllTeams] = useState([]);
   const [selectedTeamId, setSelectedTeamId] = useState(null);
   const [userTeamId, setUserTeamId] = useState(null);
   const [actualTeamData, setActualTeamData] = useState(null);
+
+  // ========================================
+  // DYNAMIC LEAGUE POSITIONS
+  // ========================================
+  const getLeaguePositions = () => {
+    const positions = {
+      batters: [],
+      pitchers: []
+    };
+
+    if (league?.position_requirements && typeof league.position_requirements === 'object') {
+      const posReqs = league.position_requirements;
+      
+      Object.entries(posReqs).forEach(([positionKey, config]) => {
+        const slots = config?.slots || 0;
+        
+        if (positionKey === 'P' && slots > 0) {
+          positions.pitchers.push(...Array(slots).fill('P'));
+        } else if (slots > 0) {
+          positions.batters.push(...Array(slots).fill(positionKey));
+        }
+      });
+    } else {
+      // Fallback defaults
+      positions.batters = ['C', 'C', '1B', '2B', 'SS', '3B', 'MI', 'CI', 'OF', 'OF', 'OF', 'OF'];
+      positions.pitchers = Array(10).fill('P');
+    }
+    
+    return positions;
+  };
+
+  const positions = getLeaguePositions();
+
+  // ========================================
+  // DYNAMIC STAT CATEGORIES FROM LEAGUE
+  // ========================================
+  const statCategories = useMemo(() => {
+    if (league?.scoring_categories) {
+      return {
+        batting: league.scoring_categories.hitters || league.scoring_categories.hitting || league.scoring_categories.batting || DEFAULT_BATTING_STATS,
+        pitching: league.scoring_categories.pitching || league.scoring_categories.pitchers || DEFAULT_PITCHING_STATS
+      };
+    }
+    
+    return {
+      batting: DEFAULT_BATTING_STATS,
+      pitching: DEFAULT_PITCHING_STATS
+    };
+  }, [league]);
+
+  // Get stat configs for current tab
+  const currentStatConfigs = useMemo(() => {
+    const statLabels = activeTab === 'batters' ? statCategories.batting : statCategories.pitching;
+    const isPitcher = activeTab === 'pitchers';
+    return getStatConfigs(statLabels, isPitcher);
+  }, [activeTab, statCategories]);
 
   // ========================================
   // DATA LOADING
@@ -88,37 +163,30 @@ const TeamStats = ({ leagueId, league, user, initialViewTeamId, initialViewTeamN
         teamId = userTeamId;
       }
       
-      if (!teamId) {
-        // Try to get user's own team stats
-        response = await teamStatsAPI.getMyTeamStats(leagueId);
+      // USE CANONICAL ENDPOINTS LIKE MYROSTER
+      if (!teamId || teamId === userTeamId) {
+        // Use canonical API for own roster
+        response = await leaguesAPI.getMyRosterCanonical(leagueId);
       } else {
-        // Get specific team's dashboard
-        response = await teamStatsAPI.getTeamStatsDashboard(leagueId, teamId);
+        // Use canonical API for viewing other teams
+        response = await leaguesAPI.getTeamRosterCanonical(leagueId, teamId);
       }
       
-      if (response) {
-        // Handle different response structures
-        if (Array.isArray(response)) {
-          // Direct array of stats
-          setStats(response);
-          setTeamTotals(null);
-          setRecentTransactions([]);
-        } else if (response.success || response.team_stats) {
-          // Dashboard response - capture the actual team data
-          setStats(response.team_stats || []);
-          setTeamTotals(response.team_totals || null);
-          setRecentTransactions(response.recent_transactions || []);
-          
-          // If we have team info in the response, use it
-          if (response.team_name) {
-            setActualTeamData({
-              team_name: response.team_name,
-              team_id: response.team_id
-            });
-          }
-        } else {
-          setError('Failed to load team statistics');
+      if (response && response.success) {
+        // Canonical response format: { success, team_id, team_name, players: [...] }
+        console.log('Loaded canonical roster data:', response.players?.length, 'players');
+        setStats(response.players || []);
+        setTeamTotals(null);  // TODO: Calculate totals from canonical data
+        setRecentTransactions([]);  // TODO: Get transactions separately
+        
+        if (response.team_name) {
+          setActualTeamData({
+            team_name: response.team_name,
+            team_id: response.team_id
+          });
         }
+      } else {
+        setError(response?.message || 'Failed to load team statistics');
       }
     } catch (err) {
       console.error('Error loading team stats:', err);
@@ -129,47 +197,161 @@ const TeamStats = ({ leagueId, league, user, initialViewTeamId, initialViewTeamN
   };
 
   // ========================================
+  // FILTER AND ORGANIZE DATA
+  // ========================================
+  const { currentRoster, historicalPlayers } = useMemo(() => {
+    const { current, historical } = separateCurrentAndHistorical(stats);
+    return { currentRoster: current, historicalPlayers: historical };
+  }, [stats]);
+
+  // ========================================
+  // PARSE CANONICAL STRUCTURE FROM BACKEND
+  // ========================================
+  const parseCanonicalPlayer = (canonicalPlayer) => {
+    // Transform canonical structure - PRESERVE NESTED OBJECTS for column renderers
+    return {
+      // IDs - flat for compatibility
+      mlb_player_id: canonicalPlayer.ids?.mlb,
+      league_player_id: canonicalPlayer.ids?.league_player,
+      
+      // Info - KEEP NESTED for column renderers + add flat properties
+      info: canonicalPlayer.info || {},  // ✅ PRESERVE NESTED
+      player_name: canonicalPlayer.info?.full_name,
+      position: canonicalPlayer.info?.position,
+      mlb_team: canonicalPlayer.info?.mlb_team,
+      
+      // Stats - KEEP NESTED for column renderers
+      stats: {
+        season: canonicalPlayer.stats?.season || {},
+        rolling_14_day: canonicalPlayer.stats?.rolling_14_day || {},
+        team_attribution: canonicalPlayer.stats?.team_attribution || {}
+      },
+      season_stats: canonicalPlayer.stats?.season || {},
+      rolling_14_day: canonicalPlayer.stats?.rolling_14_day || {},
+      accrued_stats: canonicalPlayer.stats?.team_attribution || {},
+      
+      // Roster info (from API's roster key, not league_context)
+      roster_status: canonicalPlayer.roster?.status || canonicalPlayer.league_context?.roster_status || 'active',
+      assigned_position: canonicalPlayer.roster?.position || canonicalPlayer.league_context?.assigned_position,
+      roster_position: canonicalPlayer.roster?.position || canonicalPlayer.league_context?.roster_position,
+      acquisition_date: canonicalPlayer.roster?.acquisition_date || canonicalPlayer.league_context?.acquisition_date,
+      
+      // Financial info - KEEP NESTED for column renderers + add flat properties
+      financial: canonicalPlayer.financial || {},  // ✅ PRESERVE NESTED
+      salary: canonicalPlayer.financial?.contract_salary || canonicalPlayer.league_context?.salary,
+      contract_years: canonicalPlayer.financial?.contract_years || canonicalPlayer.league_context?.contract_years,
+      price: canonicalPlayer.financial?.market_price || 0,
+      
+      // Other
+      acquisition_method: canonicalPlayer.league_context?.acquisition_method
+    };
+  };
+
+  // ========================================
+  // ORGANIZE ROSTER DATA INTO POSITION SLOTS
+  // ========================================
+  const organizeRosterForTable = useMemo(() => {
+    const organized = {
+      batters: { active: [], nonActive: [] },
+      pitchers: { active: [], nonActive: [] }
+    };
+
+    // Create position slot rows for active lineup
+    const batterPositionCounts = {};
+    positions.batters.forEach((pos) => {
+      const count = batterPositionCounts[pos] || 0;
+      const slotId = `${pos}_${count}`;
+      organized.batters.active.push({
+        slotPosition: pos,
+        slotId: slotId,
+        player: null
+      });
+      batterPositionCounts[pos] = count + 1;
+    });
+
+    const pitcherPositionCounts = {};
+    positions.pitchers.forEach((pos) => {
+      const count = pitcherPositionCounts[pos] || 0;
+      const slotId = `${pos}_${count}`;
+      organized.pitchers.active.push({
+        slotPosition: pos,
+        slotId: slotId,
+        player: null
+      });
+      pitcherPositionCounts[pos] = count + 1;
+    });
+
+    // Parse canonical players and assign to slots
+    currentRoster.forEach(canonicalPlayer => {
+      const player = parseCanonicalPlayer(canonicalPlayer);
+      const position = player.position;
+      const isBatter = !['SP', 'RP', 'P'].includes(position);
+      const category = isBatter ? 'batters' : 'pitchers';
+      
+      const status = player.roster_status;
+      const assignedPosition = player.assigned_position || player.roster_position;
+      
+      // ALWAYS assign to active lineup - ignore status
+      if (assignedPosition) {
+        const slot = organized[category].active.find(s => s.slotId === assignedPosition);
+        if (slot) {
+          slot.player = player;
+        } else {
+          // If slot not found, add to first empty slot
+          const emptySlot = organized[category].active.find(s => !s.player);
+          if (emptySlot) {
+            emptySlot.player = player;
+          } else {
+            organized[category].nonActive.push(player);
+          }
+        }
+      } else {
+        // No assigned position - try to put in first empty slot
+        const emptySlot = organized[category].active.find(s => !s.player);
+        if (emptySlot) {
+          emptySlot.player = player;
+        } else {
+          organized[category].nonActive.push(player);
+        }
+      }
+    });
+
+    return organized;
+  }, [currentRoster, positions]);
+
+  // ========================================
   // HELPER FUNCTIONS
   // ========================================
   const getCurrentTeamName = () => {
-    // In commissioner mode, try to get the actual team being viewed first
     if (isCommissionerMode && activeTeamId) {
       const commTeam = allTeams.find(t => t.team_id === activeTeamId);
-      if (commTeam && commTeam.team_name && 
-          commTeam.team_name !== 'Commissioner Team') {
+      if (commTeam && commTeam.team_name && commTeam.team_name !== 'Commissioner Team') {
         return commTeam.team_name;
       }
     }
     
-    // Check if we have actual team data from API response
     if (actualTeamData && actualTeamData.team_name && 
         actualTeamData.team_name !== 'Commissioner Team' &&
         actualTeamData.team_name !== 'My Team') {
       return actualTeamData.team_name;
     }
     
-    // If navigated from TeamLinkDropdown, use the provided team name
     if (initialViewTeamName && 
         initialViewTeamName !== 'Commissioner Team' &&
         initialViewTeamName !== 'My Team') {
       return initialViewTeamName;
     }
     
-    // Check if we have a selected team from the dropdown
     const selectedTeam = allTeams.find(t => t.team_id === selectedTeamId);
-    if (selectedTeam && selectedTeam.team_name && 
-        selectedTeam.team_name !== 'Commissioner Team') {
+    if (selectedTeam && selectedTeam.team_name && selectedTeam.team_name !== 'Commissioner Team') {
       return selectedTeam.team_name;
     }
     
-    // Use user's own team name as fallback
     const userTeam = allTeams.find(t => t.is_user_team);
-    if (userTeam && userTeam.team_name && 
-        userTeam.team_name !== 'Commissioner Team') {
+    if (userTeam && userTeam.team_name && userTeam.team_name !== 'Commissioner Team') {
       return userTeam.team_name;
     }
     
-    // Last resort - if we have any team name that's not Commissioner Team
     if (allTeams.length > 0) {
       const anyTeam = allTeams.find(t => t.team_name && t.team_name !== 'Commissioner Team');
       if (anyTeam) {
@@ -177,7 +359,6 @@ const TeamStats = ({ leagueId, league, user, initialViewTeamId, initialViewTeamN
       }
     }
     
-    // Final fallback
     return 'Team';
   };
 
@@ -186,294 +367,200 @@ const TeamStats = ({ leagueId, league, user, initialViewTeamId, initialViewTeamN
     setSelectedTeamId(newTeamId);
   };
 
-  const togglePlayerExpanded = (playerId) => {
-    const newExpanded = new Set(expandedPlayers);
-    if (newExpanded.has(playerId)) {
-      newExpanded.delete(playerId);
-    } else {
-      newExpanded.add(playerId);
-    }
-    setExpandedPlayers(newExpanded);
-  };
-
   const handlePlayerClick = (player) => {
-    navigate(`/player/${player.mlb_player_id}?leagueId=${leagueId}`);
+    const playerId = player.mlb_player_id;
+    openPlayerModal(playerId, player);
   };
 
-  const getFilteredStats = () => {
-    if (filterPosition === 'all') return stats;
-    if (filterPosition === 'batters') {
-      return stats.filter(p => !['SP', 'RP', 'P'].includes(p.position));
-    }
-    if (filterPosition === 'pitchers') {
-      return stats.filter(p => ['SP', 'RP', 'P'].includes(p.position));
-    }
-    return stats.filter(p => p.position === filterPosition);
+  const handleMovePlayer = (player) => {
+    console.log('Move player:', player.player_name);
+    // TODO: Implement move functionality
   };
 
-  // ========================================
-  // RENDER STAT LINE
-  // ========================================
-  const renderStatLine = (player, statType) => {
-    const statsData = statType === 'season' ? player.season_stats :
-                     statType === 'accrued' ? player.accrued_stats :
-                     player.rolling_14_day;
-
-    if (!statsData) return <div className={dynastyTheme.classes.text.neutralDark}>No data</div>;
-
-    const isBatter = !['SP', 'RP', 'P'].includes(player.position);
-
-    if (isBatter) {
-      return (
-        <div className="grid grid-cols-6 gap-4 text-sm">
-          <div>
-            <span className={dynastyTheme.classes.text.neutralDark}>AVG</span>
-            <div className={`${dynastyTheme.classes.text.white} font-mono`}>
-              {statsData.batting_avg || statsData.active_batting_avg 
-                ? `.${String(statsData.batting_avg || statsData.active_batting_avg || 0).slice(2).padEnd(3, '0')}` 
-                : '.000'}
-            </div>
-          </div>
-          <div>
-            <span className={dynastyTheme.classes.text.neutralDark}>HR</span>
-            <div className={`${dynastyTheme.classes.text.white} font-mono`}>
-              {statsData.home_runs || statsData.active_home_runs || 0}
-            </div>
-          </div>
-          <div>
-            <span className={dynastyTheme.classes.text.neutralDark}>RBI</span>
-            <div className={`${dynastyTheme.classes.text.white} font-mono`}>
-              {statsData.rbi || statsData.active_rbi || 0}
-            </div>
-          </div>
-          <div>
-            <span className={dynastyTheme.classes.text.neutralDark}>R</span>
-            <div className={`${dynastyTheme.classes.text.white} font-mono`}>
-              {statsData.runs || statsData.active_runs || 0}
-            </div>
-          </div>
-          <div>
-            <span className={dynastyTheme.classes.text.neutralDark}>SB</span>
-            <div className={`${dynastyTheme.classes.text.white} font-mono`}>
-              {statsData.stolen_bases || statsData.active_stolen_bases || 0}
-            </div>
-          </div>
-          <div>
-            <span className={dynastyTheme.classes.text.neutralDark}>OPS</span>
-            <div className={`${dynastyTheme.classes.text.white} font-mono`}>
-              {(statsData.ops || statsData.active_ops || 0).toFixed(3)}
-            </div>
-          </div>
-        </div>
-      );
-    } else {
-      return (
-        <div className="grid grid-cols-6 gap-4 text-sm">
-          <div>
-            <span className={dynastyTheme.classes.text.neutralDark}>W-L</span>
-            <div className={`${dynastyTheme.classes.text.white} font-mono`}>
-              {statsData.wins || statsData.active_wins || 0}-{statsData.losses || statsData.active_losses || 0}
-            </div>
-          </div>
-          <div>
-            <span className={dynastyTheme.classes.text.neutralDark}>ERA</span>
-            <div className={`${dynastyTheme.classes.text.white} font-mono`}>
-              {(statsData.era || statsData.active_era || 0).toFixed(2)}
-            </div>
-          </div>
-          <div>
-            <span className={dynastyTheme.classes.text.neutralDark}>WHIP</span>
-            <div className={`${dynastyTheme.classes.text.white} font-mono`}>
-              {(statsData.whip || statsData.active_whip || 0).toFixed(3)}
-            </div>
-          </div>
-          <div>
-            <span className={dynastyTheme.classes.text.neutralDark}>K</span>
-            <div className={`${dynastyTheme.classes.text.white} font-mono`}>
-              {statsData.strikeouts_pitched || statsData.active_strikeouts || 0}
-            </div>
-          </div>
-          <div>
-            <span className={dynastyTheme.classes.text.neutralDark}>SV</span>
-            <div className={`${dynastyTheme.classes.text.white} font-mono`}>
-              {statsData.saves || statsData.active_saves || 0}
-            </div>
-          </div>
-          <div>
-            <span className={dynastyTheme.classes.text.neutralDark}>IP</span>
-            <div className={`${dynastyTheme.classes.text.white} font-mono`}>
-              {(statsData.innings_pitched || statsData.active_innings_pitched || 0).toFixed(1)}
-            </div>
-          </div>
-        </div>
-      );
-    }
+  const handleDropPlayer = (player) => {
+    console.log('Drop player:', player.player_name);
+    // TODO: Implement drop functionality
   };
 
-  // ========================================
-  // RENDER PLAYER CARD
-  // ========================================
-  const renderPlayerCard = (player) => {
-    const isExpanded = expandedPlayers.has(player.mlb_player_id);
-    const trend = player.rolling_14_day?.trend;
+  const handleTradePlayer = (player) => {
+    console.log('Trade player:', player.player_name);
+    // TODO: Implement trade functionality
+  };
+
+  // Check if league has bench slots
+  const hasBenchSlots = league?.position_requirements?.BN?.slots > 0 || false;
+  
+  const leagueSettings = {
+    enableMinors: league?.position_requirements?.MIN?.slots > 0 || false,
+    enableDL: league?.position_requirements?.DL?.slots > 0 || false
+  };
+
+  // Transform active lineup to 3-line format OR accrued-only format
+  const activeLineupRows = useMemo(() => {
+    const category = activeTab === 'batters' ? 'batters' : 'pitchers';
+    if (accruedOnlyMode) {
+      return transformPositionSlotsToAccruedOnlyFormat(organizeRosterForTable[category].active);
+    }
+    return transformPositionSlotsToThreeLineFormat(organizeRosterForTable[category].active);
+  }, [organizeRosterForTable, activeTab, accruedOnlyMode]);
+
+  // Transform non-active players to 3-line format OR accrued-only format
+  const nonActiveRows = useMemo(() => {
+    const category = activeTab === 'batters' ? 'batters' : 'pitchers';
+    if (accruedOnlyMode) {
+      return transformPlayersToAccruedOnlyFormat(organizeRosterForTable[category].nonActive);
+    }
+    return transformPlayersToThreeLineFormat(organizeRosterForTable[category].nonActive);
+  }, [organizeRosterForTable, activeTab, accruedOnlyMode]);
+  
+  const historicalRows = useMemo(() => {
+    const filtered = historicalPlayers.filter(p => {
+      // Parse canonical structure first, then filter
+      const parsed = parseCanonicalPlayer(p);
+      const isBatter = !['SP', 'RP', 'P'].includes(parsed.position);
+      if (activeTab === 'batters') return isBatter;
+      if (activeTab === 'pitchers') return !isBatter;
+      return false;
+    }).map(p => parseCanonicalPlayer(p)); // Parse after filtering
     
-    return (
-      <div 
-        key={player.mlb_player_id}
-        className={`${dynastyTheme.components.card.interactive} mb-3`}
-      >
-        {/* Player Header */}
-        <div 
-          className="p-4 cursor-pointer"
-          onClick={() => togglePlayerExpanded(player.mlb_player_id)}
-        >
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h3 className={`${dynastyTheme.classes.text.white} font-semibold`}>
-                    {player.player_name}
-                  </h3>
-                  {trend === 'hot' && <Zap className="w-4 h-4 text-red-400" />}
-                  {trend === 'cold' && <Activity className="w-4 h-4 text-blue-400" />}
-                </div>
-                <div className={`${dynastyTheme.classes.text.neutralLight} text-sm`}>
-                  {player.position} - {player.mlb_team}
-                  {player.roster_status && (
-                    <span className={`ml-2 px-2 py-0.5 rounded text-xs ${
-                      player.roster_status === 'active' 
-                        ? 'bg-green-500/20 text-green-400'
-                        : player.roster_status === 'bench'
-                        ? 'bg-yellow-500/20 text-yellow-400'
-                        : player.roster_status === 'injured' || player.roster_status === 'dl'
-                        ? 'bg-red-500/20 text-red-400'
-                        : 'bg-purple-500/20 text-purple-400'
-                    }`}>
-                      {player.roster_status}
-                    </span>
-                  )}
-                </div>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-4">
-              <div className="text-right">
-                <div className={`${dynastyTheme.classes.text.success} font-medium`}>
-                  ${player.salary || 0}
-                </div>
-                <div className={`${dynastyTheme.classes.text.neutralDark} text-xs`}>
-                  {player.contract_years || 0} years
-                </div>
-              </div>
-              {isExpanded ? 
-                <ChevronUp className={`w-5 h-5 ${dynastyTheme.classes.text.neutralLight}`} /> : 
-                <ChevronDown className={`w-5 h-5 ${dynastyTheme.classes.text.neutralLight}`} />
-              }
-            </div>
-          </div>
+    if (accruedOnlyMode) {
+      return transformPlayersToAccruedOnlyFormat(filtered);
+    }
+    return transformPlayersToThreeLineFormat(filtered);
+  }, [historicalPlayers, activeTab, accruedOnlyMode]);
 
-          {/* Stats Display - Based on expandedView toggle */}
-          <div className="mt-4">
-            {expandedView ? (
-              // 3-LINE VIEW: Show all three stat lines
-              <div className="space-y-3">
-                <div>
-                  <h4 className={`${dynastyTheme.classes.text.neutralLight} text-xs uppercase mb-1`}>
-                    Season Stats
-                  </h4>
-                  {renderStatLine(player, 'season')}
-                </div>
-                <div>
-                  <h4 className={`${dynastyTheme.classes.text.primary} text-xs uppercase mb-1`}>
-                    Accrued While Active
-                  </h4>
-                  {player.accrued_stats ? (
-                    renderStatLine(player, 'accrued')
-                  ) : (
-                    <div className={dynastyTheme.classes.text.neutralDark}>Never been in active lineup</div>
-                  )}
-                </div>
-                <div>
-                  <h4 className={`${dynastyTheme.classes.text.warning} text-xs uppercase mb-1`}>
-                    Last 14 Days
-                  </h4>
-                  {renderStatLine(player, 'rolling')}
-                </div>
-              </div>
-            ) : (
-              // 1-LINE VIEW: Show only selected stat line
-              <div>
-                <h4 className={`${
-                  activeView === 'season' ? dynastyTheme.classes.text.neutralLight :
-                  activeView === 'accrued' ? dynastyTheme.classes.text.primary :
-                  dynastyTheme.classes.text.warning
-                } text-xs uppercase mb-1`}>
-                  {activeView === 'season' ? 'Season Stats' : 
-                   activeView === 'accrued' ? 'Accrued While Active' : 
-                   'Last 14 Days'}
-                </h4>
-                {activeView === 'accrued' && !player.accrued_stats ? (
-                  <div className={dynastyTheme.classes.text.neutralDark}>Never been in active lineup</div>
-                ) : (
-                  renderStatLine(player, activeView)
-                )}
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Expanded Details - Additional Info */}
-        {isExpanded && (
-          <div className={`border-t ${dynastyTheme.classes.border.neutral} p-4 space-y-4`}>
-            {/* Acquisition Info */}
-            {player.acquisition_date && (
-              <div className={`${dynastyTheme.classes.text.neutralDark} text-xs`}>
-                Acquired: {new Date(player.acquisition_date).toLocaleDateString()} via {player.acquisition_method || 'Unknown'}
-              </div>
-            )}
-
-            {/* Accrued Stats Time Period */}
-            {player.accrued_stats && player.accrued_stats.first_active_date && (
-              <div className={`${dynastyTheme.classes.text.neutralDark} text-xs`}>
-                Active Period: {player.accrued_stats.first_active_date} - {player.accrued_stats.last_active_date || 'Present'}
-                ({player.accrued_stats.total_active_days || 0} days)
-              </div>
-            )}
-
-            {/* Action Buttons */}
-            <div className="flex gap-2">
-              <button
-                onClick={(e) => {
-                  e.stopPropagation();
-                  handlePlayerClick(player);
-                }}
-                className={dynastyTheme.utils.getComponent('button', 'secondary', 'sm')}
-              >
-                <ExternalLink className="w-4 h-4 mr-2" />
-                View Profile
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+  // Calculate totals and add totals row when in accrued-only mode
+  const activeLineupRowsWithTotals = useMemo(() => {
+    if (!accruedOnlyMode || activeLineupRows.length === 0) return activeLineupRows;
+    
+    const totals = calculateAccruedTotals(
+      activeLineupRows,
+      currentStatConfigs,
+      activeTab === 'pitchers'
     );
-  };
+    
+    return [
+      ...activeLineupRows,
+      {
+        id: 'totals-active-lineup',
+        isTotalsRow: true,
+        totals: totals
+      }
+    ];
+  }, [activeLineupRows, accruedOnlyMode, currentStatConfigs, activeTab]);
+
+  const nonActiveRowsWithTotals = useMemo(() => {
+    if (!accruedOnlyMode || nonActiveRows.length === 0) return nonActiveRows;
+    
+    const totals = calculateAccruedTotals(
+      nonActiveRows,
+      currentStatConfigs,
+      activeTab === 'pitchers'
+    );
+    
+    return [
+      ...nonActiveRows,
+      {
+        id: 'totals-non-active',
+        isTotalsRow: true,
+        totals: totals
+      }
+    ];
+  }, [nonActiveRows, accruedOnlyMode, currentStatConfigs, activeTab]);
+
+  const historicalRowsWithTotals = useMemo(() => {
+    if (!accruedOnlyMode || historicalRows.length === 0) return historicalRows;
+    
+    const totals = calculateAccruedTotals(
+      historicalRows,
+      currentStatConfigs,
+      activeTab === 'pitchers'
+    );
+    
+    return [
+      ...historicalRows,
+      {
+        id: 'totals-historical',
+        isTotalsRow: true,
+        totals: totals
+      }
+    ];
+  }, [historicalRows, accruedOnlyMode, currentStatConfigs, activeTab]);
+
+  // Create columns (conditional based on accrued-only mode)
+  const activeLineupColumns = useMemo(() => {
+    if (accruedOnlyMode) {
+      return createTeamStatsActiveLineupColumnsAccruedOnly({
+        statConfigs: currentStatConfigs,
+        onPlayerClick: handlePlayerClick,
+        showHistoricalBadge: false,
+        isPitcher: activeTab === 'pitchers',
+        onMovePlayer: handleMovePlayer,
+        onDropPlayer: handleDropPlayer,
+        onTradePlayer: handleTradePlayer,
+        hasBenchSlots: hasBenchSlots,
+        leagueSettings: leagueSettings
+      });
+    }
+    return createTeamStatsActiveLineupColumns({
+      statConfigs: currentStatConfigs,
+      onPlayerClick: handlePlayerClick,
+      showHistoricalBadge: false,
+      isPitcher: activeTab === 'pitchers',
+      onMovePlayer: handleMovePlayer,
+      onDropPlayer: handleDropPlayer,
+      onTradePlayer: handleTradePlayer,
+      hasBenchSlots: hasBenchSlots,
+      leagueSettings: leagueSettings
+    });
+  }, [currentStatConfigs, activeTab, hasBenchSlots, leagueSettings, accruedOnlyMode]);
+
+  const nonActiveColumns = useMemo(() => {
+    if (accruedOnlyMode) {
+      return createTeamStatsReserveColumnsAccruedOnly({
+        statConfigs: currentStatConfigs,
+        onPlayerClick: handlePlayerClick,
+        showHistoricalBadge: false,
+        isPitcher: activeTab === 'pitchers'
+      });
+    }
+    return createTeamStatsReserveColumns({
+      statConfigs: currentStatConfigs,
+      onPlayerClick: handlePlayerClick,
+      showHistoricalBadge: false,
+      isPitcher: activeTab === 'pitchers'
+    });
+  }, [currentStatConfigs, activeTab, accruedOnlyMode]);
+
+  const historicalColumns = useMemo(() => {
+    if (accruedOnlyMode) {
+      return createTeamStatsReserveColumnsAccruedOnly({
+        statConfigs: currentStatConfigs,
+        onPlayerClick: handlePlayerClick,
+        showHistoricalBadge: true,
+        isPitcher: activeTab === 'pitchers'
+      });
+    }
+    return createTeamStatsReserveColumns({
+      statConfigs: currentStatConfigs,
+      onPlayerClick: handlePlayerClick,
+      showHistoricalBadge: true,
+      isPitcher: activeTab === 'pitchers'
+    });
+  }, [currentStatConfigs, activeTab, accruedOnlyMode]);
 
   // ========================================
   // EFFECTS
   // ========================================
   useEffect(() => {
-    if (leagueId) {
-      loadAllTeams();
-    }
+    if (leagueId) loadAllTeams();
   }, [leagueId]);
   
-  // Handle initial team selection from navigation
   useEffect(() => {
     if (initialViewTeamId && !selectedTeamId) {
       setSelectedTeamId(initialViewTeamId);
     }
-  }, [initialViewTeamId]);
+  }, [initialViewTeamId, selectedTeamId]);
 
   useEffect(() => {
     if (leagueId && (selectedTeamId || userTeamId || (isCommissionerMode && activeTeamId))) {
@@ -509,8 +596,6 @@ const TeamStats = ({ leagueId, league, user, initialViewTeamId, initialViewTeamN
     );
   }
 
-  const filteredStats = getFilteredStats();
-
   return (
     <div className="space-y-6">
       {/* Commissioner Mode Bar */}
@@ -519,16 +604,15 @@ const TeamStats = ({ leagueId, league, user, initialViewTeamId, initialViewTeamN
         onTeamSwitch={() => loadTeamStats()}
       />
 
-      {/* HEADER WITH BANNER STYLE MATCHING LEAGUE HOME */}
+      {/* HEADER */}
       <div className={`${dynastyTheme.components.card.highlighted} relative overflow-hidden min-h-[160px]`}>
-        {/* Content with proper padding to match LeagueHome */}
         <div className="relative py-6 px-6 z-10">
           <div className="flex items-center justify-between">
             <div className="flex-1">
               <div className="flex items-center gap-4">
                 <Trophy className={`w-8 h-8 ${dynastyTheme.classes.text.primary}`} />
                 <h1 className={`text-4xl font-bold ${dynastyTheme.classes.text.white}`}>
-                  {getCurrentTeamName()} {getCurrentTeamName().toLowerCase().includes('team') ? 'Statistics' : 'Team Statistics'}
+                  {getCurrentTeamName()} Statistics
                 </h1>
               </div>
               
@@ -553,20 +637,16 @@ const TeamStats = ({ leagueId, league, user, initialViewTeamId, initialViewTeamN
               )}
               
               <p className={`${dynastyTheme.classes.text.neutralLight} text-base mt-2`}>
-                {expandedView 
-                  ? 'Showing all three stat lines: Season, Accrued while active, Last 14 days'
-                  : 'Compact view - Toggle between stat types or expand to see all'}
+                3-line format showing Season, 14-Day, and Accrued stats
               </p>
             </div>
             
-            {/* Right side - Status badges and action buttons */}
+            {/* Right side */}
             <div className="flex flex-col items-end gap-3">
-              {/* Status Badges Row */}
               <div className="flex items-center space-x-2">
                 <span className={`${dynastyTheme.components.badge.success} backdrop-blur-md bg-neutral-900/60`}>
                   ACTIVE
                 </span>
-                {/* Commissioner Badge */}
                 {isCommissioner && (
                   <span className={`px-3 py-1 rounded text-sm font-semibold ${dynastyTheme.classes.bg.primary} ${dynastyTheme.classes.text.black} shadow-xl`}>
                     COMMISSIONER
@@ -574,15 +654,28 @@ const TeamStats = ({ leagueId, league, user, initialViewTeamId, initialViewTeamN
                 )}
               </div>
               
-              {/* Refresh Button */}
-              <button
-                onClick={loadTeamStats}
-                disabled={loading}
-                className={dynastyTheme.utils.getComponent('button', 'secondary', 'sm')}
-              >
-                <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
-                Refresh
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setAccruedOnlyMode(!accruedOnlyMode)}
+                  className={`px-4 py-2 rounded text-sm font-semibold transition-all ${
+                    accruedOnlyMode
+                      ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/50'
+                      : 'bg-neutral-800 text-neutral-400 border border-neutral-700 hover:bg-neutral-700'
+                  }`}
+                  title="Toggle accrued stats only view with totals"
+                >
+                  <Activity className="w-4 h-4 inline mr-2" />
+                  {accruedOnlyMode ? 'All Stats' : 'Accrued Only'}
+                </button>
+                <button
+                  onClick={loadTeamStats}
+                  disabled={loading}
+                  className={dynastyTheme.utils.getComponent('button', 'secondary', 'sm')}
+                >
+                  <RefreshCw className={`w-4 h-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+                  Refresh
+                </button>
+              </div>
             </div>
           </div>
         </div>
@@ -592,7 +685,8 @@ const TeamStats = ({ leagueId, league, user, initialViewTeamId, initialViewTeamN
       {teamTotals && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className={dynastyTheme.components.statCard.container}>
-            <h3 className={`text-sm font-semibold ${dynastyTheme.classes.text.neutralLight} mb-2`}>
+            <h3 className={`text-sm font-semibold ${dynastyTheme.classes.text.neutralLight} mb-2 flex items-center gap-2`}>
+              <Calendar className="w-4 h-4" />
               Season Totals
             </h3>
             <div className="space-y-1">
@@ -612,7 +706,8 @@ const TeamStats = ({ leagueId, league, user, initialViewTeamId, initialViewTeamN
           </div>
 
           <div className={dynastyTheme.components.statCard.container}>
-            <h3 className={`text-sm font-semibold ${dynastyTheme.classes.text.neutralLight} mb-2`}>
+            <h3 className={`text-sm font-semibold ${dynastyTheme.classes.text.neutralLight} mb-2 flex items-center gap-2`}>
+              <Activity className="w-4 h-4" />
               Accrued Totals
             </h3>
             <div className="space-y-1">
@@ -632,7 +727,8 @@ const TeamStats = ({ leagueId, league, user, initialViewTeamId, initialViewTeamN
           </div>
 
           <div className={dynastyTheme.components.statCard.container}>
-            <h3 className={`text-sm font-semibold ${dynastyTheme.classes.text.neutralLight} mb-2`}>
+            <h3 className={`text-sm font-semibold ${dynastyTheme.classes.text.neutralLight} mb-2 flex items-center gap-2`}>
+              <TrendingUp className="w-4 h-4" />
               14-Day Performance
             </h3>
             <div className="space-y-1">
@@ -653,105 +749,104 @@ const TeamStats = ({ leagueId, league, user, initialViewTeamId, initialViewTeamN
         </div>
       )}
 
-      {/* Controls */}
-      <div className={dynastyTheme.components.card.base}>
-        <div className="p-6">
-          <div className="flex items-center justify-between">
-            {/* View Toggle */}
-            <div className="flex gap-2">
-              {/* Expanded View Toggle */}
-              <button
-                onClick={() => setExpandedView(!expandedView)}
-                className={expandedView 
-                  ? dynastyTheme.utils.getComponent('button', 'primary', 'sm')
-                  : dynastyTheme.utils.getComponent('button', 'secondary', 'sm')}
-              >
-                {expandedView ? (
-                  <>
-                    <Layers className="w-4 h-4 mr-2" />
-                    3-Line View
-                  </>
-                ) : (
-                  <>
-                    <Eye className="w-4 h-4 mr-2" />
-                    1-Line View
-                  </>
-                )}
-              </button>
-
-              {/* Stat Type Selector - Only show in compact view */}
-              {!expandedView && (
-                <>
-                  <button
-                    onClick={() => setActiveView('season')}
-                    className={activeView === 'season' 
-                      ? dynastyTheme.utils.getComponent('button', 'primary', 'sm')
-                      : dynastyTheme.utils.getComponent('button', 'ghost', 'sm')}
-                  >
-                    <Calendar className="w-4 h-4 mr-2" />
-                    Season
-                  </button>
-                  <button
-                    onClick={() => setActiveView('accrued')}
-                    className={activeView === 'accrued' 
-                      ? dynastyTheme.utils.getComponent('button', 'primary', 'sm')
-                      : dynastyTheme.utils.getComponent('button', 'ghost', 'sm')}
-                  >
-                    <Activity className="w-4 h-4 mr-2" />
-                    Accrued
-                  </button>
-                  <button
-                    onClick={() => setActiveView('rolling')}
-                    className={activeView === 'rolling' 
-                      ? dynastyTheme.utils.getComponent('button', 'primary', 'sm')
-                      : dynastyTheme.utils.getComponent('button', 'ghost', 'sm')}
-                  >
-                    <TrendingUp className="w-4 h-4 mr-2" />
-                    14-Day
-                  </button>
-                </>
-              )}
-            </div>
-
-            {/* Position Filter */}
-            <div className="flex items-center gap-2">
-              <Filter className={`w-4 h-4 ${dynastyTheme.classes.text.neutralLight}`} />
-              <select
-                value={filterPosition}
-                onChange={(e) => setFilterPosition(e.target.value)}
-                className={`${dynastyTheme.components.input} px-3 py-1`}
-              >
-                <option value="all">All Positions</option>
-                <option value="batters">All Batters</option>
-                <option value="pitchers">All Pitchers</option>
-                <option value="C">Catchers</option>
-                <option value="1B">First Base</option>
-                <option value="2B">Second Base</option>
-                <option value="3B">Third Base</option>
-                <option value="SS">Shortstop</option>
-                <option value="OF">Outfield</option>
-                <option value="DH">DH</option>
-                <option value="SP">Starting Pitchers</option>
-                <option value="RP">Relief Pitchers</option>
-              </select>
-            </div>
-          </div>
-        </div>
+      {/* Position Tabs */}
+      <div className={`flex gap-2 border-b ${dynastyTheme.classes.border.neutral}`}>
+        <button
+          onClick={() => setActiveTab('batters')}
+          className={`px-6 py-3 font-medium ${dynastyTheme.classes.transition} ${
+            activeTab === 'batters'
+              ? `${dynastyTheme.classes.text.primary} border-b-2 ${dynastyTheme.classes.border.primaryBright}`
+              : `${dynastyTheme.classes.text.neutralLight} hover:text-white`
+          }`}
+        >
+          <Activity className="w-4 h-4 inline mr-2" />
+          Batters ({positions.batters.length} slots)
+        </button>
+        <button
+          onClick={() => setActiveTab('pitchers')}
+          className={`px-6 py-3 font-medium ${dynastyTheme.classes.transition} ${
+            activeTab === 'pitchers'
+              ? `${dynastyTheme.classes.text.primary} border-b-2 ${dynastyTheme.classes.border.primaryBright}`
+              : `${dynastyTheme.classes.text.neutralLight} hover:text-white`
+          }`}
+        >
+          <Activity className="w-4 h-4 inline mr-2" />
+          Pitchers ({positions.pitchers.length} slots)
+        </button>
       </div>
 
-      {/* Player Cards */}
+      {/* ACTIVE LINEUP TABLE */}
       <div>
-        {filteredStats.length > 0 ? (
-          filteredStats.map(player => renderPlayerCard(player))
+        <h2 className={`${dynastyTheme.components.heading.h2} mb-4 flex items-center gap-2`}>
+          <Users className={`w-6 h-6 ${dynastyTheme.classes.text.primary}`} />
+          Active Lineup
+        </h2>
+        
+        {activeLineupRowsWithTotals.length > 0 ? (
+          <DynastyTable
+            data={activeLineupRowsWithTotals}
+            columns={activeLineupColumns}
+            stickyHeader={true}
+            enableHorizontalScroll={true}
+            enableVerticalScroll={false}
+            maxHeight="none"
+            minWidth="800px"
+          />
         ) : (
           <div className={`${dynastyTheme.components.card.base} p-12 text-center`}>
             <Users className={`w-12 h-12 mx-auto mb-4 ${dynastyTheme.classes.text.neutralDark}`} />
             <p className={dynastyTheme.classes.text.neutralLight}>
-              No players found for the selected filter
+              No active lineup configured
             </p>
           </div>
         )}
       </div>
+
+      {/* NON-ACTIVE PLAYERS TABLE (bench, DL, minors, etc) */}
+      {nonActiveRowsWithTotals.length > 0 && (
+        <div>
+          <h2 className={`${dynastyTheme.components.heading.h2} mb-4 flex items-center gap-2`}>
+            <Clock className={`w-6 h-6 ${dynastyTheme.classes.text.warning}`} />
+            Other Players with Accrued Stats ({organizeRosterForTable[activeTab === 'batters' ? 'batters' : 'pitchers'].nonActive.length})
+          </h2>
+          <p className={`${dynastyTheme.classes.text.neutralLight} text-sm mb-4`}>
+            Players not in active lineup (bench, DL, minors) who have accrued stats
+          </p>
+          
+          <DynastyTable
+            data={nonActiveRowsWithTotals}
+            columns={nonActiveColumns}
+            stickyHeader={true}
+            enableHorizontalScroll={true}
+            enableVerticalScroll={false}
+            maxHeight="none"
+            minWidth="700px"
+          />
+        </div>
+      )}
+
+      {/* HISTORICAL PLAYERS TABLE */}
+      {historicalRows.length > 0 && (
+        <div>
+          <h2 className={`${dynastyTheme.components.heading.h2} mb-4 flex items-center gap-2`}>
+            <Clock className={`w-6 h-6 ${dynastyTheme.classes.text.warning}`} />
+            Historical Stats - Alumni ({Math.floor(historicalRows.length / 3)} players)
+          </h2>
+          <p className={`${dynastyTheme.classes.text.neutralLight} text-sm mb-4`}>
+            Players who previously accrued stats while on this roster but are no longer on the team
+          </p>
+          
+          <DynastyTable
+            data={historicalRows}
+            columns={historicalColumns}
+            stickyHeader={true}
+            enableHorizontalScroll={true}
+            enableVerticalScroll={false}
+            maxHeight="none"
+            minWidth="700px"
+          />
+        </div>
+      )}
 
       {/* Recent Transactions */}
       {recentTransactions && recentTransactions.length > 0 && (

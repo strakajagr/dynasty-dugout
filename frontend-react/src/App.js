@@ -13,6 +13,7 @@ import MyAccount from './pages/MyAccount';
 import PlayerProfile from './pages/PlayerProfile';
 import JoinLeague from './pages/JoinLeague';
 import SalaryContractSettings from './pages/league-dashboard/salary-contract/SalaryContractSettings';
+import { WatchList } from './components/WatchList';
 import { dynastyTheme } from './services/colorService';
 
 function App() {
@@ -46,6 +47,15 @@ function App() {
                 element={
                   <ProtectedRoute>
                     <MyAccount />
+                  </ProtectedRoute>
+                } 
+              />
+              
+              <Route 
+                path="/watch-list" 
+                element={
+                  <ProtectedRoute>
+                    <WatchList />
                   </ProtectedRoute>
                 } 
               />

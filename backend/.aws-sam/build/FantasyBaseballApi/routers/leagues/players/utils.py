@@ -11,37 +11,27 @@ from core.season_utils import CURRENT_SEASON
 logger = logging.getLogger(__name__)
 
 # =============================================================================
-# DATA PARSING HELPERS
+# DATA PARSING HELPERS - REMOVED (now using dictionary access)
 # =============================================================================
 
-def get_decimal_value(field) -> float:
-    """Safely extract decimal/float value from RDS Data API field"""
-    if not field:
-        return 0.0
-    if 'stringValue' in field:
-        try:
-            return float(field['stringValue'])
-        except (ValueError, TypeError):
-            return 0.0
-    return field.get('doubleValue', 0.0)
+# Safe conversion functions for dictionary values
+def safe_int(value, default=0):
+    """Safely convert a value to integer"""
+    if value is None:
+        return default
+    try:
+        return int(value)
+    except (ValueError, TypeError):
+        return default
 
-def get_long_value(field) -> int:
-    """Safely extract integer value from RDS Data API field"""
-    if not field:
-        return 0
-    return field.get('longValue', 0)
-
-def get_string_value(field) -> str:
-    """Safely extract string value from RDS Data API field"""
-    if not field:
-        return ""
-    return field.get('stringValue', "")
-
-def get_boolean_value(field) -> bool:
-    """Safely extract boolean value from RDS Data API field"""
-    if not field:
-        return False
-    return field.get('booleanValue', False)
+def safe_float(value, default=0.0):
+    """Safely convert a value to float"""
+    if value is None:
+        return default
+    try:
+        return float(value)
+    except (ValueError, TypeError):
+        return default
 
 # =============================================================================
 # VALIDATION HELPERS
@@ -72,7 +62,8 @@ async def get_user_team_id(league_id: str, user_id: str) -> Optional[str]:
             database_name='leagues'  # SHARED DATABASE
         )
         if team_query and team_query.get("records") and len(team_query["records"]) > 0:
-            return get_string_value(team_query["records"][0][0])
+            # Changed from array indexing to dictionary access
+            return team_query["records"][0].get('team_id', '')
         return None
     except Exception as e:
         logger.error(f"Error getting user team ID: {str(e)}")
@@ -151,94 +142,8 @@ def map_category_to_column(category: str) -> str:
     return mapping.get(category_lower, category_lower)
 
 # =============================================================================
-# STAT PARSING HELPERS
+# STAT PARSING HELPERS - REMOVED (now using dictionary access)
 # =============================================================================
-
-def parse_season_stats(record, start_index: int) -> Dict[str, Any]:
-    """Parse season stats from database record starting at given index"""
-    return {
-        'games_played': get_long_value(record[start_index]),
-        'at_bats': get_long_value(record[start_index + 1]),
-        'runs': get_long_value(record[start_index + 2]),
-        'hits': get_long_value(record[start_index + 3]),
-        'doubles': get_long_value(record[start_index + 4]),
-        'triples': get_long_value(record[start_index + 5]),
-        'home_runs': get_long_value(record[start_index + 6]),
-        'rbi': get_long_value(record[start_index + 7]),
-        'stolen_bases': get_long_value(record[start_index + 8]),
-        'caught_stealing': get_long_value(record[start_index + 9]),
-        'walks': get_long_value(record[start_index + 10]),
-        'strikeouts': get_long_value(record[start_index + 11]),
-        'batting_avg': get_decimal_value(record[start_index + 12]),
-        'obp': get_decimal_value(record[start_index + 13]),
-        'slg': get_decimal_value(record[start_index + 14]),
-        'ops': get_decimal_value(record[start_index + 15]),
-        'games_started': get_long_value(record[start_index + 16]),
-        'wins': get_long_value(record[start_index + 17]),
-        'losses': get_long_value(record[start_index + 18]),
-        'saves': get_long_value(record[start_index + 19]),
-        'innings_pitched': get_decimal_value(record[start_index + 20]),
-        'hits_allowed': get_long_value(record[start_index + 21]),
-        'earned_runs': get_long_value(record[start_index + 22]),
-        'walks_allowed': get_long_value(record[start_index + 23]),
-        'strikeouts_pitched': get_long_value(record[start_index + 24]),
-        'era': get_decimal_value(record[start_index + 25]),
-        'whip': get_decimal_value(record[start_index + 26]),
-        'quality_starts': get_long_value(record[start_index + 27]),
-        'blown_saves': get_long_value(record[start_index + 28]),
-        'holds': get_long_value(record[start_index + 29])
-    }
-
-def parse_rolling_stats(record, start_index: int) -> Dict[str, Any]:
-    """Parse 14-day rolling stats from database record starting at given index"""
-    avg = get_decimal_value(record[start_index + 7])
-    return {
-        'games_played': get_long_value(record[start_index]),
-        'at_bats': get_long_value(record[start_index + 1]),
-        'hits': get_long_value(record[start_index + 2]),
-        'home_runs': get_long_value(record[start_index + 3]),
-        'rbi': get_long_value(record[start_index + 4]),
-        'runs': get_long_value(record[start_index + 5]),
-        'stolen_bases': get_long_value(record[start_index + 6]),
-        'batting_avg': avg,
-        'obp': get_decimal_value(record[start_index + 8]),
-        'slg': get_decimal_value(record[start_index + 9]),
-        'ops': get_decimal_value(record[start_index + 10]),
-        'innings_pitched': get_decimal_value(record[start_index + 11]),
-        'wins': get_long_value(record[start_index + 12]),
-        'losses': get_long_value(record[start_index + 13]),
-        'saves': get_long_value(record[start_index + 14]),
-        'quality_starts': get_long_value(record[start_index + 15]),
-        'era': get_decimal_value(record[start_index + 16]),
-        'whip': get_decimal_value(record[start_index + 17]),
-        'trend': calculate_trend(avg)
-    }
-
-def parse_accrued_stats(record, start_index: int) -> Dict[str, Any]:
-    """Parse accrued stats from database record starting at given index"""
-    return {
-        'first_active_date': get_string_value(record[start_index]),
-        'last_active_date': get_string_value(record[start_index + 1]),
-        'total_active_days': get_long_value(record[start_index + 2]),
-        'active_games_played': get_long_value(record[start_index + 3]),
-        'active_at_bats': get_long_value(record[start_index + 4]),
-        'active_hits': get_long_value(record[start_index + 5]),
-        'active_home_runs': get_long_value(record[start_index + 6]),
-        'active_rbi': get_long_value(record[start_index + 7]),
-        'active_runs': get_long_value(record[start_index + 8]),
-        'active_stolen_bases': get_long_value(record[start_index + 9]),
-        'active_walks': get_long_value(record[start_index + 10]),
-        'active_strikeouts': get_long_value(record[start_index + 11]),
-        'active_batting_avg': get_decimal_value(record[start_index + 12]),
-        'active_innings_pitched': get_decimal_value(record[start_index + 13]),
-        'active_wins': get_long_value(record[start_index + 14]),
-        'active_losses': get_long_value(record[start_index + 15]),
-        'active_saves': get_long_value(record[start_index + 16]),
-        'active_earned_runs': get_long_value(record[start_index + 17]),
-        'active_quality_starts': get_long_value(record[start_index + 18]),
-        'active_era': get_decimal_value(record[start_index + 19]),
-        'active_whip': get_decimal_value(record[start_index + 20])
-    }
 
 # =============================================================================
 # TEAM CALCULATION HELPERS

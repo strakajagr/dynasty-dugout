@@ -67,8 +67,8 @@ async def get_transaction_history(
         mlb_player_ids = []
         if result and result.get("records"):
             for record in result["records"]:
-                mlb_player_id = get_value_from_field(record[6], 'long')
-                if mlb_player_id not in mlb_player_ids:
+                mlb_player_id = record.get('mlb_player_id')
+                if mlb_player_id and mlb_player_id not in mlb_player_ids:
                     mlb_player_ids.append(mlb_player_id)
         
         # Get player names from main database
@@ -89,33 +89,34 @@ async def get_transaction_history(
             
             if name_result and name_result.get("records"):
                 for record in name_result["records"]:
-                    player_id = get_value_from_field(record[0], 'long')
-                    first_name = get_value_from_field(record[1], 'string')
-                    last_name = get_value_from_field(record[2], 'string')
-                    position = get_value_from_field(record[3], 'string')
-                    player_names[player_id] = {
-                        "name": f"{first_name} {last_name}",
-                        "position": position
-                    }
+                    player_id = record.get('player_id')
+                    first_name = record.get('first_name', '')
+                    last_name = record.get('last_name', '')
+                    position = record.get('position', '')
+                    if player_id:
+                        player_names[player_id] = {
+                            "name": f"{first_name} {last_name}",
+                            "position": position
+                        }
         
         # Format transaction data
         transactions = []
         if result and result.get("records"):
             for record in result["records"]:
-                mlb_player_id = get_value_from_field(record[6], 'long')
+                mlb_player_id = record.get('mlb_player_id')
                 player_info = player_names.get(mlb_player_id, {"name": "Unknown Player", "position": ""})
                 
                 transaction = {
-                    "transaction_id": get_value_from_field(record[0], 'string'),
-                    "transaction_type": get_value_from_field(record[1], 'string'),
-                    "transaction_date": get_value_from_field(record[2], 'string'),
-                    "salary": get_value_from_field(record[3], 'decimal') if record[3] else None,
-                    "contract_years": get_value_from_field(record[4], 'long') if record[4] else None,
-                    "notes": get_value_from_field(record[5], 'string'),
+                    "transaction_id": record.get('transaction_id', ''),
+                    "transaction_type": record.get('transaction_type', ''),
+                    "transaction_date": record.get('transaction_date', ''),
+                    "salary": float(record.get('salary')) if record.get('salary') else None,
+                    "contract_years": record.get('contract_years'),
+                    "notes": record.get('notes', ''),
                     "player_name": player_info["name"],
                     "position": player_info["position"],
-                    "from_team": get_value_from_field(record[7], 'string') or "Free Agency",
-                    "to_team": get_value_from_field(record[8], 'string') or "Free Agency"
+                    "from_team": record.get('from_team_name') or "Free Agency",
+                    "to_team": record.get('to_team_name') or "Free Agency"
                 }
                 transactions.append(transaction)
         
@@ -181,7 +182,7 @@ async def get_recent_league_activity(
         # Get player names
         player_ids = []
         for record in result["records"]:
-            player_id = get_value_from_field(record[4], 'long')
+            player_id = record.get('mlb_player_id')
             if player_id and player_id not in player_ids:
                 player_ids.append(player_id)
         
@@ -195,20 +196,21 @@ async def get_recent_league_activity(
             
             if name_result and name_result.get("records"):
                 for record in name_result["records"]:
-                    pid = get_value_from_field(record[0], 'long')
-                    first = get_value_from_field(record[1], 'string')
-                    last = get_value_from_field(record[2], 'string')
-                    player_names[pid] = f"{first} {last}"
+                    pid = record.get('player_id')
+                    first = record.get('first_name', '')
+                    last = record.get('last_name', '')
+                    if pid:
+                        player_names[pid] = f"{first} {last}"
         
         # Format activities for ticker
         activities = []
         for idx, record in enumerate(result["records"]):
-            transaction_type = get_value_from_field(record[0], 'string')
-            player_id = get_value_from_field(record[4], 'long')
-            from_team = get_value_from_field(record[5], 'string')
-            to_team = get_value_from_field(record[6], 'string')
-            minutes_ago = int(get_value_from_field(record[7], 'decimal') or 0)
-            salary = get_value_from_field(record[2], 'decimal')
+            transaction_type = record.get('transaction_type', '')
+            player_id = record.get('mlb_player_id')
+            from_team = record.get('from_team_name', '')
+            to_team = record.get('to_team_name', '')
+            minutes_ago = int(record.get('minutes_ago', 0))
+            salary = float(record.get('salary')) if record.get('salary') else None
             
             player_name = player_names.get(player_id, "Unknown Player")
             
@@ -239,7 +241,7 @@ async def get_recent_league_activity(
                 "text": text,
                 "priority": "high" if minutes_ago < 60 else "medium",
                 "time_ago": time_str,
-                "timestamp": get_value_from_field(record[1], 'string')
+                "timestamp": record.get('transaction_date', '')
             })
         
         return {

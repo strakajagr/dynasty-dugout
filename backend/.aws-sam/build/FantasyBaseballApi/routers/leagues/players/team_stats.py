@@ -1,7 +1,7 @@
 """
 Dynasty Dugout - Team Statistics Display FIXED
 PURPOSE: Three-line stats display for team pages (Season/Accrued/14-day)
-FIXED: Rolling stats query from correct database (postgres)
+FIXED: Using dictionary access pattern instead of array indexing
 """
 
 from fastapi import APIRouter, HTTPException, Depends
@@ -12,17 +12,14 @@ from core.database import execute_sql
 from core.auth_utils import get_current_user
 from core.season_utils import CURRENT_SEASON
 from .models import ThreeLinePlayerStats, SeasonStats, AccruedStats, RollingStats
-from .utils import (
-    get_decimal_value, get_long_value, get_string_value,
-    calculate_trend, calculate_team_totals
-)
+from .utils import calculate_trend, calculate_team_totals, safe_int, safe_float
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
 # =============================================================================
-# TEAM STATS WITH 3-LINE DISPLAY - FIXED DATABASE ISSUE
+# TEAM STATS WITH 3-LINE DISPLAY - USING DICTIONARY ACCESS
 # =============================================================================
 
 @router.get("/teams/{team_id}/stats")
@@ -36,8 +33,6 @@ async def get_team_three_line_stats(
     1. Season stats (from CACHED data in leagues DB)
     2. Accrued stats (only while in active lineup - from leagues DB)  
     3. 14-day rolling stats (recent performance - from POSTGRES DB)
-    
-    FIXED: Rolling stats now correctly query from postgres DB
     """
     try:
         # STEP 1: Get roster and season stats from LEAGUES database
@@ -53,36 +48,36 @@ async def get_team_three_line_stats(
             lp.contract_years,
             lp.acquisition_date,
             lp.acquisition_method,
-            pss.games_played,
-            pss.at_bats,
-            pss.runs,
-            pss.hits,
-            pss.doubles,
-            pss.triples,
-            pss.home_runs,
-            pss.rbi,
-            pss.stolen_bases,
-            pss.caught_stealing,
-            pss.walks,
-            pss.strikeouts,
-            pss.batting_avg,
-            pss.obp,
-            pss.slg,
-            pss.ops,
-            pss.games_started,
-            pss.wins,
-            pss.losses,
-            pss.saves,
-            pss.innings_pitched,
-            pss.hits_allowed,
-            pss.earned_runs,
-            pss.walks_allowed,
-            pss.strikeouts_pitched,
-            pss.era,
-            pss.whip,
-            pss.quality_starts,
-            pss.blown_saves,
-            pss.holds,
+            pss.games_played as season_games,
+            pss.at_bats as season_at_bats,
+            pss.runs as season_runs,
+            pss.hits as season_hits,
+            pss.doubles as season_doubles,
+            pss.triples as season_triples,
+            pss.home_runs as season_hr,
+            pss.rbi as season_rbi,
+            pss.stolen_bases as season_sb,
+            pss.caught_stealing as season_cs,
+            pss.walks as season_walks,
+            pss.strikeouts as season_strikeouts,
+            pss.batting_avg as season_avg,
+            pss.obp as season_obp,
+            pss.slg as season_slg,
+            pss.ops as season_ops,
+            pss.games_started as season_gs,
+            pss.wins as season_wins,
+            pss.losses as season_losses,
+            pss.saves as season_saves,
+            pss.innings_pitched as season_ip,
+            pss.hits_allowed as season_ha,
+            pss.earned_runs as season_er,
+            pss.walks_allowed as season_bb,
+            pss.strikeouts_pitched as season_k,
+            pss.era as season_era,
+            pss.whip as season_whip,
+            pss.quality_starts as season_qs,
+            pss.blown_saves as season_bs,
+            pss.holds as season_holds,
             paas.first_active_date,
             paas.last_active_date,
             paas.total_active_days,
@@ -104,7 +99,6 @@ async def get_team_three_line_stats(
             paas.active_quality_starts,
             paas.active_era,
             paas.active_whip
-            
         FROM league_players lp
         LEFT JOIN player_season_stats pss 
             ON lp.mlb_player_id = pss.player_id 
@@ -131,7 +125,7 @@ async def get_team_three_line_stats(
         result = execute_sql(
             roster_query,
             parameters={'team_id': team_id, 'league_id': league_id},
-            database_name='leagues'  # Season and accrued stats are in leagues DB
+            database_name='leagues'
         )
         
         players = []
@@ -140,85 +134,85 @@ async def get_team_three_line_stats(
         if result and result.get("records"):
             for record in result["records"]:
                 try:
-                    # Get MLB player ID for rolling stats query
-                    mlb_player_id = get_long_value(record[1])
+                    # Use dictionary access
+                    mlb_player_id = safe_int(record.get('mlb_player_id'))
                     if mlb_player_id:
                         player_ids.append(mlb_player_id)
                     
-                    # Parse season stats (indices 10-39)
+                    # Parse season stats
                     season_stats = SeasonStats(
-                        games_played=get_long_value(record[10]),
-                        at_bats=get_long_value(record[11]),
-                        runs=get_long_value(record[12]),
-                        hits=get_long_value(record[13]),
-                        doubles=get_long_value(record[14]),
-                        triples=get_long_value(record[15]),
-                        home_runs=get_long_value(record[16]),
-                        rbi=get_long_value(record[17]),
-                        stolen_bases=get_long_value(record[18]),
-                        caught_stealing=get_long_value(record[19]),
-                        walks=get_long_value(record[20]),
-                        strikeouts=get_long_value(record[21]),
-                        batting_avg=get_decimal_value(record[22]),
-                        obp=get_decimal_value(record[23]),
-                        slg=get_decimal_value(record[24]),
-                        ops=get_decimal_value(record[25]),
-                        games_started=get_long_value(record[26]),
-                        wins=get_long_value(record[27]),
-                        losses=get_long_value(record[28]),
-                        saves=get_long_value(record[29]),
-                        innings_pitched=get_decimal_value(record[30]),
-                        hits_allowed=get_long_value(record[31]),
-                        earned_runs=get_long_value(record[32]),
-                        walks_allowed=get_long_value(record[33]),
-                        strikeouts_pitched=get_long_value(record[34]),
-                        era=get_decimal_value(record[35]),
-                        whip=get_decimal_value(record[36]),
-                        quality_starts=get_long_value(record[37]),
-                        blown_saves=get_long_value(record[38]),
-                        holds=get_long_value(record[39])
+                        games_played=safe_int(record.get('season_games')),
+                        at_bats=safe_int(record.get('season_at_bats')),
+                        runs=safe_int(record.get('season_runs')),
+                        hits=safe_int(record.get('season_hits')),
+                        doubles=safe_int(record.get('season_doubles')),
+                        triples=safe_int(record.get('season_triples')),
+                        home_runs=safe_int(record.get('season_hr')),
+                        rbi=safe_int(record.get('season_rbi')),
+                        stolen_bases=safe_int(record.get('season_sb')),
+                        caught_stealing=safe_int(record.get('season_cs')),
+                        walks=safe_int(record.get('season_walks')),
+                        strikeouts=safe_int(record.get('season_strikeouts')),
+                        batting_avg=safe_float(record.get('season_avg')),
+                        obp=safe_float(record.get('season_obp')),
+                        slg=safe_float(record.get('season_slg')),
+                        ops=safe_float(record.get('season_ops')),
+                        games_started=safe_int(record.get('season_gs')),
+                        wins=safe_int(record.get('season_wins')),
+                        losses=safe_int(record.get('season_losses')),
+                        saves=safe_int(record.get('season_saves')),
+                        innings_pitched=safe_float(record.get('season_ip')),
+                        hits_allowed=safe_int(record.get('season_ha')),
+                        earned_runs=safe_int(record.get('season_er')),
+                        walks_allowed=safe_int(record.get('season_bb')),
+                        strikeouts_pitched=safe_int(record.get('season_k')),
+                        era=safe_float(record.get('season_era')),
+                        whip=safe_float(record.get('season_whip')),
+                        quality_starts=safe_int(record.get('season_qs')),
+                        blown_saves=safe_int(record.get('season_bs')),
+                        holds=safe_int(record.get('season_holds'))
                     )
                     
-                    # Parse accrued stats (indices 40-60)
+                    # Parse accrued stats
                     accrued_stats = AccruedStats(
-                        first_active_date=get_string_value(record[40]),
-                        last_active_date=get_string_value(record[41]),
-                        total_active_days=get_long_value(record[42]),
-                        active_games_played=get_long_value(record[43]),
-                        active_at_bats=get_long_value(record[44]),
-                        active_hits=get_long_value(record[45]),
-                        active_home_runs=get_long_value(record[46]),
-                        active_rbi=get_long_value(record[47]),
-                        active_runs=get_long_value(record[48]),
-                        active_stolen_bases=get_long_value(record[49]),
-                        active_walks=get_long_value(record[50]),
-                        active_strikeouts=get_long_value(record[51]),
-                        active_batting_avg=get_decimal_value(record[52]),
-                        active_innings_pitched=get_decimal_value(record[53]),
-                        active_wins=get_long_value(record[54]),
-                        active_losses=get_long_value(record[55]),
-                        active_saves=get_long_value(record[56]),
-                        active_earned_runs=get_long_value(record[57]),
-                        active_quality_starts=get_long_value(record[58]),
-                        active_era=get_decimal_value(record[59]),
-                        active_whip=get_decimal_value(record[60])
+                        first_active_date=record.get('first_active_date', ''),
+                        last_active_date=record.get('last_active_date', ''),
+                        total_active_days=safe_int(record.get('total_active_days')),
+                        active_games_played=safe_int(record.get('active_games_played')),
+                        active_at_bats=safe_int(record.get('active_at_bats')),
+                        active_hits=safe_int(record.get('active_hits')),
+                        active_home_runs=safe_int(record.get('active_home_runs')),
+                        active_rbi=safe_int(record.get('active_rbi')),
+                        active_runs=safe_int(record.get('active_runs')),
+                        active_stolen_bases=safe_int(record.get('active_stolen_bases')),
+                        active_walks=safe_int(record.get('active_walks')),
+                        active_strikeouts=safe_int(record.get('active_strikeouts')),
+                        active_batting_avg=safe_float(record.get('active_batting_avg')),
+                        active_innings_pitched=safe_float(record.get('active_innings_pitched')),
+                        active_wins=safe_int(record.get('active_wins')),
+                        active_losses=safe_int(record.get('active_losses')),
+                        active_saves=safe_int(record.get('active_saves')),
+                        active_earned_runs=safe_int(record.get('active_earned_runs')),
+                        active_quality_starts=safe_int(record.get('active_quality_starts')),
+                        active_era=safe_float(record.get('active_era')),
+                        active_whip=safe_float(record.get('active_whip'))
                     )
                     
-                    # Create player object (rolling stats will be added later)
+                    # Create player object
                     player = ThreeLinePlayerStats(
-                        league_player_id=get_string_value(record[0]),
+                        league_player_id=record.get('league_player_id', ''),
                         mlb_player_id=mlb_player_id,
-                        player_name=get_string_value(record[2]) or "Unknown",
-                        position=get_string_value(record[3]) or "UTIL",
-                        mlb_team=get_string_value(record[4]) or "FA",
-                        roster_status=get_string_value(record[5]),
-                        salary=get_decimal_value(record[6]),
-                        contract_years=get_long_value(record[7]),
+                        player_name=record.get('player_name', 'Unknown'),
+                        position=record.get('position', 'UTIL'),
+                        mlb_team=record.get('mlb_team', 'FA'),
+                        roster_status=record.get('roster_status', 'bench'),
+                        salary=safe_float(record.get('salary')),
+                        contract_years=safe_int(record.get('contract_years')),
                         season_stats=season_stats,
                         accrued_stats=accrued_stats,
-                        rolling_14_day=RollingStats(),  # Will be populated from separate query
-                        acquisition_date=get_string_value(record[8]),
-                        acquisition_method=get_string_value(record[9])
+                        rolling_14_day=RollingStats(),  # Will be populated later
+                        acquisition_date=record.get('acquisition_date', ''),
+                        acquisition_method=record.get('acquisition_method', '')
                     )
                     
                     players.append(player)
@@ -262,34 +256,35 @@ async def get_team_three_line_stats(
             rolling_result = execute_sql(
                 rolling_query,
                 parameters=parameters,
-                database_name='postgres'  # FIXED: Rolling stats are in postgres DB!
+                database_name='postgres'
             )
             
             # Create lookup dictionary for rolling stats
             rolling_lookup = {}
             if rolling_result and rolling_result.get("records"):
                 for record in rolling_result["records"]:
-                    player_id = get_long_value(record[0])
+                    player_id = safe_int(record.get('player_id'))
+                    batting_avg = safe_float(record.get('batting_avg'))
                     rolling_lookup[player_id] = RollingStats(
-                        games_played=get_long_value(record[1]),
-                        at_bats=get_long_value(record[2]),
-                        hits=get_long_value(record[3]),
-                        home_runs=get_long_value(record[4]),
-                        rbi=get_long_value(record[5]),
-                        runs=get_long_value(record[6]),
-                        stolen_bases=get_long_value(record[7]),
-                        batting_avg=get_decimal_value(record[8]),
-                        obp=get_decimal_value(record[9]),
-                        slg=get_decimal_value(record[10]),
-                        ops=get_decimal_value(record[11]),
-                        innings_pitched=get_decimal_value(record[12]),
-                        wins=get_long_value(record[13]),
-                        losses=get_long_value(record[14]),
-                        saves=get_long_value(record[15]),
-                        quality_starts=get_long_value(record[16]),
-                        era=get_decimal_value(record[17]),
-                        whip=get_decimal_value(record[18]),
-                        trend=calculate_trend(get_decimal_value(record[8]))
+                        games_played=safe_int(record.get('games_played')),
+                        at_bats=safe_int(record.get('at_bats')),
+                        hits=safe_int(record.get('hits')),
+                        home_runs=safe_int(record.get('home_runs')),
+                        rbi=safe_int(record.get('rbi')),
+                        runs=safe_int(record.get('runs')),
+                        stolen_bases=safe_int(record.get('stolen_bases')),
+                        batting_avg=batting_avg,
+                        obp=safe_float(record.get('obp')),
+                        slg=safe_float(record.get('slg')),
+                        ops=safe_float(record.get('ops')),
+                        innings_pitched=safe_float(record.get('innings_pitched')),
+                        wins=safe_int(record.get('wins')),
+                        losses=safe_int(record.get('losses')),
+                        saves=safe_int(record.get('saves')),
+                        quality_starts=safe_int(record.get('quality_starts')),
+                        era=safe_float(record.get('era')),
+                        whip=safe_float(record.get('whip')),
+                        trend=calculate_trend(batting_avg)
                     )
             
             # Merge rolling stats into players
@@ -300,8 +295,8 @@ async def get_team_three_line_stats(
         return players
         
     except Exception as e:
-            logger.error(f"Error getting team stats: {str(e)}", exc_info=True)
-            raise HTTPException(status_code=500, detail=f"Failed to get team stats: {str(e)}")
+        logger.error(f"Error getting team stats: {str(e)}", exc_info=True)
+        raise HTTPException(status_code=500, detail=f"Failed to get team stats: {str(e)}")
 
 # =============================================================================
 # MY TEAM STATS ENDPOINT
@@ -328,7 +323,7 @@ async def get_my_team_stats(
         if not team_query or not team_query.get("records"):
             raise HTTPException(status_code=404, detail="Team not found")
         
-        team_id = get_string_value(team_query["records"][0][0])
+        team_id = team_query["records"][0].get('team_id', '')
         
         # Get stats
         return await get_team_three_line_stats(league_id, team_id, current_user)
@@ -340,7 +335,7 @@ async def get_my_team_stats(
         raise HTTPException(status_code=500, detail=str(e))
 
 # =============================================================================
-# TEAM STATS DASHBOARD ENDPOINT - FIXED
+# TEAM STATS DASHBOARD ENDPOINT
 # =============================================================================
 
 @router.get("/team-stats-dashboard/{team_id}")
@@ -351,12 +346,12 @@ async def get_team_stats_dashboard(
 ):
     """
     Get complete team stats dashboard including:
-    - Three-line stats for all players (with fixed rolling stats)
+    - Three-line stats for all players
     - Team totals (active players only)
     - Recent transactions
     """
     try:
-        # Get three-line stats (now with properly sourced rolling stats)
+        # Get three-line stats
         stats = await get_team_three_line_stats(league_id, team_id, current_user)
         
         # Calculate team totals from ACTIVE players only
@@ -387,65 +382,48 @@ async def get_team_stats_dashboard(
         if trans_result and trans_result.get("records"):
             for record in trans_result["records"]:
                 recent_transactions.append({
-                    'type': get_string_value(record[0]),
-                    'player': get_string_value(record[1]) or 'Unknown Player',
-                    'date': get_string_value(record[2]),
-                    'details': get_string_value(record[3])
+                    'type': record.get('transaction_type', ''),
+                    'player': record.get('player_name', 'Unknown Player'),
+                    'date': record.get('transaction_date', ''),
+                    'details': record.get('notes', '')
                 })
         
-        # Prepare response
+        # Prepare response with CANONICAL STRUCTURE
         response_data = {
             "success": True,
             "team_stats": []
         }
         
-        # Convert player objects to dictionaries for JSON response
+        # Convert player objects to CANONICAL format with ALL stats
         for player in stats:
             player_dict = {
-                "league_player_id": player.league_player_id,
-                "mlb_player_id": player.mlb_player_id,
-                "player_name": player.player_name,
-                "position": player.position,
-                "mlb_team": player.mlb_team,
-                "roster_status": player.roster_status,
-                "salary": player.salary,
-                "contract_years": player.contract_years,
-                "acquisition_date": player.acquisition_date,
-                "acquisition_method": player.acquisition_method,
-                "season_stats": {
-                    "games_played": player.season_stats.games_played,
-                    "batting_avg": player.season_stats.batting_avg,
-                    "home_runs": player.season_stats.home_runs,
-                    "rbi": player.season_stats.rbi,
-                    "runs": player.season_stats.runs,
-                    "stolen_bases": player.season_stats.stolen_bases,
-                    "era": player.season_stats.era,
-                    "wins": player.season_stats.wins,
-                    "saves": player.season_stats.saves,
-                    "strikeouts_pitched": player.season_stats.strikeouts_pitched
+                # CANONICAL IDS
+                "ids": {
+                    "mlb": player.mlb_player_id,
+                    "league_player": player.league_player_id
                 },
-                "rolling_14_day": {
-                    "games_played": player.rolling_14_day.games_played,
-                    "batting_avg": player.rolling_14_day.batting_avg,
-                    "home_runs": player.rolling_14_day.home_runs,
-                    "rbi": player.rolling_14_day.rbi,
-                    "runs": player.rolling_14_day.runs,
-                    "stolen_bases": player.rolling_14_day.stolen_bases,
-                    "era": player.rolling_14_day.era,
-                    "wins": player.rolling_14_day.wins,
-                    "saves": player.rolling_14_day.saves
+                
+                # CANONICAL INFO
+                "info": {
+                    "player_name": player.player_name,
+                    "position": player.position,
+                    "mlb_team": player.mlb_team
                 },
-                "accrued_stats": {
-                    "total_active_days": player.accrued_stats.total_active_days,
-                    "active_games_played": player.accrued_stats.active_games_played,
-                    "active_batting_avg": player.accrued_stats.active_batting_avg,
-                    "active_home_runs": player.accrued_stats.active_home_runs,
-                    "active_rbi": player.accrued_stats.active_rbi,
-                    "active_runs": player.accrued_stats.active_runs,
-                    "active_stolen_bases": player.accrued_stats.active_stolen_bases,
-                    "active_era": player.accrued_stats.active_era,
-                    "active_wins": player.accrued_stats.active_wins,
-                    "active_saves": player.accrued_stats.active_saves
+                
+                # CANONICAL STATS - ALL FIELDS FROM PYDANTIC MODELS (35+ stats each)
+                "stats": {
+                    "season": player.season_stats.dict(),
+                    "rolling_14_day": player.rolling_14_day.dict(),
+                    "team_attribution": player.accrued_stats.dict()
+                },
+                
+                # CANONICAL LEAGUE CONTEXT
+                "league_context": {
+                    "roster_status": player.roster_status,
+                    "salary": player.salary,
+                    "contract_years": player.contract_years,
+                    "acquisition_date": player.acquisition_date,
+                    "acquisition_method": player.acquisition_method
                 }
             }
             response_data["team_stats"].append(player_dict)

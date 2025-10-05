@@ -9,8 +9,8 @@ import { DynastyTable } from '../../services/tableService';
 
 const PlayerHistoricalAnalytics = ({ 
   analytics, 
-  careerStats, 
-  careerTotals,
+  career_stats, 
+  career_totals,
   playerName, 
   isPitcher = false 
 }) => {
@@ -98,10 +98,10 @@ const PlayerHistoricalAnalytics = ({
 
   // Calculate career high for a stat
   const getCareerHigh = (stat) => {
-    if (!careerStats || careerStats.length === 0) return null;
-    const values = careerStats.map(season => season[stat] || 0);
+    if (!career_stats || career_stats.length === 0) return null;
+    const values = career_stats.map(season => season[stat] || 0);
     const max = Math.max(...values);
-    const season = careerStats.find(s => s[stat] === max);
+    const season = career_stats.find(s => s[stat] === max);
     return { value: max, year: season?.season_year };
   };
 
@@ -146,10 +146,10 @@ const PlayerHistoricalAnalytics = ({
             <div className={`${dynastyTheme.components.card.interactive} p-4 rounded-lg`}>
               <div className={`text-sm ${dynastyTheme.classes.text.neutralLight} mb-2`}>Career Games</div>
               <div className={`text-3xl font-bold ${dynastyTheme.classes.text.white}`}>
-                {careerTotals?.games_played || careerStats?.reduce((sum, s) => sum + (s.games_played || 0), 0) || 0}
+                {career_totals?.games_played || career_stats?.reduce((sum, s) => sum + (s.games_played || 0), 0) || 0}
               </div>
               <div className={`text-xs ${dynastyTheme.classes.text.neutral} mt-1`}>
-                {careerStats?.length || 0} seasons
+                {career_stats?.length || 0} seasons
               </div>
             </div>
             
@@ -159,8 +159,8 @@ const PlayerHistoricalAnalytics = ({
               </div>
               <div className={`text-3xl font-bold ${dynastyTheme.classes.text.primary}`}>
                 {isPitcher 
-                  ? (careerTotals?.era?.toFixed(2) || '-')
-                  : (careerTotals?.batting_avg?.toFixed(3) || careerTotals?.avg?.toFixed(3) || '.000')}
+                  ? (career_totals?.era?.toFixed(2) || '-')
+                  : (career_totals?.batting_avg?.toFixed(3) || career_totals?.avg?.toFixed(3) || '.000')}
               </div>
               <div className={`text-xs ${dynastyTheme.classes.text.neutral} mt-1`}>
                 Lifetime
@@ -173,8 +173,8 @@ const PlayerHistoricalAnalytics = ({
               </div>
               <div className={`text-3xl font-bold ${dynastyTheme.classes.text.warning}`}>
                 {isPitcher 
-                  ? (careerTotals?.strikeouts_pitched || 0)
-                  : (careerTotals?.home_runs || 0)}
+                  ? (career_totals?.strikeouts_pitched || 0)
+                  : (career_totals?.home_runs || 0)}
               </div>
               <div className={`text-xs ${dynastyTheme.classes.text.neutral} mt-1`}>
                 Total
@@ -187,8 +187,8 @@ const PlayerHistoricalAnalytics = ({
               </div>
               <div className={`text-3xl font-bold ${dynastyTheme.classes.text.success}`}>
                 {isPitcher 
-                  ? (careerTotals?.wins || 0)
-                  : (careerTotals?.rbi || 0)}
+                  ? (career_totals?.wins || 0)
+                  : (career_totals?.rbi || 0)}
               </div>
               <div className={`text-xs ${dynastyTheme.classes.text.neutral} mt-1`}>
                 Total
@@ -197,7 +197,7 @@ const PlayerHistoricalAnalytics = ({
           </div>
 
           {/* Complete Career History Table */}
-          {careerStats && careerStats.length > 0 && (
+          {career_stats && career_stats.length > 0 && (
             <div className={`${dynastyTheme.components.card.base} p-6 rounded-lg`}>
               <h4 className={`text-lg font-bold ${dynastyTheme.classes.text.primary} mb-4 flex items-center`}>
                 <Clock className="w-5 h-5 mr-2" />
@@ -205,7 +205,7 @@ const PlayerHistoricalAnalytics = ({
               </h4>
               
               <DynastyTable
-                data={[...careerStats, ...(careerTotals ? [{ ...careerTotals, season_year: 'TOTAL', team_abbreviation: '-' }] : [])]}
+                data={[...career_stats, ...(career_totals ? [{ ...career_totals, season_year: 'TOTAL', team_abbreviation: '-' }] : [])]}
                 columns={createCareerColumns()}
                 maxHeight="500px"
                 enableHorizontalScroll={true}
@@ -455,11 +455,11 @@ const PlayerHistoricalAnalytics = ({
                   BREAKOUT YEARS
                 </div>
                 <ul className="space-y-2">
-                  {careerStats?.filter((_, idx) => idx < 3).map(season => (
+                  {career_stats?.filter((_, idx) => idx < 3).map(season => (
                     <li key={season.season_year} className={`text-sm ${dynastyTheme.classes.text.neutralLight}`}>
-                      • {season.season_year}: {isPitcher ? `${season.era?.toFixed(2)} ERA` : `${season.batting_avg?.toFixed(3)} AVG`}
+                    • {season.season_year}: {isPitcher ? `${season.era?.toFixed(2)} ERA` : `${season.batting_avg?.toFixed(3)} AVG`}
                     </li>
-                  ))}
+                    ))}
                 </ul>
               </div>
               
@@ -486,7 +486,7 @@ const PlayerHistoricalAnalytics = ({
                 </div>
                 <ul className="space-y-2">
                   <li className={`text-sm ${dynastyTheme.classes.text.neutralLight}`}>
-                    • Career Stage: {careerStats?.length > 10 ? 'Veteran' : careerStats?.length > 5 ? 'Prime' : 'Rising'}
+                    • Career Stage: {career_stats?.length > 10 ? 'Veteran' : career_stats?.length > 5 ? 'Prime' : 'Rising'}
                   </li>
                   <li className={`text-sm ${dynastyTheme.classes.text.neutralLight}`}>
                     • Trend: {analytics?.year_over_year?.[0]?.ops_change > 0 ? 'Improving' : 'Stabilizing'}

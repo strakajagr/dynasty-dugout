@@ -7,8 +7,9 @@ import apiService from '../services/apiService';
 import { leaguesAPI } from '../services/apiService';
 import ReactDOM from 'react-dom';
 import PlayerProfileModal from './PlayerProfileModal';
+import { WatchListStar } from './WatchList';
 
-const PlayerSearchDropdownLeague = ({ leagueId, league, userTeam, onPlayerAdded, onPlayerDropped }) => {
+const PlayerSearchDropdownLeague = ({ leagueId, league, userTeam, onPlayerAdded, onPlayerDropped, onOpenPositionModal }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [searchResults, setSearchResults] = useState([]);
   const [showResults, setShowResults] = useState(false);
@@ -34,7 +35,7 @@ const PlayerSearchDropdownLeague = ({ leagueId, league, userTeam, onPlayerAdded,
       setDropdownPosition({
         top: rect.bottom + window.scrollY + 8,
         left: rect.left + window.scrollX,
-        width: Math.max(rect.width, 600) // Wider for league data
+        width: rect.width // Match search box width exactly
       });
     }
   }, [showResults]);
@@ -68,43 +69,46 @@ const PlayerSearchDropdownLeague = ({ leagueId, league, userTeam, onPlayerAdded,
     setSearchError(null);
     
     try {
-      // Search players with league context to get pricing
-      const response = await apiService.players.searchPlayers(trimmedQuery, 12);
+      // Search ALL league players (owned + free agents)
+      const response = await leaguesAPI.getAllLeaguePlayers(leagueId, {
+        search: trimmedQuery,
+        limit: 12
+      });
       
       if (response.success && response.players) {
-        // If we have a leagueId, enhance with league-specific data
-        let enhancedPlayers = response.players;
+        // Transform from backend format to frontend format
+        const transformedPlayers = response.players.map(player => ({
+          // Create canonical structure for consistency with other search
+          ids: { mlb: player.mlb_player_id },
+          info: {
+            first_name: player.player_name?.split(' ')[0] || '',
+            last_name: player.player_name?.split(' ').slice(1).join(' ') || '',
+            position: player.position,
+            mlb_team: player.mlb_team
+          },
+          stats: {
+            batting_avg: player.season_stats?.batting_avg,
+            home_runs: player.season_stats?.home_runs,
+            rbi: player.season_stats?.rbi,
+            era: player.season_stats?.era,
+            strikeouts: player.season_stats?.strikeouts_pitched,
+            wins: player.season_stats?.wins
+          },
+          // League-specific data
+          leagueData: {
+            league_player_id: player.league_player_id,
+            salary: player.salary,
+            contract_years: player.contract_years,
+            availability_status: player.availability_status
+          },
+          isOwned: player.availability_status === 'owned',
+          ownedByUser: player.owned_by_team_id === userTeam?.team_id,
+          salary: player.salary,
+          contractYears: player.contract_years,
+          teamName: player.owned_by_team_name
+        }));
         
-        if (leagueId) {
-          try {
-            // Get league player data for ownership/pricing info
-            const leaguePlayersResponse = await leaguesAPI.getLeaguePlayers(leagueId);
-            if (leaguePlayersResponse.success && leaguePlayersResponse.players) {
-              const leaguePlayerMap = {};
-              leaguePlayersResponse.players.forEach(lp => {
-                leaguePlayerMap[lp.mlb_player_id] = lp;
-              });
-              
-              // Enhance search results with league data
-              enhancedPlayers = response.players.map(player => {
-                const leaguePlayer = leaguePlayerMap[player.player_id];
-                return {
-                  ...player,
-                  leagueData: leaguePlayer || null,
-                  isOwned: leaguePlayer?.availability_status === 'owned',
-                  ownedByUser: leaguePlayer?.team_id === userTeam?.team_id,
-                  salary: leaguePlayer?.salary || null,
-                  contractYears: leaguePlayer?.contract_years || null,
-                  teamName: leaguePlayer?.team_name || null
-                };
-              });
-            }
-          } catch (leagueError) {
-            console.error('Could not fetch league player data:', leagueError);
-          }
-        }
-        
-        setSearchResults(enhancedPlayers);
+        setSearchResults(transformedPlayers);
         setShowResults(true);
       } else {
         setSearchResults([]);
@@ -120,29 +124,14 @@ const PlayerSearchDropdownLeague = ({ leagueId, league, userTeam, onPlayerAdded,
     }
   }, [isAuthenticated, leagueId, userTeam]);
 
-  // Handle transaction actions
+  // Handle transaction actions - CALL PARENT HANDLER TO SHOW POSITION MODAL
   const handleAddPlayer = async (player, e) => {
     e.stopPropagation();
     if (!leagueId || !userTeam?.team_id) return;
     
-    setProcessingTransaction(player.player_id);
-    
-    try {
-      const response = await leaguesAPI.addPlayerToTeam(leagueId, userTeam.team_id, {
-        player_id: player.player_id,
-        salary: player.leagueData?.salary || league?.min_salary || 1,
-        contract_years: 1
-      });
-      
-      if (response.success) {
-        if (onPlayerAdded) onPlayerAdded(player);
-        // Refresh search results
-        performSearch(searchQuery);
-      }
-    } catch (error) {
-      console.error('Failed to add player:', error);
-    } finally {
-      setProcessingTransaction(null);
+    if (onOpenPositionModal) {
+      setShowResults(false); // Close search dropdown
+      onOpenPositionModal(player);
     }
   };
 
@@ -150,9 +139,9 @@ const PlayerSearchDropdownLeague = ({ leagueId, league, userTeam, onPlayerAdded,
     e.stopPropagation();
     if (!leagueId || !userTeam?.team_id) return;
     
-    if (!window.confirm(`Drop ${player.first_name} ${player.last_name}?`)) return;
+    if (!window.confirm(`Drop ${player.info?.first_name} ${player.info?.last_name}?`)) return;
     
-    setProcessingTransaction(player.player_id);
+    setProcessingTransaction(player.ids?.mlb);
     
     try {
       const response = await leaguesAPI.dropPlayerFromTeam(
@@ -329,7 +318,7 @@ const PlayerSearchDropdownLeague = ({ leagueId, league, userTeam, onPlayerAdded,
             <div className="py-2">
               {searchResults.map((player, index) => (
                 <div
-                  key={player.player_id}
+                  key={player.ids?.mlb}
                   onClick={() => handlePlayerSelect(player)}
                   onMouseEnter={() => setSelectedIndex(index)}
                   className={`px-4 py-3 cursor-pointer transition-all duration-150 ${
@@ -342,13 +331,13 @@ const PlayerSearchDropdownLeague = ({ leagueId, league, userTeam, onPlayerAdded,
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <span className={`font-semibold ${dynastyTheme.classes.text.white}`}>
-                          {player.first_name && player.last_name 
-                            ? `${player.first_name} ${player.last_name}`
-                            : player.name || 'Unknown'}
+                          {player.info?.first_name && player.info?.last_name
+                            ? `${player.info.first_name} ${player.info.last_name}`
+                            : 'Unknown'}
                         </span>
-                        {player.jersey_number > 0 && (
+                        {player.info?.jersey_number > 0 && (
                           <span className={`text-xs ${dynastyTheme.classes.text.neutralLight}`}>
-                            #{player.jersey_number}
+                            #{player.info.jersey_number}
                           </span>
                         )}
                         {/* Ownership Badge */}
@@ -363,11 +352,11 @@ const PlayerSearchDropdownLeague = ({ leagueId, league, userTeam, onPlayerAdded,
                         )}
                       </div>
                       <div className="flex items-center gap-3 mt-1">
-                        <span className={`text-sm font-medium ${getPositionColor(player.position)}`}>
-                          {player.position || 'N/A'}
+                        <span className={`text-sm font-medium ${getPositionColor(player.info?.position)}`}>
+                          {player.info?.position || 'N/A'}
                         </span>
                         <span className={`text-sm ${dynastyTheme.classes.text.neutralLight}`}>
-                          {player.mlb_team || 'FA'}
+                          {player.info?.mlb_team || 'FA'}
                         </span>
                         {/* Contract Info for League Context */}
                         {leagueId && player.salary && (
@@ -389,7 +378,7 @@ const PlayerSearchDropdownLeague = ({ leagueId, league, userTeam, onPlayerAdded,
                     <div className="flex items-center gap-3">
                       {/* Stats */}
                       <div className="flex items-center gap-3 text-sm">
-                        {!isPitcher(player.position) ? (
+                        {!isPitcher(player.info?.position) ? (
                           <>
                             {player.stats?.batting_avg !== undefined && player.stats?.batting_avg > 0 && (
                               <div className="text-right">
@@ -429,18 +418,22 @@ const PlayerSearchDropdownLeague = ({ leagueId, league, userTeam, onPlayerAdded,
                       {/* Transaction Buttons */}
                       {leagueId && userTeam && (
                         <div className="flex items-center gap-1">
+                          <WatchListStar 
+                            playerId={player.ids?.mlb} 
+                            size={16}
+                          />
                           {!player.isOwned ? (
                             <button
                               onClick={(e) => handleAddPlayer(player, e)}
-                              disabled={processingTransaction === player.player_id}
+                              disabled={processingTransaction === player.ids?.mlb}
                               className={`p-1.5 rounded ${
-                                processingTransaction === player.player_id
+                                processingTransaction === player.ids?.mlb
                                   ? 'bg-neutral-700 text-neutral-500 cursor-not-allowed'
                                   : 'bg-emerald-500/20 text-emerald-400 hover:bg-emerald-500/30'
                               } transition-colors`}
                               title="Add to roster"
                             >
-                              {processingTransaction === player.player_id ? (
+                              {processingTransaction === player.ids?.mlb ? (
                                 <div className="w-4 h-4 border-2 border-emerald-400 border-t-transparent animate-spin rounded-full" />
                               ) : (
                                 <Plus className="w-4 h-4" />
@@ -449,15 +442,15 @@ const PlayerSearchDropdownLeague = ({ leagueId, league, userTeam, onPlayerAdded,
                           ) : player.ownedByUser ? (
                             <button
                               onClick={(e) => handleDropPlayer(player, e)}
-                              disabled={processingTransaction === player.player_id}
+                              disabled={processingTransaction === player.ids?.mlb}
                               className={`p-1.5 rounded ${
-                                processingTransaction === player.player_id
+                                processingTransaction === player.ids?.mlb
                                   ? 'bg-neutral-700 text-neutral-500 cursor-not-allowed'
                                   : 'bg-red-500/20 text-red-400 hover:bg-red-500/30'
                               } transition-colors`}
                               title="Drop from roster"
                             >
-                              {processingTransaction === player.player_id ? (
+                              {processingTransaction === player.ids?.mlb ? (
                                 <div className="w-4 h-4 border-2 border-red-400 border-t-transparent animate-spin rounded-full" />
                               ) : (
                                 <Minus className="w-4 h-4" />
@@ -588,7 +581,7 @@ const PlayerSearchDropdownLeague = ({ leagueId, league, userTeam, onPlayerAdded,
       {/* Player Profile Modal - with league context */}
       {showPlayerModal && selectedPlayer && (
         <PlayerProfileModal
-          playerId={selectedPlayer.player_id}
+          playerId={selectedPlayer.ids?.mlb}
           leagueId={leagueId}
           isOpen={showPlayerModal}
           onClose={() => {

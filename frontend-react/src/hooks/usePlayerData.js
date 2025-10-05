@@ -42,39 +42,40 @@ export const usePlayerData = (playerId, leagueId) => {
         // Handle case where response might be wrapped or unwrapped
         const data = response.data || response;
         
-        // DEBUG LOGGING FOR GAME_LOGS
+        // DEBUG LOGGING
         console.log('=== usePlayerData Debug ===');
         console.log('All fields from API:', Object.keys(data));
-        console.log('API Response game_logs:', data.game_logs);
-        console.log('game_logs count:', data.game_logs?.length || 0);
-        console.log('First game log:', data.game_logs?.[0]);
-        console.log('season_stats:', data.season_stats);
-        console.log('rolling_14_day:', data.rolling_14_day);
+        console.log('Has player object:', !!data.player);
         
-        if (!data.player_id && !data.first_name) {
+        // CANONICAL STRUCTURE: API returns data.player with nested structure
+        const playerData = data.player;
+        if (!playerData) {
           throw new Error('Invalid response structure - missing player data');
         }
+        
+        console.log('Player info:', playerData.info);
+        console.log('Player stats:', playerData.stats);
 
-        // STANDARDIZED FIELD NAMES ONLY - matching database exactly
+        // CANONICAL STRUCTURE: player.info.* for biographical data
         setPlayer({
-          player_id: data.player_id,
-          first_name: data.first_name || '',
-          last_name: data.last_name || '',
-          position: data.position || '',
-          mlb_team: data.mlb_team || '',
-          jersey_number: data.jersey_number || 0,
-          height_inches: data.height_inches || null,
-          weight_pounds: data.weight_pounds || null,
-          birthdate: data.birthdate || null,
-          age: data.age || null,
-          is_active: data.is_active ?? true
+          player_id: playerData.ids?.mlb,
+          first_name: playerData.info?.first_name || '',
+          last_name: playerData.info?.last_name || '',
+          position: playerData.info?.position || '',
+          mlb_team: playerData.info?.mlb_team || '',
+          jersey_number: playerData.info?.jersey_number || 0,
+          height_inches: playerData.info?.height_inches || null,
+          weight_pounds: playerData.info?.weight_pounds || null,
+          birthdate: playerData.info?.birthdate || null,
+          age: playerData.info?.age || null,
+          is_active: playerData.info?.active ?? true
         });
 
-        // Backend returns "season_stats" - use it directly
-        const seasonStats = data.season_stats || null;
+        // CANONICAL STRUCTURE: player.stats.season
+        const seasonStats = playerData.stats?.season || null;
         
         // CRITICAL: For pitchers, create nested structure if needed
-        if (seasonStats && data.position === 'P') {
+        if (seasonStats && playerData.info?.position === 'P') {
           // If pitcher stats aren't already nested, nest them
           if (!seasonStats.pitching && seasonStats.era !== undefined) {
             seasonStats.pitching = {
@@ -102,11 +103,11 @@ export const usePlayerData = (playerId, leagueId) => {
         
         setSeasonStats(seasonStats);
         
-        // Backend returns "rolling_14_day" - use it directly
-        const rollingData = data.rolling_14_day || null;
+        // CANONICAL STRUCTURE: player.stats.rolling_14_day
+        const rollingData = playerData.stats?.rolling_14_day || null;
         
         // For pitchers, nest rolling stats too if needed
-        if (rollingData && data.position === 'P') {
+        if (rollingData && playerData.info?.position === 'P') {
           if (!rollingData.pitching && rollingData.era !== undefined) {
             rollingData.pitching = {
               innings_pitched: rollingData.innings_pitched,
@@ -129,42 +130,113 @@ export const usePlayerData = (playerId, leagueId) => {
         
         setRolling14Day(rollingData);
         
-        // Career stats and totals - backend returns "career_stats"
-        setCareerStats(Array.isArray(data.career_stats) ? data.career_stats : []);
-        setCareerTotals(data.career_totals || null);
+        // CANONICAL STRUCTURE: Check if game_logs is in playerData.stats first
+        const gameLogsFromComplete = playerData.stats?.game_logs || playerData.game_logs || data.game_logs;
         
-        // Game logs - backend returns "game_logs"
-        const gameLogs = data.game_logs || [];
-        console.log('Setting game_logs state to:', gameLogs);
-        setGameLogs(Array.isArray(gameLogs) ? gameLogs : []);
+        if (gameLogsFromComplete && Array.isArray(gameLogsFromComplete)) {
+          console.log(`✅ Found ${gameLogsFromComplete.length} game logs in /complete endpoint`);
+          setGameLogs(gameLogsFromComplete);
+        } else {
+          // Fallback: Try separate game logs endpoint (may fail if backend endpoint broken)
+          try {
+            console.log('⚠️ Game logs not in /complete, fetching separately from /game-logs endpoint...');
+            const gameLogsResponse = await api.get(`/api/players/${playerId}/game-logs`);
+            const gameLogsData = gameLogsResponse.data || gameLogsResponse;
+            
+            if (gameLogsData && Array.isArray(gameLogsData.game_logs)) {
+              console.log(`✅ Loaded ${gameLogsData.game_logs.length} game logs from separate endpoint`);
+              setGameLogs(gameLogsData.game_logs);
+            } else if (Array.isArray(gameLogsData)) {
+              console.log(`✅ Loaded ${gameLogsData.length} game logs from separate endpoint`);
+              setGameLogs(gameLogsData);
+            } else {
+              console.log('❌ No game logs found in separate endpoint response');
+              setGameLogs([]);
+            }
+          } catch (gameLogsErr) {
+            console.error('❌ Error fetching game logs from separate endpoint:', gameLogsErr);
+            console.log('Setting empty game logs array');
+            setGameLogs([]);
+          }
+        }
         
-        // Contract info (only in league context)
-        setContractInfo(data.contract_info || null);
+        // Career stats - check if in /complete endpoint first
+        const careerStatsFromComplete = playerData.stats?.career_stats || playerData.career_stats || data.career_stats;
+        const careerTotalsFromComplete = playerData.stats?.career_totals || playerData.career_totals || data.career_totals;
         
-        // Analytics - COMPREHENSIVE MAPPING
-        const analyticsData = data.analytics || {};
-        console.log('Analytics from API:', analyticsData);
+        if (careerStatsFromComplete && Array.isArray(careerStatsFromComplete)) {
+          console.log(`✅ Found ${careerStatsFromComplete.length} career stat seasons in /complete endpoint`);
+          setCareerStats(careerStatsFromComplete);
+        } else {
+          console.log('⚠️ Career stats not in /complete endpoint');
+          setCareerStats([]);
+        }
         
+        if (careerTotalsFromComplete) {
+          console.log('✅ Found career totals in /complete endpoint');
+          setCareerTotals(careerTotalsFromComplete);
+        } else {
+          console.log('⚠️ Career totals not in /complete endpoint');
+          setCareerTotals(null);
+        }
+        
+        // Contract info (only in league context) - check if in /complete endpoint
+        const contractInfoFromComplete = data.contract_info || playerData.contract_info;
+        if (contractInfoFromComplete) {
+          console.log('✅ Found contract info in /complete endpoint');
+          setContractInfo(contractInfoFromComplete);
+        } else {
+          console.log('⚠️ No contract info in /complete endpoint (expected if not in league context)');
+          setContractInfo(null);
+        }
+        
+        // Analytics - check if in /complete endpoint
+        const analyticsFromComplete = data.analytics || playerData.analytics || {};
+        console.log('==============================================');
+        console.log('🔍 ANALYTICS FROM BACKEND API:');
+        console.log('==============================================');
+        console.log('Full analytics object:', JSON.stringify(analyticsFromComplete, null, 2));
+        console.log('Has hot_cold?', !!analyticsFromComplete.hot_cold);
+        console.log('Has position_rankings?', !!analyticsFromComplete.position_rankings);
+        console.log('Has year_over_year?', !!analyticsFromComplete.year_over_year);
+        console.log('Has monthly_splits?', !!analyticsFromComplete.monthly_splits);
+        console.log('Has z_scores?', !!analyticsFromComplete.z_scores);
+        console.log('Has performance_trends?', !!analyticsFromComplete.performance_trends);
+        console.log('Has consistency?', !!analyticsFromComplete.consistency);
+        console.log('Has streaks?', !!analyticsFromComplete.streaks);
+        console.log('==============================================');
+        
+        // FIXED: Use snake_case field names to match backend and component expectations
         setAnalytics({
-          hotColdAnalysis: analyticsData.hot_cold || analyticsData.hotColdAnalysis || null,
-          performanceTrends: analyticsData.performance_trends || analyticsData.performance_metrics || null,
-          leagueComparisons: analyticsData.league_comparisons || null,
-          positionRankings: analyticsData.position_rankings || null,
-          yearOverYear: analyticsData.year_over_year || null,
-          monthlyTrends: analyticsData.monthly_splits || analyticsData.monthly_trends || [],
-          zScores: analyticsData.z_scores || {},
-          splits: analyticsData.splits || null,
-          advanced: analyticsData.advanced || null,
-          consistency: analyticsData.consistency || null,
-          streaks: analyticsData.streaks || null,
-          hot_cold: analyticsData.hot_cold || null,
-          position_rank: analyticsData.position_rankings?.[0]?.rank || null,
+          // Backend snake_case field names (canonical pattern)
+          hot_cold: analyticsFromComplete.hot_cold || null,
+          performance_trends: analyticsFromComplete.performance_trends || analyticsFromComplete.performance_metrics || null,
+          league_comparisons: analyticsFromComplete.league_comparisons || null,
+          position_rankings: analyticsFromComplete.position_rankings || null,
+          year_over_year: analyticsFromComplete.year_over_year || null,
+          monthly_splits: analyticsFromComplete.monthly_splits || analyticsFromComplete.monthly_trends || [],
+          z_scores: analyticsFromComplete.z_scores || {},
+          splits: analyticsFromComplete.splits || null,
+          advanced: analyticsFromComplete.advanced || null,
+          consistency: analyticsFromComplete.consistency || null,
+          streaks: analyticsFromComplete.streaks || null,
+          
+          // Helper fields for quick access
+          season_stats: seasonStats,  // Reference for components
+          
+          // Computed/helper fields
+          position_rank: analyticsFromComplete.position_rankings?.[0]?.rank || null,
           position_total: 150,
-          league_rank: analyticsData.league_comparisons?.percentile_rank || null,
+          league_rank: analyticsFromComplete.league_comparisons?.percentile_rank || null,
           overall_rank: null,
-          value_rating: analyticsData.performance_metrics?.consistency_score || null,
-          trend: analyticsData.hot_cold?.status || null,
+          value_rating: analyticsFromComplete.performance_metrics?.consistency_score || null,
+          trend: analyticsFromComplete.hot_cold?.status || null,
           trade_value: null,
+          
+          // League averages for comparisons
+          league_averages: analyticsFromComplete.league_averages || null,
+          
+          // Value object (for pricing)
           value: {
             price: data.contract_info?.salary || 0,
             market: 0
@@ -172,15 +244,12 @@ export const usePlayerData = (playerId, leagueId) => {
         });
         
         console.log('=== Final State Debug ===');
-        console.log('Successfully loaded comprehensive player data:', {
-          player: `${data.first_name} ${data.last_name}`,
-          season_stats: seasonStats,
-          rolling_14_day: rollingData,
-          career_stats_count: data.career_stats?.length || 0,
-          game_logs_count: gameLogs.length,
-          has_contract: !!data.contract_info,
-          has_analytics: !!data.analytics,
-          analytics_keys: Object.keys(data.analytics || {})
+        console.log('Successfully loaded player data:', {
+          player: `${playerData.info?.first_name} ${playerData.info?.last_name}`,
+          season_stats: !!seasonStats,
+          rolling_14_day: !!rollingData,
+          has_position: !!playerData.info?.position,
+          has_bio_data: !!(playerData.info?.height_inches || playerData.info?.weight_pounds)
         });
         
       } catch (err) {
@@ -251,6 +320,6 @@ export const usePlayerData = (playerId, leagueId) => {
     },
     
     hasContract: () => !!contract_info,
-    hasAnalytics: () => !!(analytics?.hotColdAnalysis || analytics?.performanceTrends || analytics?.positionRankings)
+    hasAnalytics: () => !!(analytics?.hot_cold || analytics?.performance_trends || analytics?.position_rankings)
   };
 };

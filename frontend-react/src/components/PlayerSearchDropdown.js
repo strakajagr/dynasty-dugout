@@ -6,6 +6,7 @@ import { dynastyTheme } from '../services/colorService';
 import apiService from '../services/apiService';
 import ReactDOM from 'react-dom';
 import PlayerProfileModal from './PlayerProfileModal';
+import { WatchListStar } from './WatchList';
 
 const PlayerSearchDropdown = ({ leagueId = null }) => {
   const [searchQuery, setSearchQuery] = useState('');
@@ -291,7 +292,7 @@ const PlayerSearchDropdown = ({ leagueId = null }) => {
             <div className="py-2">
               {searchResults.map((player, index) => (
                 <div
-                  key={player.player_id}
+                  key={player.ids?.mlb || player.player_id}
                   onClick={() => handlePlayerSelect(player)}
                   onMouseEnter={() => setSelectedIndex(index)}
                   className={`px-4 py-3 cursor-pointer transition-all duration-150 ${
@@ -304,22 +305,26 @@ const PlayerSearchDropdown = ({ leagueId = null }) => {
                     <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <span className={`font-semibold ${dynastyTheme.classes.text.white}`}>
-                          {player.first_name && player.last_name 
-                            ? `${player.first_name} ${player.last_name}`
-                            : player.name || 'Unknown'}
+                          {player.info?.first_name && player.info?.last_name
+                            ? `${player.info.first_name} ${player.info.last_name}`
+                            : 'Unknown'}
                         </span>
-                        {player.jersey_number > 0 && (
+                        <WatchListStar 
+                          playerId={player.ids?.mlb || player.player_id} 
+                          size={16}
+                        />
+                        {player.info?.jersey_number > 0 && (
                           <span className={`text-xs ${dynastyTheme.classes.text.neutralLight}`}>
-                            #{player.jersey_number}
+                            #{player.info.jersey_number}
                           </span>
                         )}
                       </div>
                       <div className="flex items-center gap-3 mt-1">
-                        <span className={`text-sm font-medium ${getPositionColor(player.position)}`}>
-                          {player.position || 'N/A'}
+                        <span className={`text-sm font-medium ${getPositionColor(player.info?.position)}`}>
+                          {player.info?.position || 'N/A'}
                         </span>
                         <span className={`text-sm ${dynastyTheme.classes.text.neutralLight}`}>
-                          {player.mlb_team || 'FA'}
+                          {player.info?.mlb_team || 'FA'}
                         </span>
                         {player.stats?.games_played > 0 && (
                           <span className={`text-xs ${dynastyTheme.classes.text.neutralLighter}`}>
@@ -330,7 +335,7 @@ const PlayerSearchDropdown = ({ leagueId = null }) => {
                     </div>
                     
                     <div className="flex items-center gap-3 text-sm">
-                      {!isPitcher(player.position) ? (
+                      {!isPitcher(player.info?.position) ? (
                         <>
                           {player.stats?.batting_avg !== undefined && player.stats?.batting_avg > 0 && (
                             <div className="text-right">
@@ -374,7 +379,7 @@ const PlayerSearchDropdown = ({ leagueId = null }) => {
                           <div className="text-right">
                             <div className={`${dynastyTheme.classes.text.neutralLighter} text-xs`}>K</div>
                             <div className={dynastyTheme.classes.text.white}>
-                              {player.stats?.strikeouts || player.stats?.strikeouts_pitched || 0}
+                              {player.stats?.strikeouts_pitched || 0}
                             </div>
                           </div>
                         </>
@@ -502,7 +507,7 @@ const PlayerSearchDropdown = ({ leagueId = null }) => {
       {/* Player Profile Modal */}
       {showPlayerModal && selectedPlayer && (
         <PlayerProfileModal
-          playerId={selectedPlayer.player_id}
+          playerId={selectedPlayer.ids?.mlb || selectedPlayer.player_id}
           leagueId={leagueId}
           isOpen={showPlayerModal}
           onClose={() => {

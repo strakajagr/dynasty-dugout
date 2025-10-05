@@ -22,7 +22,7 @@ def get_user_team_id(league_id: str, user_id: str) -> Optional[str]:
         )
         
         if result and result.get("records") and len(result["records"]) > 0:
-            return result["records"][0][0]["stringValue"]
+            return result["records"][0].get("team_id")
         return None
     except Exception as e:
         logger.error(f"Error getting user team ID: {e}", exc_info=True)
