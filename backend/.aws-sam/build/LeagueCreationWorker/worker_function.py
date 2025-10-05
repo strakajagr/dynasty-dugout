@@ -823,6 +823,18 @@ def lambda_handler(event, context):
             ('season_start_date', league_data.get('season_start_date', '2025-03-28'), 'string'),
             ('season_end_date', league_data.get('season_end_date', '2025-09-28'), 'string'),
             
+            # Trade settings
+            ('veto_system', league_data.get('veto_system', 'none'), 'string'),
+            ('veto_threshold', str(league_data.get('veto_threshold', 0.5)), 'float'),
+            ('veto_period_hours', str(league_data.get('veto_period_hours', 48)), 'integer'),
+            ('trade_deadline_enabled', str(league_data.get('trade_deadline_enabled', True)), 'boolean'),
+            ('trade_deadline_date', league_data.get('trade_deadline_date', '08-31'), 'string'),
+            ('future_picks_tradeable_years', str(league_data.get('future_picks_tradeable_years', 1)), 'integer'),
+            ('fa_cash_tradeable', str(league_data.get('fa_cash_tradeable', True)), 'boolean'),
+            ('max_fa_cash_per_trade', str(league_data.get('max_fa_cash_per_trade') or 'null'), 'string'),
+            ('min_roster_size', str(league_data.get('min_roster_size', 25)), 'integer'),
+            ('max_roster_size', str(league_data.get('max_roster_size', 40)), 'integer'),
+            
             # System settings
             ('current_season', str(current_season), 'integer'),
             ('league_status', 'setup', 'string'),

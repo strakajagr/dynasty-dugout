@@ -9,12 +9,14 @@ FIXED: Dynamic season dates instead of hardcoded 2025
 import logging
 import json
 import os
+from unittest import result
 import boto3
 import random
 import string
 from uuid import uuid4
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import JSONResponse
+from typing import Optional
 from pydantic import BaseModel, Field
 
 from core.auth_utils import get_current_user
@@ -111,6 +113,17 @@ class LeagueCreateRequest(BaseModel):
     use_waivers: bool = Field(default=False)
     season_start_date: str = Field(default_factory=lambda: f'{get_current_season()}-03-28')
     season_end_date: str = Field(default_factory=lambda: f'{get_current_season()}-09-28')
+    # Trade Configuration
+    veto_system: str = Field(default='none', pattern='^(none|commissioner|league_vote)$')
+    veto_threshold: float = Field(default=0.5, ge=0.1, le=1.0)
+    veto_period_hours: int = Field(default=48, ge=0, le=168)
+    trade_deadline_enabled: bool = Field(default=True)
+    trade_deadline_date: str = Field(default='08-31', pattern='^(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$')
+    future_picks_tradeable_years: int = Field(default=1, ge=0, le=5)
+    fa_cash_tradeable: bool = Field(default=True)
+    max_fa_cash_per_trade: Optional[int] = Field(default=None, ge=0)
+    min_roster_size: int = Field(default=25, ge=15, le=50)
+    max_roster_size: int = Field(default=40, ge=20, le=60)
 
 # =============================================================================
 # ASYNCHRONOUS API ENDPOINTS
@@ -250,20 +263,18 @@ async def get_league_creation_status(league_id: str, current_user: dict = Depend
     if not result.get('records'):
         raise HTTPException(status_code=404, detail="League status record not found")
 
-    record = result['records'][0]
-    status = record[0].get('stringValue', 'unknown')
-    error_message = record[1].get('stringValue') if len(record) > 1 and not record[1].get('isNull') else None
-    is_public = record[2].get('booleanValue', True) if len(record) > 2 else True
-    invite_code = record[3].get('stringValue') if len(record) > 3 and not record[3].get('isNull') else None
+    # execute_sql returns dict with column names as keys
+    row = result['records'][0]
     
     response = {
         "league_id": league_id,
-        "status": status,
-        "error_message": error_message,
-        "is_public": is_public
+        "status": row.get('creation_status', 'unknown'),
+        "error_message": row.get('creation_error_message'),
+        "is_public": row.get('is_public', True)
     }
     
-    if invite_code and not is_public:
+    invite_code = row.get('invite_code')
+    if invite_code and not response['is_public']:
         response["invite_code"] = invite_code
     
     return response
